@@ -138,6 +138,8 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
       defOpen: left > 0,
       rows,
       roll: cols.map((_, i) => rows.reduce((s, r) => s + r.cells[i].a, 0)),
+      // Where each subtotal comes from: the SKU lines allocated from that column (tooltip).
+      rollDetail: cols.map((_, i) => rows.filter((r) => r.cells[i].a > 0).map((r) => ({ title: r.title, qty: r.cells[i].a }))),
       allocated: sum((l) => l.allocated),
     });
   }

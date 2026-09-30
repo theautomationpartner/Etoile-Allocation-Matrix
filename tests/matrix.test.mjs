@@ -73,3 +73,11 @@ test("rows reserved above To ship and rows that lost a source are flagged", () =
   assert.equal(row("EIVR121", "EC0401").warnings[0], "lost its source · 100 units");
   assert.equal(m.groups.find((g) => g.key === "EIVR121").review, 1);
 });
+
+test("a closed order's subtotal knows which SKU lines it is made of", () => {
+  const m = matrixOf();
+  const g = m.groups.find((x) => x.key === "EIVR121");
+  const i = m.cols.findIndex((c) => c.label === "FLEX-4119719");
+  assert.equal(g.roll[i], 1816);
+  assert.deepEqual(g.rollDetail[i].map((d) => [d.title.split(" - ")[0], d.qty]), [["EC0387", 1000], ["EC0401", 540], ["EC0383", 276]]);
+});

@@ -42,6 +42,12 @@
 .rh .m.warn, .gh .m .warn { color: var(--gap); font-weight: 600; }
 .rh .m.warn { white-space: normal; }
 
+/* Instant tooltip of the matrix cells and subtotals. */
+.mx-tip { position: fixed; z-index: 95; width: max-content; max-width: 340px; padding: 8px 10px; border-radius: 6px; background: var(--ink); color: var(--surface);
+  font-size: 12px; line-height: 1.5; white-space: pre-line; box-shadow: var(--shadow); pointer-events: none; font-variant-numeric: tabular-nums; }
+.mx td.roll[data-tip] { cursor: help; }
+.mx tr.g .roll[data-tip]:hover { color: var(--ink); background: var(--surface-2); }
+
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (max-width: 860px) {

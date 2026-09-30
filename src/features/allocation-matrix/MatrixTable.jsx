@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { fmt, plural } from "../../lib/format.js";
 import { ShipmentsRows } from "./ShipmentsRows.jsx";
+import { Tooltip, useTooltip } from "../../components/Tooltip.jsx";
 
 const RULE = "Suggested order: warehouse first when it covers at least half of the line — then the container arriving soonest, then a purchase order.";
 
@@ -14,7 +15,7 @@ function Cell({ c, needs }) {
     const multi = c.split.includes("+");
     return (
       <td className={`cl a ${c.k}`}>
-        <button type="button" tabIndex={-1} title={`${c.lbl} — ${fmt(c.a)} allocated${XY ? ` of ${fmt(c.tot)} on board` : ""}${c.split ? ` (${c.split})` : ""}${free}`}>
+        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.a)} allocated${XY ? ` of ${fmt(c.tot)} on board` : ""}${c.split ? ` (${c.split})` : ""}${free}`}>
           {fmt(c.a)}{of}
           {multi && <sup className="mpo">{c.split.split("+").length} POs</sup>}
           {c.dr > 0 && <sup className="mpo">+{fmt(c.dr)} draft</sup>}
@@ -25,7 +26,7 @@ function Cell({ c, needs }) {
   if (c.dr > 0) {
     return (
       <td className={`cl dr ${c.k}`}>
-        <button type="button" tabIndex={-1} title={`${c.lbl} — ${fmt(c.dr)} proposed${XY ? ` of ${fmt(c.tot)} on board` : ""}. Draft: not allocated until you open it and click Allocate.`}>
+        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.dr)} proposed${XY ? ` of ${fmt(c.tot)} on board` : ""}. Draft: not allocated until you open it and click Allocate.`}>
           {fmt(c.dr)}{of}<sup className="mpo">draft</sup>
         </button>
       </td>
@@ -34,21 +35,21 @@ function Cell({ c, needs }) {
   if (XY) {
     return (
       <td className="cl xy">
-        <span title={`${c.lbl} — nothing allocated to this order yet · ${fmt(c.tot)} on board, ${fmt(c.av)} still free`}>{fmt(c.tot)}</span>
+        <span data-tip={`${c.lbl} — nothing allocated to this order yet · ${fmt(c.tot)} on board, ${fmt(c.av)} still free`}>{fmt(c.tot)}</span>
       </td>
     );
   }
   if (c.av > 0 && needs) {
     return (
       <td className="cl av">
-        <button type="button" tabIndex={-1} title={`${c.lbl} — ${fmt(c.av)} free`}>{fmt(c.av)}</button>
+        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.av)} free`}>{fmt(c.av)}</button>
       </td>
     );
   }
   if (c.cap > 0) {
     return (
       <td className="cl idle">
-        <button type="button" tabIndex={-1} title={`${c.lbl} — nothing allocated from here`}>·</button>
+        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — nothing allocated from here`}>·</button>
       </td>
     );
   }
@@ -64,7 +65,7 @@ function Row({ r }) {
           <div className="t"><b>{r.title}</b></div>
           {r.warnings.map((w) => (
             <div key={w} className="m warn"
-              title={w.startsWith("lost") ? "Reserved on a container or PO that no longer exists or no longer carries this SKU. These units are back in Left." : "More units are reserved than are left to ship: part of the reservation was already shipped. Review the line."}>
+              data-tip={w.startsWith("lost") ? "Reserved on a container or PO that no longer exists or no longer carries this SKU. These units are back in Left." : "More units are reserved than are left to ship: part of the reservation was already shipped. Review the line."}>
               {w}
             </div>
           ))}
@@ -77,7 +78,7 @@ function Row({ r }) {
           {left ? (
             <span className={`n k ${r.end ? "bad" : ""}`}>
               <span className={`pill ${r.end ? "bad" : ""} ${r.dr ? "drp" : ""}`}
-                title={r.dr ? `${fmt(r.dr)} units proposed as draft — review and click Allocate` : "Allocate these units"}>
+                data-tip={r.dr ? `${fmt(r.dr)} units proposed as draft — review and click Allocate` : "Allocate these units"}>
                 {fmt(left)}<i>{r.dr ? "Draft" : "Allocate"}</i>
               </span>
             </span>
@@ -92,7 +93,15 @@ function Row({ r }) {
   );
 }
 
+// Subtotal of a closed order: confirmed units allocated from that source, and to which SKU lines.
+function rollTip(g, col, total, detail) {
+  const src = col.meta ? `${col.label} (${col.meta})` : col.label;
+  const lines = detail.map((d) => `• ${d.title} — ${fmt(d.qty)}`).join("\n");
+  return `${fmt(total)} units of ${g.number} already allocated from ${src}:\n${lines}`;
+}
+
 export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments }) {
+  const { tip, handlers } = useTooltip();
   const cols = matrix?.cols || [{ k: "wh", id: "warehouse", label: "Warehouse", meta: "on hand" }];
   const nCol = 2 + cols.length + 1;
 
@@ -102,8 +111,9 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
   else if (!matrix.groups.length) empty = <><b style={{ display: "block", color: "var(--ink)", fontSize: 14, marginBottom: 4 }}>Nothing to show here.</b>No row matches this filter — switch back to Everything.</>;
 
   return (
-    <div className="mx-wrap">
-      <div className="mx-scroll">
+    <div className="mx-wrap" {...handlers}>
+      <Tooltip tip={tip} />
+      <div className="mx-scroll" onScroll={handlers.onMouseLeave}>
         <table className="mx">
           <thead>
             <tr>
@@ -117,7 +127,7 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                       <div className="rule" />
                       <div className="t">{c.label}</div>
                       <div className="m">{c.meta}</div>
-                      <div className="cap" title={c.cap ? `${fmt(c.cap.committed)} of ${fmt(c.cap.total)} already committed` : ""}><i style={{ width: `${w}%` }} /></div>
+                      <div className="cap" data-tip={c.cap ? `${fmt(c.cap.committed)} of ${fmt(c.cap.total)} already committed` : ""}><i style={{ width: `${w}%` }} /></div>
                     </div>
                   </th>
                 );
@@ -148,7 +158,12 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                         <span className={`n k ${g.nums[2] && g.end ? "bad" : ""}`}>{fmt(g.nums[2])}</span>
                       </div>
                     </td>
-                    {g.roll.map((v, i) => <td key={i} className="roll">{v ? fmt(v) : ""}</td>)}
+                    {g.roll.map((v, i) => (
+                      <td key={i} className="roll"
+                        data-tip={v && !open ? rollTip(g, cols[i], v, g.rollDetail[i]) : undefined}>
+                        {v ? fmt(v) : ""}
+                      </td>
+                    ))}
                     <td className={`end ${g.end ? "bad" : "ok"}`}>{g.end ? fmt(g.end) : "—"}</td>
                   </tr>
                   {open && (() => {

@@ -329,7 +329,11 @@ sticky: .s1 300px + .s2 290px).
       .m: "<SO> · <sale status en minúsculas> · cancel date <30 Nov 2026>"
           (sin fecha: "no cancel date")
   .s2: Σ To ship · Σ Allocated · Σ Left (Left en rojo .bad si la orden tiene faltante).
-  td.roll por columna: Σ allocated de sus filas (invisible cuando está abierta).
+  td.roll por columna: Σ allocated de sus filas (invisible cuando está abierta). Con la orden
+      cerrada, al pasar el mouse muestra al instante de dónde sale: "<n> units of <EIVR> already
+      allocated from <fuente> (<meta>):" + una línea por SKU "• <SKU> - <producto> — <n>".
+  Tooltips: todas las celdas de la matriz usan un tooltip propio instantáneo (.mx-tip, posición
+      fija, fondo --ink) en lugar del title del navegador.
   td.end: faltante de la orden o "—".
   Abierto por defecto: solo si tiene Left > 0; con filtro o búsqueda, todos abiertos.
   Expand all / Collapse all abren/cierran todos. El estado se mantiene mientras la
@@ -531,3 +535,5 @@ allocation.
             source", "reserved for … to ship · review") y "n lines to review" por orden.
 2026-09-30  PUNTO 4 — Shipments: tablero New Shipments configurado (6 columnas de item, 6 de
             subitem); crear / editar / guardar / borrar shipments; conexiones a la línea de venta.
+2026-09-30  PUNTO 2 (ajustes) — Tooltip instantáneo en celdas y en los subtotales de la orden
+            cerrada, con el detalle por SKU.
