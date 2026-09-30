@@ -6,11 +6,12 @@ Data is read from monday.com.
 
 ## Run locally
 
-Requires Node 20+. No dependencies to install.
+Requires Node 20.19+.
 
 ```sh
+npm install
 cp .env.example .env.local   # then set MONDAY_TOKEN
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:5173
 npm test                     # engine tests
 ```
 
@@ -18,11 +19,12 @@ npm test                     # engine tests
 
 | Path | What it is |
 |---|---|
-| `index.html`, `src/` | The page (vanilla JS modules, no build step) |
-| `src/engine.js` | Calculation rules (pure functions, covered by `tests/`) |
-| `src/monday.js` | Reads the monday.com boards and normalizes them |
+| `src/` | React app (Vite). `features/allocation-matrix/` holds the screen |
+| `src/lib/engine.js` | Calculation rules (pure functions, covered by `tests/`) |
+| `src/lib/monday.js` | Reads the monday.com boards; transport-agnostic (proxy locally, `monday.api` in Vibe) |
 | `api/monday.js` | Server-side proxy; the monday token never reaches the browser |
-| `scripts/dev-server.mjs` | Local server that runs `api/` the same way Vercel does |
+| `vite.config.js` | Runs `api/` during `npm run dev` the same way Vercel does |
+| `PROMPT-MONDAY-VIBE.txt` | Detailed spec that becomes the monday Vibe prompt, updated step by step |
 
 ## Branches
 

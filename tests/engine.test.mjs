@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildModel, SOURCE } from "../src/engine.js";
+import { buildModel, SOURCE } from "../src/lib/engine.js";
 import { mockupData } from "./fixtures/mockup-data.mjs";
 
 test("metrics reproduce the approved mockup (Allocation matrix cards)", () => {
