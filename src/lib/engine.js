@@ -23,8 +23,12 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   // §5.1 / §11.2 — demand: Orders + Pending groups, region US.
   const orders = (data.orders || []).filter((o) => OPEN_ORDER_GROUPS.has(o.group) && o.region === "US");
 
-  // §6.2 / §11.1 — containers: group topics + Location US.
-  const containers = (data.containers || []).filter((c) => c.group === ACTIVE_CONTAINER_GROUP && c.location === "US").sort(byEta);
+  // §6.2 / §11.1 — in-transit supply: group topics + Location US, and Packing List not "Done".
+  // A container in "Done" has landed: its units are warehouse stock now (client rule, 2026-09-30).
+  const isDone = (c) => c.packingList === "Done";
+  const containers = (data.containers || []).filter((c) => c.group === ACTIVE_CONTAINER_GROUP && c.location === "US" && !isDone(c)).sort(byEta);
+  // Landed containers (any group, e.g. Archive): reservations against them count as warehouse stock.
+  const doneContainerById = new Map((data.containers || []).filter((c) => c.location === "US" && isDone(c)).map((c) => [String(c.id), c]));
 
   // §6.3 / §11.1 — POs: Destination Region US, only subitems with Qty Outstanding > 0.
   const pos = (data.pos || [])
@@ -45,14 +49,22 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   const poOutstanding = (po, sku) => po.lines.reduce((s, l) => (l.sku === sku ? s + n(l.qtyOutstanding) : s), 0);
   const poTotal = (po, sku) => Math.max(0, poOutstanding(po, sku) - poShipped(po, sku)); // rule 2
 
-  // §13 rule 4 — an entry whose source is no longer active does not count anywhere.
-  function sourceActive(entry, sku) {
+  // Current stage of a confirmed entry's units (§6.5), or null when its source is no longer
+  // active (§13 rule 4 — orphan: it does not count anywhere).
+  //   in-transit entry on a "Done" container → the units are warehouse stock now
+  function stageOf(entry, sku) {
     const id = String(entry.sourceId ?? "");
-    if (entry.source === SOURCE.WAREHOUSE) return Boolean(warehouse[sku]);
-    if (entry.source === SOURCE.IN_TRANSIT) return Boolean(containerById.get(id)?.lines.some((l) => l.sku === sku));
-    if (entry.source === SOURCE.PO) return Boolean(poById.get(id)?.lines.some((l) => l.sku === sku));
-    return false;
+    const has = (src) => Boolean(src?.lines.some((l) => l.sku === sku));
+    if (entry.source === SOURCE.WAREHOUSE) return warehouse[sku] ? SOURCE.WAREHOUSE : null;
+    if (entry.source === SOURCE.IN_TRANSIT) {
+      if (has(containerById.get(id))) return SOURCE.IN_TRANSIT;
+      if (has(doneContainerById.get(id)) && warehouse[sku]) return SOURCE.WAREHOUSE;
+      return null;
+    }
+    if (entry.source === SOURCE.PO) return has(poById.get(id)) ? SOURCE.PO : null;
+    return null;
   }
+  const sourceActive = (entry, sku) => stageOf(entry, sku) !== null;
   const sourceKey = (source, sourceId, sku) => (source === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${source}|${sourceId}|${sku}`);
 
   // ── Demand lines (§5.2: only Outstanding > 0) and confirmed usage per source ──
@@ -70,8 +82,9 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
           orphanUnits += qty;
           continue;
         }
-        active.push({ ...e, qty });
-        const k = sourceKey(e.source, e.sourceId, l.sku);
+        const stage = stageOf(e, l.sku);
+        active.push({ ...e, qty, stage });
+        const k = sourceKey(stage, e.sourceId, l.sku); // a landed container's units draw on the warehouse
         used.set(k, (used.get(k) || 0) + qty);
       }
       if (toShip <= 0) continue;
@@ -141,12 +154,10 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     for (const l of o.lines || []) {
       for (const e of l.entries || []) {
         const qty = n(e.qty);
-        if (qty <= 0 || !sourceActive(e, l.sku)) continue;
-        if (e.source === SOURCE.WAREHOUSE) split.onHand += qty;
-        else if (e.source === SOURCE.IN_TRANSIT) {
-          if (containerById.get(String(e.sourceId))?.packingList === "Done") split.onHand += qty;
-          else split.inTransit += qty;
-        } else split.onOrder += qty;
+        const stage = qty > 0 ? stageOf(e, l.sku) : null;
+        if (stage === SOURCE.WAREHOUSE) split.onHand += qty;
+        else if (stage === SOURCE.IN_TRANSIT) split.inTransit += qty;
+        else if (stage === SOURCE.PO) split.onOrder += qty;
       }
     }
   }

@@ -55,3 +55,21 @@ test("warehouse is proposed only when it covers the whole line", () => {
     if (wh) assert.equal(parts.length, 1);
   }
 });
+
+test("reservations on a landed (Done) container count as warehouse stock, not in transit", () => {
+  const data = mockupData();
+  const landed = data.containers.find((c) => c.id === "US / FLEX-4084548 / 40HC");
+  landed.packingList = "Done";
+  landed.group = "group_mm19tfx0"; // moved to Archive
+  const base = buildModel(mockupData());
+  const m = buildModel(data);
+  // EIVR124 EC0395 had 800 from this container → still allocated, now on hand
+  const l = m.lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
+  assert.equal(l.allocated, 800);
+  assert.equal(l.lostSource, false);
+  assert.ok(!m.containers.some((c) => c.id === landed.id), "landed container is not in-transit supply");
+  assert.equal(m.metrics.alreadyAllocated, base.metrics.alreadyAllocated);
+  const moved = 800 + 550 + 408; // EC0395 + EC0394 + EC0385 reserved on FLEX-4084548
+  assert.equal(m.metrics.allocatedSplit.onHand, base.metrics.allocatedSplit.onHand + moved);
+  assert.equal(m.metrics.allocatedSplit.inTransit, base.metrics.allocatedSplit.inTransit - moved);
+});

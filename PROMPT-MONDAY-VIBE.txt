@@ -1,7 +1,7 @@
 ================================================================================
  PROMPT PARA MONDAY VIBE — ETOILE FLOW · ALLOCATION MATRIX
 ================================================================================
-Estado del documento: PUNTO 1 de 4 (Métricas + Filtros) — validado en React local
+Estado del documento: PUNTO 1 de 4 (Métricas + Filtros + Búsqueda) — validado en React local
 Última actualización: 2026-09-30
 Referencia probada: repo theautomationpartner/Etoile-Allocation-Matrix, rama dev
 
@@ -50,10 +50,11 @@ layout, texts, colours, interactions and responsive behaviour.
 - Estructura de componentes:
     App
      ├─ Sidebar            (menú lateral colapsable)
-     ├─ Topbar             (breadcrumb, hora de carga, Refresh)
+     ├─ Topbar             (breadcrumb + buscador)
      └─ AllocationMatrix   (pantalla)
+         ├─ barra de frescura + botón Refresh (al costado de las métricas)
          ├─ MetricCards    (4 tarjetas)            ← funcional en PUNTO 1
-         ├─ ControlsBar    (View by + Expand/Collapse all)
+         ├─ ControlsBar    (View by: solo "Wholesale order" + Expand/Collapse all)
          ├─ ShowFilters    (chips Show)            ← funcional en PUNTO 1
          ├─ Legend         (leyenda estática)
          └─ MatrixFrame    (tabla; filas en PUNTO 2)
@@ -88,6 +89,8 @@ Región: solo US. Todas las cantidades son de US.
       dropdown_mm4fwfk7    Allocation Source   (se escribe en PUNTO 3)
       board_relation_mm3hna2c  Purchase Orders (solo referencia, NO es reserva)
       board_relation_mm342hhx  In-Transit Shipments (solo referencia, NO es reserva)
+      board_relation_mm7pqf7j  🔗 Allocation Ledger - Monday Vibe → el item del Ledger de esta
+                               línea (reemplaza al JSON como registro de la allocation; sección 10)
 
 2.2 👜💄 Master SKU Inventory — board 18402981515  [WAREHOUSE]
       name                 Nombre del producto
@@ -97,8 +100,12 @@ Región: solo US. Todas las cantidades son de US.
     y se restaría dos veces.
 
 2.3 🚢 In-Transit Shipments — board 18402604887  [CONTENEDORES]
-    Grupo elegible: "topics" (In-Transit Shipments (Items)). Los grupos
-    "group_mm196tfw" (Process) y "group_mm19tfx0" (Archive) no son oferta.
+    Oferta en tránsito: grupo "topics" (In-Transit Shipments (Items)) y Packing List
+    distinto de "Done". Los grupos "group_mm196tfw" (Process) y "group_mm19tfx0"
+    (Archive) no son oferta en tránsito.
+    Regla del cliente (2026-09-30): un contenedor con Packing List = "Done" ya llegó; sus
+    unidades son warehouse stock. Las reservas que apuntan a él siguen contando, como
+    warehouse (ver 4.3). Por eso se leen los contenedores de TODOS los grupos.
     Item:
       name                 ej. "US / FLEX-4119719 / 40HC"
       color_mm3bhhys       Location → solo "US"
@@ -171,7 +178,7 @@ a) Wholesale (grupos topics + group_mm1730xq):
 b) Master SKU (todo el tablero):
    items { id name column_values(ids:["text_mm17625z","numeric_mm1765fq"]){ id text } }
    Indexar por SKU (primer item de cada SKU).
-c) In-Transit (grupo topics):
+c) In-Transit (todos los grupos; monday no devuelve los items archivados):
    items { id name group{id} column_values(ids:["color_mm3bhhys","date4","color_mm1c7w2a"]){ id text }
      subitems { id column_values(ids:["text_mm15xggt","numeric_mm3k24ed","text_mm2ebx76"]){ id text } } }
 d) Purchase Orders (todo el tablero):
@@ -200,8 +207,9 @@ Todo se calcula al cargar. Nada derivado se guarda en monday.
 
 4.1 Conjuntos elegibles
   - Órdenes abiertas: group ∈ {topics, group_mm1730xq} y region = "US".
-  - Contenedores activos: group = "topics" y location = "US". Orden por ETA ascendente
-    (sin ETA al final).
+  - Contenedores en tránsito: group = "topics", location = "US" y Packing List ≠ "Done".
+    Orden por ETA ascendente (sin ETA al final).
+  - Contenedores llegados: location = "US" y Packing List = "Done" (cualquier grupo).
   - POs activas: region = "US"; de cada una, solo los subitems con Qty Outstanding > 0.
     Orden por ETA ascendente.
   - Líneas (filas): subitems de órdenes abiertas con outstanding > 0.
@@ -215,13 +223,15 @@ Todo se calcula al cargar. Nada derivado se guarda en monday.
                           y PO Reference == nombre de la PO).
                (Sin esta resta las unidades embarcadas se contarían dos veces.)
 
-4.3 Entrada activa vs huérfana
-  Una entrada del JSON cuenta solo si su fuente sigue activa:
-  - warehouse: el SKU existe en Master SKU.
-  - intransit: sourceId es un contenedor activo que tiene ese SKU.
-  - po:        sourceId es una PO activa que tiene ese SKU con outstanding > 0.
-  Si no, es huérfana: no cuenta como asignada ni descuenta stock libre.
+4.3 Etapa actual de una entrada confirmada (o huérfana)
+  - warehouse: el SKU existe en Master SKU                          → etapa warehouse
+  - intransit: sourceId es un contenedor en tránsito con ese SKU     → etapa in transit
+               sourceId es un contenedor llegado (Done) con ese SKU  → etapa WAREHOUSE:
+               la reserva se mantiene y descuenta del libre del warehouse de ese SKU
+  - po:        sourceId es una PO activa con ese SKU y outstanding > 0 → etapa PO
+  Cualquier otro caso es huérfana: no cuenta como asignada ni descuenta stock libre.
   Se suman aparte (unidades huérfanas) para mostrarlas en el pie.
+  (La regla del 50 % para pasar a warehouse se aplica al asignar, PUNTO 3.)
 
 4.4 Por línea
   To ship   = US Qty Outstanding
@@ -231,7 +241,8 @@ Todo se calcula al cargar. Nada derivado se guarda en monday.
 
 4.5 Libre por fuente
   Usado(fuente, SKU) = Σ qty de entradas ACTIVAS de TODAS las órdenes abiertas
-                       contra esa fuente y SKU (incluye líneas ya despachadas del todo).
+                       contra esa fuente y SKU (incluye líneas ya despachadas del todo),
+                       según su etapa actual (una entrada de contenedor Done usa warehouse).
   Libre = max(0, Total − Usado).
   Oferta libre del SKU = libre warehouse + Σ libre contenedores + Σ libre POs.
 
@@ -261,16 +272,19 @@ Todo se calcula al cargar. Nada derivado se guarda en monday.
                               + Σ libre de cada contenedor activo por SKU.
                               Las POs NO se cuentan.
   Already allocated    = Σ qty de entradas activas de órdenes abiertas, separado por
-                         etapa actual de la fuente:
-                           warehouse → on hand
-                           intransit → on hand si Packing List = "Done", si no in transit
-                           po        → on order
+                         etapa actual (4.3):
+                           etapa warehouse (incluye contenedores Done) → on hand
+                           etapa in transit                            → in transit
+                           etapa PO                                    → on order
     subtítulo: "<on hand> on hand · <in transit> in transit · <on order> on order"
 
-4.9 Filtros Show (uno activo a la vez)
+4.9 Filtros Show (uno activo a la vez) + búsqueda
   Everything          → todas las filas
   Needs allocation    → filas con Left > 0
   Cannot be covered   → filas con faltante (4.6 por línea) > 0
+  Búsqueda: una fila coincide si CADA palabra buscada aparece en el nombre de la orden, el
+  SKU, el nombre del producto (Master SKU) o la ref de alguna fuente que tenga asignada
+  (código de contenedor, número de PO). No distingue mayúsculas. Se combina con el filtro.
 
 4.10 Casos de prueba (datos del mockup aprobado → resultado esperado)
   Units to allocate 1,645 (8 line items · 1,566 already proposed as draft)
@@ -299,15 +313,20 @@ ocupa TODO el ancho restante (sin max-width, sin márgenes vacíos a los costado
 
 5.2 Barra superior (sticky)
   Izquierda: "Etoile · US › Allocation matrix" (el último en negrita).
-  Derecha: "Loaded HH:MM AM/PM" (o "Loading…" / "Refreshing…") · botón "Refresh"
-  · "US · Red Stag + Boxzooka".
+  Derecha: buscador (ícono lupa, placeholder "Search a SKU, PO, shipment or order…",
+  280px; Esc lo limpia) · "US · Red Stag + Boxzooka".
 
 5.3 Encabezado
   Título "Allocation matrix" (22px, 600).
   Descripción: "Where every sold unit comes from — and the place to decide it.
   Pick the angle: the sale, the product, or the container."
 
-5.4 Tarjetas de métricas (4 en fila)
+5.4 Barra de frescura (arriba a la derecha de las tarjetas)
+  Texto: "Calculated from Monday data read at HH:MM AM/PM" (cargando: "Loading from
+  Monday…"; refrescando: "Recalculating with fresh Monday data…") + botón "↻ Refresh"
+  (el ícono gira y el botón se deshabilita mientras carga).
+
+5.4b Tarjetas de métricas (4 en fila)
   Cada tarjeta: etiqueta (11.5px, --ink-3) · valor (27px, 600, separador de miles)
   · subtítulo (11.5px, --ink-2) · CTA opcional abajo.
   1 "Units to allocate"          → clickeable, CTA "Show these →" / "Showing these →"
@@ -320,13 +339,14 @@ ocupa TODO el ancho restante (sin max-width, sin márgenes vacíos a los costado
   Tarjeta activa: borde --ink + sombra interna 1px (en la roja: color --gap).
 
 5.5 Barra de controles, fila 1
-  "VIEW BY" + botones segmentados "Wholesale order" · "SKU" · "Source of stock"
-  (el activo con fondo --ink y texto --surface). A la derecha "Expand all" y
-  "Collapse all" (deshabilitados hasta el PUNTO 2).
+  "VIEW BY" + un solo botón activo "Wholesale order" (fondo --ink, texto --surface).
+  Las vistas "SKU" y "Source of stock" se quitaron (decisión del cliente, 2026-09-30).
+  A la derecha "Expand all" y "Collapse all" (deshabilitados hasta el PUNTO 2).
 
 5.6 Fila 2 — filtros
   "SHOW" + chips redondeados "Everything" · "Needs allocation" · "Cannot be covered".
-  A la derecha una nota: "<n> rows" o, con filtro, "<m> of <n> rows match".
+  A la derecha una nota: "<n> rows" o, con filtro o búsqueda, "<m> of <n> rows match"
+  (+ el texto buscado entre comillas).
 
 5.7 Leyenda (estática)
   Cinco muestras "240" con su texto:
@@ -337,18 +357,12 @@ ocupa TODO el ancho restante (sin max-width, sin márgenes vacíos a los costado
 
 5.8 Marco de la matriz
   Tabla con encabezado sticky. Bloque izquierdo fijo (sticky left):
-    columna 1 (300px): título + subtítulo de la vista
-      Wholesale order → "Wholesale order" / "order · allocation · shipments"
-      SKU             → "SKU" / "grouped by product · orders inside"
-      Source of stock → "Source of stock" / "grouped by origin · SKUs inside"
-    columna 2 (290px, borde derecho): tres números alineados a la derecha
-      Wholesale order → "To ship" · "Allocated" · "Left"
-      SKU             → "Required" · "Assigned" · "Left"
-      Source of stock → "On board" · "Assigned" · "Free"
+    columna 1 (300px): "Wholesale order" / "order · allocation · shipments"
+    columna 2 (290px, borde derecho): "To ship" · "Allocated" · "Left" (a la derecha)
   Cuerpo en PUNTO 1: mensaje centrado "Matrix rows come next." (en PUNTO 2 se
   reemplaza por las filas y una columna por fuente).
   Pie (fondo --surface-2, 11.5px):
-    "<n> orders · <m> rows" (vista SKU: "<n> products · <m> rows"; vista Source: "<m> rows")
+    "<n> orders · <m> rows"
     · "Suggested order: warehouse first, but only if it covers the whole line — then
        the container arriving soonest, then a purchase order."
     · si hay huérfanas, en rojo: "<n> units point to a source that is no longer active"
@@ -360,14 +374,19 @@ ocupa TODO el ancho restante (sin max-width, sin márgenes vacíos a los costado
 - Clic en tarjeta 1 → filtro "Needs allocation". Clic en tarjeta 2 → "Cannot be
   covered". Segundo clic en la misma tarjeta → vuelve a "Everything".
 - Clic en un chip → activa ese filtro (la tarjeta correspondiente se marca).
-- Cambiar "View by" mantiene el filtro activo.
+- Escribir en el buscador filtra las filas al instante (combinado con el filtro).
+- Datos y cache: todas las cifras se CALCULAN en la app a partir de los datos crudos de
+  monday; nunca se leen cifras ya calculadas. Solo se cachean los datos crudos
+  (localStorage "etoile-matrix-cache-v1"; en Vibe puede usarse monday.storage) con su hora.
+  Al abrir la pantalla: si hay cache de menos de 10 minutos se muestra al instante; si no,
+  se lee todo de monday. El botón Refresh siempre vuelve a leer los tableros y recalcula.
 - Carga inicial: las 4 tarjetas muestran un esqueleto animado; la tabla dice
   "Loading from Monday…".
 - Error sin datos previos: banner rojo "Monday could not be read." + mensaje +
   botón "Try again".
 - Refresh que falla: se CONSERVAN las últimas cifras válidas; banner "Refresh
   failed. … Showing the figures loaded at HH:MM." + "Try again".
-- Refresh correcto: toast "Figures refreshed from Monday." (3.6 s, abajo al centro).
+- Refresh correcto: toast "Figures recalculated with fresh data from Monday." (3.6 s, abajo al centro).
 - Accesibilidad: tarjetas y chips son <button> con aria-pressed; foco visible
   (outline 2px --focus); respetar prefers-reduced-motion.
 
@@ -412,31 +431,59 @@ y "28 Sep 2026" en textos.
 - ≤ 1180 px: tarjetas en 2 columnas.
 - ≤ 860 px: el menú lateral pasa arriba como barra horizontal deslizable (sin
   títulos de sección, sin botón de minimizar, sin pie); gutter 16px; se oculta
-  "US · Red Stag + Boxzooka"; la tabla usa columnas fijas de 190px + 210px y
-  scroll horizontal propio.
-- ≤ 520 px: tarjetas en 1 columna (valor 24px); se oculta "Loaded …"; el
-  bloque izquierdo de la tabla deja de ser sticky.
+  "US · Red Stag + Boxzooka"; el buscador ocupa el ancho disponible (máx. 320px);
+  la tabla usa columnas fijas de 190px + 210px y scroll horizontal propio.
+- ≤ 520 px: tarjetas en 1 columna (valor 24px); se oculta el breadcrumb (queda el
+  buscador); el bloque izquierdo de la tabla deja de ser sticky.
 - Probado a 320, 390, 768, 1000 y 1600 px.
 
 
 --------------------------------------------------------------------------------
  9. PUNTOS ABIERTOS (resolver antes de volcar el prompt final)
 --------------------------------------------------------------------------------
-P-1 Fuente de las allocations confirmadas: ¿JSON del subitem de Wholesale
-    (long_text_mm4kee9f, como hoy) o Allocation Ledger (long_text_mm764vdq)?
-    Hoy el Ledger tiene 1 item de prueba cuya Allocation Key apunta a otra línea.
-    Cifras reales 2026-09-30 13:41:
-      JSON de subitems → 8,456 · 0 · 41,350 · 12,484 (4,709 / 2,766 / 5,009)
-      Ledger           → 17,140 · 0 · 44,285 · 140
-P-2 "Free inventory to draw on": ¿todos los SKUs de Master SKU (hoy 13,394 u. en
-    warehouse) o solo los SKUs pedidos en órdenes abiertas (334 u.)?
-P-3 Reservas huérfanas: 18,364 u. apuntan a contenedores archivados o ya en Archive
-    con Packing List Done (TBD-18 del documento de requerimientos).
-P-4 TBD-02 umbral del warehouse: se aplica "cubre el 100 %" (no "50 % mayor").
-P-5 TBD-14 reservas antiguas sin JSON: no cuentan (solo cuenta el JSON).
+P-1 Fuente de las allocations: el Allocation Ledger, enlazado desde cada subitem de
+    Wholesale por board_relation_mm7pqf7j. Pendiente: ejecutar la migración (sección 10)
+    y pasar la app a leer el Ledger.
+P-2 "Free inventory to draw on": ¿todo el catálogo de Master SKU o solo los SKUs
+    pedidos en órdenes abiertas?
+P-3 El JSON no baja cuando Cin7 despacha: hay reservas sobre unidades ya despachadas
+    (líneas con outstanding 0 y líneas con JSON > outstanding). Definir si se limitan al
+    outstanding (regla 5 del documento) también para el libre y "Already allocated".
+P-4 TBD-02 umbral del warehouse: hoy "cubre el 100 %". El cliente menciona 50 % para el
+    PUNTO 3; confirmar la regla exacta.
+P-5 TBD-14 reservas antiguas sin JSON: no cuentan (solo cuenta el JSON / Ledger).
+
+
+--------------------------------------------------------------------------------
+ 10. MIGRACIÓN AL ALLOCATION LEDGER (se ejecuta una vez, fuera de la app)
+--------------------------------------------------------------------------------
+Script: scripts/migrate-ledger.mjs (dry run por defecto; --apply para escribir).
+Toma los subitems de Wholesale (grupos Orders + Pending) con JSON en long_text_mm4kee9f
+y por cada uno crea en el Ledger (grupo Active):
+  Item "<SO> | <SKU>" (SO = texto después de " - " en el nombre de la orden):
+    Allocation Key = ID del subitem · Wholesale Sale = item de la orden · SaleID = SO
+    SKU · Master SKU (conexión) · Qty Ordered / Fulfilled / Outstanding del subitem
+    Allocated Qty = Σ qty · Status Allocation según las fuentes usadas:
+      warehouse → "Warehouse Stock" · intransit → "In-Transit" · po → "PO Pending"
+      intransit+po → "PO + In-Transit" · intransit+warehouse → "In-Transit + Warehouse"
+      po+warehouse → "PO + Warehouse" · las tres → "PO + In-Transit + Warehouse"
+    Purchase Orders / In-Transit (conexiones) · PO Refs, PO Qty Used, PO Qty Total (texto,
+    separados por ", " en el mismo orden) · PO Qty Used Total · lo mismo para In-Transit ·
+    Warehouse Qty Used · Earliest ETA · Allocation JSON (con IDs actuales) · Last Updated.
+  Un subitem por fuente: Source Type ("Warehouse Stock" | "In-Transit" | "Purchase Order"),
+    Source Item ID, Source Ref, Qty Used, Source Total Qty (PO: Qty Ordered del SKU;
+    contenedor: Qty a bordo del SKU; warehouse: US qty), ETA, Packing List Done.
+  Y enlaza el subitem de Wholesale al item nuevo (board_relation_mm7pqf7j).
+Reconexión: si el sourceId del JSON ya no existe o es una copia archivada (contenedores
+re-importados), se usa el item activo con el mismo nombre que tenga ese SKU.
+Dry run 2026-09-30: 41 líneas → 41 items, 84 subitems; 21 entradas reconectadas por
+nombre; 5 entradas (EIVR114) sin fuente activa.
 
 
 --------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla completo.
+2026-09-30  PUNTO 1 (ajustes) — Contenedores "Done" cuentan como warehouse; cache de datos
+            crudos + Refresh junto a las métricas; buscador en la barra superior; se
+            quitan las vistas SKU y Source of stock; plan de migración al Ledger.

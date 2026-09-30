@@ -2,33 +2,58 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildModel } from "../lib/engine.js";
 import { allocationSource, mondayApi } from "../config.js";
 
-// Loads the boards and builds the model. A failed refresh keeps the last good figures
-// and says from when they are (§15.3, same rule as Attention by SKU).
+// Every figure is computed in the browser from the raw monday data; only that raw data is cached.
+// Opening the page within CACHE_TTL_MS shows the cached data instantly; after that, or when the
+// user clicks Refresh, everything is read again from monday.com.
+const CACHE_KEY = "etoile-matrix-cache-v1";
+export const CACHE_TTL_MS = 10 * 60 * 1000;
+
+function readCache() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CACHE_KEY));
+    if (!saved?.data || saved.allocationSource !== allocationSource) return null;
+    return { ...saved.data, loadedAt: new Date(saved.savedAt) };
+  } catch {
+    return null;
+  }
+}
+function writeCache(data) {
+  try {
+    const { loadedAt, ...raw } = data;
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: loadedAt.getTime(), allocationSource, data: raw }));
+  } catch {
+    /* storage full or unavailable: keep working without cache */
+  }
+}
+
+// A failed refresh keeps the last good figures and says from when they are (§15.3).
 export function useMatrixData() {
-  const [data, setData] = useState(null);
-  const [status, setStatus] = useState("loading"); // loading | refreshing | ready | error
+  const [data, setData] = useState(readCache);
+  const [status, setStatus] = useState(() => (data ? "ready" : "loading")); // loading | refreshing | ready | error
   const [error, setError] = useState("");
-  const hasData = useRef(false);
+  const dataRef = useRef(data);
 
   const load = useCallback(async () => {
-    setStatus(hasData.current ? "refreshing" : "loading");
+    setStatus(dataRef.current ? "refreshing" : "loading");
     setError("");
     try {
       const next = await mondayApi.loadMatrixData({ allocationSource });
-      hasData.current = true;
+      dataRef.current = next;
       setData(next);
+      writeCache(next);
       setStatus("ready");
       return true;
     } catch (e) {
       console.error("[matrix] load failed", e);
       setError(e?.message || String(e));
-      setStatus(hasData.current ? "ready" : "error");
+      setStatus(dataRef.current ? "ready" : "error");
       return false;
     }
   }, []);
 
   useEffect(() => {
-    load();
+    const cached = dataRef.current;
+    if (!cached || Date.now() - cached.loadedAt.getTime() > CACHE_TTL_MS) load();
   }, [load]);
 
   const model = useMemo(() => (data ? buildModel(data) : null), [data]);

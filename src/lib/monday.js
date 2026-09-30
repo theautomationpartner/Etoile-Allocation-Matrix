@@ -145,7 +145,9 @@ export function createMondayApi(transport = fetchTransport) {
     const c = COL.it;
     const fields = `id name group { id } column_values(ids:[${gqlList([c.location, c.eta, c.packingList])}]) { id text }
       subitems { id column_values(ids:[${gqlList([c.subSku, c.subQty, c.subPoRef])}]) { id text } }`;
-    const items = await allItems(BOARDS.inTransit, fields, { groups: ["topics"] });
+    // All groups: "topics" is the in-transit supply; Archive holds landed ("Done") containers whose
+    // reservations now count as warehouse stock. Archived/deleted items are not returned by monday.
+    const items = await allItems(BOARDS.inTransit, fields);
     return items.map((it) => ({
       id: it.id,
       name: it.name,

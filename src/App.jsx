@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { Toast, useToast } from "./components/Toast.jsx";
@@ -9,6 +9,7 @@ import { useStoredState } from "./hooks/useStoredState.js";
 export default function App() {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
+  const [search, setSearch] = useState("");
   const matrix = useMatrixData();
   const toast = useToast();
 
@@ -23,16 +24,16 @@ export default function App() {
   };
 
   const refresh = async () => {
-    if (await matrix.reload()) toast.show("Figures refreshed from Monday.");
+    if (await matrix.reload()) toast.show("Figures recalculated with fresh data from Monday.");
   };
 
   return (
     <div className={`app ${collapsed ? "min" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme} />
       <main className="main">
-        <Topbar status={matrix.status} loadedAt={matrix.data?.loadedAt} onRefresh={refresh} />
+        <Topbar search={search} onSearch={setSearch} />
         <div className="view">
-          <AllocationMatrix {...matrix} onRetry={refresh} />
+          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} />
         </div>
       </main>
       <Toast {...toast} />
