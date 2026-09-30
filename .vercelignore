@@ -1,0 +1,6 @@
+# Only index.html, src/ and api/ belong in a deployment.
+EtoileContextoApp/
+Etoile Flow*.html
+tests/
+scripts/
+.env*

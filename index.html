@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Etoile Flow — Allocation Matrix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/styles.css">
+<script>
+  // Apply saved theme and menu state before first paint (no flash).
+  try {
+    const t = localStorage.getItem("etoile-theme"); if (t) document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-t"><h1>Etoile Flow</h1><p>Inventory &amp; allocation</p></div>
+      <button class="side-tg" id="sideTg" aria-label="Collapse menu" title="Collapse menu">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>
+      </button>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <div class="side-foot"><span>Monday · US</span><button id="themeBtn" type="button">Theme</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb">Etoile · US <span aria-hidden="true">›</span> <b>Allocation matrix</b></div>
+      <div class="top-r">
+        <span class="fresh" id="fresh" aria-live="polite"></span>
+        <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        <span class="sync">US · Red Stag + Boxzooka</span>
+      </div>
+    </div>
+    <div class="view" id="view"></div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
