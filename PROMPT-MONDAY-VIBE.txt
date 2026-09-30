@@ -521,6 +521,38 @@ allocation.
 
 
 --------------------------------------------------------------------------------
+ 12. SEGURIDAD — acceso solo desde monday y solo para usuarios de la lista blanca
+--------------------------------------------------------------------------------
+Tablero "🔐 Allocation Matrix — Access List" (18433468057, privado, workspace ETOILE, grupo
+"Users"). Un item por usuario de la cuenta etoile8 (sin invitados):
+  name = nombre · color_mm7pnmd5 Status ("Active" | "Inactive") · color_mm7pedgt Role ("Admin" |
+  "Member") · text_mm7psrzp User ID · text_mm7pwepk Email · multiple_person_mm7pac0m Person ·
+  date_mm7pvvta Last Access · text_mm7pef20 Notes
+Solo entra quien tiene Status = "Active". Nadie entra por defecto.
+
+Flujo:
+  1. En cada carga la app pide a monday el sessionToken: monday.get("sessionToken") (JWT firmado
+     por monday con el secreto de la app; trae user_id, account_id, app_id, is_guest, exp…).
+  2. Lo envía en cada llamada al backend: Authorization: Bearer <token>.
+  3. El backend verifica la firma HS256 (prueba MONDAY_SIGNING_SECRET y MONDAY_CLIENT_SECRET) y la
+     expiración; account_id = 30507720 (etoile8); app_id = MONDAY_APP_ID si está configurado;
+     is_guest = false.
+  4. Busca el User ID en la lista blanca en CADA pedido (caché de 30 s): Status tiene que ser
+     "Active". Revocar a alguien corta su acceso en segundos.
+  5. Cualquier falla → siempre la misma respuesta 401 y la misma pantalla, sin menú ni datos:
+     "You don't have access to this application. Contact your administrator."
+     Abrir la URL fuera de monday → no hay sessionToken → esa pantalla.
+  6. Si una llamada es rechazada a mitad de sesión, la app se bloquea y borra su cache local.
+Usuario visible: arriba a la derecha, avatar (foto de monday o iniciales) + nombre + "Admin" si
+corresponde. /api/me devuelve el usuario y actualiza "Last Access".
+Quién edita shipments: al guardar, el usuario se agrega a la columna People
+(multiple_person_mm7pdm50) del subitem de Wholesale de cada línea del shipment, sin quitar a los que
+ya estaban. Lo hace el servidor con el usuario verificado, nunca con un dato del navegador.
+En monday Vibe (sin backend propio): leer me { id } con monday.api y verificar el mismo tablero de
+lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
+
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -537,3 +569,5 @@ allocation.
             subitem); crear / editar / guardar / borrar shipments; conexiones a la línea de venta.
 2026-09-30  PUNTO 2 (ajustes) — Tooltip instantáneo en celdas y en los subtotales de la orden
             cerrada, con el detalle por SKU.
+2026-09-30  SEGURIDAD — sessionToken de monday + lista blanca (Access List); pantalla genérica de
+            no autorizado; usuario arriba a la derecha; People en la línea al guardar shipments.

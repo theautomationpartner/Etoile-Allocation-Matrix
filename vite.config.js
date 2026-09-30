@@ -39,9 +39,11 @@ function vercelApi() {
 
 export default defineConfig(({ mode }) => {
   // Expose server-only variables (MONDAY_TOKEN) to the /api handlers, never to the client bundle.
-  Object.assign(process.env, loadEnv(mode, process.cwd(), ""));
+  // Variables already set in the shell win over .env files.
+  process.env = { ...loadEnv(mode, process.cwd(), ""), ...process.env };
   return {
     plugins: [react(), vercelApi()],
-    server: { port: 5173, open: false },
+    // Tunnels to test the app inside monday during development (cloudflared / ngrok / monday apps tunnel).
+    server: { port: 5173, open: false, allowedHosts: [".trycloudflare.com", ".ngrok-free.app", ".ngrok.app", ".apps-tunnel.monday.app"] },
   };
 });

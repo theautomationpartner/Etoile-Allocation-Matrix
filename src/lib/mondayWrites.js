@@ -49,11 +49,16 @@ export function checkWrite(op, variables = {}) {
 // Browser transport for writes (local / Vercel): the server re-checks and holds the token.
 export async function fetchWrite(op, variables) {
   checkWrite(op, variables);
+  const { authHeaders, NotAuthorizedError, reportDenied } = await import("./auth.js");
   const res = await fetch("/api/monday-write", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ op, variables }),
   });
+  if (res.status === 401) {
+    reportDenied();
+    throw new NotAuthorizedError();
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok || body.error) throw new Error(body.error || body.errors?.[0]?.message || `HTTP ${res.status}`);
   if (Array.isArray(body.errors) && body.errors.length) throw new Error(body.errors.map((e) => e.message).join(" | "));

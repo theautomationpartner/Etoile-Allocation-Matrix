@@ -6,6 +6,7 @@ import { AllocationMatrix } from "./features/allocation-matrix/AllocationMatrix.
 import { useMatrixData } from "./hooks/useMatrixData.js";
 import { useStoredState } from "./hooks/useStoredState.js";
 import { BOARDS, IMPORTER_BOARD } from "./lib/monday.js";
+import { AuthGate } from "./components/AuthGate.jsx";
 
 // Side nav badges, as in the mockup: SKUs that cannot be covered (alert on Control center),
 // containers in transit, and each board's item count.
@@ -22,7 +23,12 @@ function navCounts({ data, model }) {
   };
 }
 
+// Access first (sessionToken + access list); the workspace only mounts for an authorized user.
 export default function App() {
+  return <AuthGate>{(user) => <Workspace user={user} />}</AuthGate>;
+}
+
+function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
   const [search, setSearch] = useState("");
@@ -48,7 +54,7 @@ export default function App() {
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme}
         counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} />
       <main className="main">
-        <Topbar search={search} onSearch={setSearch} />
+        <Topbar search={search} onSearch={setSearch} user={user} />
         <div className="view">
           <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} />
         </div>

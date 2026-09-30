@@ -1,5 +1,7 @@
-// Same markup as the mockup's topbar. The search narrows the matrix rows (order, SKU, product, container or PO).
-export function Topbar({ search, onSearch }) {
+// Same markup as the mockup's topbar, plus the signed-in user at the right. The search narrows the matrix rows (order, SKU, product, container or PO).
+import { UserChip } from "./AuthGate.jsx";
+
+export function Topbar({ search, onSearch, user }) {
   return (
     <div className="topbar">
       <div className="crumb">Etoile · US <span>›</span> <b>Allocation matrix</b></div>
@@ -12,6 +14,7 @@ export function Topbar({ search, onSearch }) {
           placeholder="Search a SKU, PO, shipment or order…" autoComplete="off" aria-label="Search" />
       </div>
       <div className="sync">US · Red Stag + Boxzooka</div>
+      <UserChip user={user} />
     </div>
   );
 }

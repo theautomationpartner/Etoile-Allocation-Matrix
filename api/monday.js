@@ -1,6 +1,7 @@
-// Server-side proxy to the monday.com GraphQL API.
-// The token lives only in the server environment (MONDAY_TOKEN); the browser never sees it.
-// Read-only for now: the matrix only writes from step 3 (Allocation), with its own endpoint.
+// Server-side read proxy to the monday.com GraphQL API.
+// Only for authenticated, whitelisted users (see _auth.js). The API token lives only on the server.
+
+import { guarded } from "./_auth.js";
 
 const MONDAY_URL = "https://api.monday.com/v2";
 const MAX_BODY_BYTES = 64 * 1024;
@@ -15,10 +16,7 @@ const json = (status, body) =>
 const stripNoise = (q) => q.replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|#[^\n]*/g, " ");
 const isMutation = (q) => /(^|[\s{}])(mutation|subscription)\b/i.test(stripNoise(q));
 
-export async function POST(request) {
-  const token = process.env.MONDAY_TOKEN;
-  if (!token) return json(500, { error: "MONDAY_TOKEN is not configured on the server." });
-
+export const POST = guarded(async (request) => {
   const raw = await request.text();
   if (raw.length > MAX_BODY_BYTES) return json(413, { error: "Request too large." });
 
@@ -32,7 +30,7 @@ export async function POST(request) {
   if (typeof query !== "string" || !query.trim()) return json(400, { error: "Missing GraphQL query." });
   if (isMutation(query)) return json(403, { error: "Only read queries are allowed on this endpoint." });
 
-  const headers = { "Content-Type": "application/json", Authorization: token };
+  const headers = { "Content-Type": "application/json", Authorization: process.env.MONDAY_TOKEN };
   if (process.env.MONDAY_API_VERSION) headers["API-Version"] = process.env.MONDAY_API_VERSION;
 
   try {
@@ -42,7 +40,7 @@ export async function POST(request) {
   } catch (error) {
     return json(502, { error: `Could not reach monday.com: ${error?.message || error}` });
   }
-}
+});
 
 export function GET() {
   return json(405, { error: "Use POST." });

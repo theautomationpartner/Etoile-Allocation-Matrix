@@ -59,3 +59,20 @@ Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIB
 9. Token de monday: se pegó en el chat el 2026-09-30. Conviene regenerarlo en monday y
    actualizarlo en Vercel (MONDAY_TOKEN) y en .env.local.
    → Decisión:
+
+10. Permisos de Admin vs Member: hoy los dos pueden hacer lo mismo (ver y guardar shipments).
+    ¿Qué puede hacer solo un Admin?
+    → Decisión:
+
+11. Quién tiene acceso: en la Access List solo "The Automation Partner" está Active. Michelle Hu,
+    Kate, Ella, Ellie Preston y Hannah Quirk están Inactive. ¿A quiénes se activa?
+    → Decisión:
+
+12. Segundo factor (Google Authenticator) mencionado en la explicación técnica: no está
+    implementado. ¿Se agrega?
+    → Decisión:
+
+13. Qué secreto firma el sessionToken (Signing Secret o Client Secret): se sabrá en la primera
+    prueba dentro de monday (el servidor lo registra en el log). Anotarlo acá.
+    → Resultado:
+
