@@ -289,9 +289,13 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   y Source of stock se quitaron) · .spacer · .btn "Expand all" · .btn "Collapse all".
 5.7 .fbar: .fl "Show" + .fchip "Everything" / "Needs allocation" / "Cannot be covered"
   (.on la activa). Mientras hay búsqueda: .fnote "<m> of <n> rows match “<texto>”".
-5.8 .mx-hint (leyenda): .sw.wh/.it/.po/.dr/.av "240" + "from warehouse" · "from a
-  container" · "from a purchase order" · "draft · proposed, not allocated" · "free, not
-  assigned yet" · a la derecha "Open a draft or a grey number, check it, then click Allocate."
+5.8 .mx-hint (leyenda): .sw.wh/.it/.po/.dr/.av + "from warehouse" · "from a container" ·
+  "from a purchase order" · "draft · proposed, not allocated" · "free, not assigned yet" · a
+  la derecha "Open a draft or a grey number, check it, then click Allocate."
+  Cada muestra lleva el TOTAL real de lo que muestra la matriz (con filtro y búsqueda), no el
+  "240" estático del documento (pedido del cliente): unidades asignadas desde warehouse /
+  contenedores / POs · unidades en draft · unidades libres en cualquier fuente para los SKUs
+  visibles. Las muestras crecen con el número (.sw width auto).
 
 
 --------------------------------------------------------------------------------
@@ -335,6 +339,12 @@ sticky: .s1 300px + .s2 290px).
 
 6.4 Filas (tr.rw) = líneas con Outstanding > 0:
   .s1 .rh .t: <b>"<SKU> - <nombre del producto en Master SKU>"</b>
+      Avisos en rojo debajo (.m.warn), uno por línea:
+        "lost its source · <n> units" — reservas cuya fuente ya no existe o ya no trae el SKU
+          (regla 4; esas unidades vuelven a Left)
+        "<Σ reservado> reserved for <To ship> to ship · review" — reservado más que lo que falta
+          despachar (regla 5; Allocated se limita a To ship)
+      El grupo suma en rojo " · <n> lines to review" en su segunda línea.
   .s2: To ship · Allocated · Left como .pill: número + "Allocate" (sin draft) o "Draft"
       (.drp, borde punteado, si hay propuesta); .pill.bad y número rojo si hay faltante;
       "✓" (.done) si Left = 0.
@@ -427,3 +437,5 @@ PO = Qty Ordered del SKU; contenedor = Qty a bordo; warehouse = US qty.
             duplicar; cache de 2 h; Impossible verde en 0; CSS = hoja del mockup.
 2026-09-30  PUNTO 2 — Matriz por Wholesale order (grupos, filas, columnas por fuente,
             celdas, subtotales, Expand/Collapse, pestañas como esqueleto).
+2026-09-30  PUNTO 2 (ajustes) — Leyenda con totales reales; avisos en rojo por fila ("lost its
+            source", "reserved for … to ship · review") y "n lines to review" por orden.

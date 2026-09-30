@@ -54,3 +54,22 @@ test("name helpers", () => {
   assert.equal(containerCode("US / Harrods"), "Harrods");
   assert.deepEqual(orderParts("EIVR118 - SO-201939"), { number: "EIVR118", so: "SO-201939" });
 });
+
+test("legend totals add up what the matrix shows", () => {
+  const data = mockupData();
+  const model = buildModel(data);
+  const m = buildOrderMatrix(model, data);
+  assert.deepEqual({ wh: m.legend.wh, it: m.legend.it, po: m.legend.po }, { wh: 464, it: 7801, po: 3989 });
+  assert.equal(m.legend.draft, model.metrics.draftUnits);
+});
+
+test("rows reserved above To ship and rows that lost a source are flagged", () => {
+  const data = mockupData();
+  data.orders[0].lines[0].outstanding = 1000; // EIVR118 EC0433: 1,224 reserved
+  data.containers = data.containers.filter((c) => c.id !== "US / FLEX-4151882 / 40HC"); // EIVR121 EC0401 loses 100
+  const m = buildOrderMatrix(buildModel(data), data);
+  const row = (o, sku) => m.groups.find((g) => g.key === o).rows.find((r) => r.line.sku === sku);
+  assert.deepEqual(row("EIVR118", "EC0433").warnings, ["1,224 reserved for 1,000 to ship · review"]);
+  assert.equal(row("EIVR121", "EC0401").warnings[0], "lost its source · 100 units");
+  assert.equal(m.groups.find((g) => g.key === "EIVR121").review, 1);
+});

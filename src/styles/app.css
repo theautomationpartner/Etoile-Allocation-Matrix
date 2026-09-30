@@ -35,6 +35,13 @@
 .mx .gh .tx { cursor: default; }
 .otabs button:disabled { opacity: .45; cursor: not-allowed; }
 
+/* Legend swatches hold real totals (e.g. 12,610), so they grow with the number. */
+.mx-hint .sw { width: auto; min-width: 22px; padding: 0 5px; }
+
+/* Row / group warnings in red: lost its source, reserved above what is left to ship. */
+.rh .m.warn, .gh .m .warn { color: var(--gap); font-weight: 600; }
+.rh .m.warn { white-space: normal; }
+
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 @media (max-width: 860px) {

@@ -61,7 +61,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       <MetricCards metrics={model?.metrics} filter={filter} onFilter={toggleFilter} />
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />
-      <Legend />
+      <Legend totals={matrix?.legend} />
       <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} />
     </>
   );

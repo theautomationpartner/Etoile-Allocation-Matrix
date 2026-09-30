@@ -111,6 +111,11 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
         key: l.lineId,
         line: l,
         title: `${l.sku} - ${warehouse[l.sku]?.name || l.sku}`,
+        // Row warnings, in red (§13 rule 4 "lost its source"; rule 5 "marked for review").
+        warnings: [
+          l.lostSource ? `lost its source · ${fmtN(l.orphan)} units` : "",
+          l.overAllocated ? `${fmtN(l.entries.reduce((s, e) => s + e.qty, 0))} reserved for ${fmtN(l.toShip)} to ship · review` : "",
+        ].filter(Boolean),
         nums: [l.toShip, l.allocated, l.left],
         end: l.impossible,
         needs: l.left > 0,
@@ -124,6 +129,7 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
     groups.push({
       key: o.id,
       order: o,
+      review: all.filter((l) => l.lostSource || l.overAllocated).length,
       number,
       retailer: retailerShort(o.retailer),
       meta: [so, o.saleStatus ? o.saleStatus.toLowerCase() : "", o.cancelDate ? `cancel date ${dayMonthYear(o.cancelDate)}` : "no cancel date"].filter(Boolean).join(" · "),
@@ -135,8 +141,23 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
       allocated: sum((l) => l.allocated),
     });
   }
-  return { cols, groups, rowCount: groups.reduce((s, g) => s + g.rows.length, 0) };
+  // Legend totals for what the matrix is showing (client request: the legend shows real totals
+  // instead of the document's static "240" examples).
+  const legend = { wh: 0, it: 0, po: 0, draft: 0, free: 0 };
+  const skusInView = new Set();
+  for (const g of groups) {
+    for (const r of g.rows) {
+      skusInView.add(r.line.sku);
+      legend.draft += r.dr;
+      r.cells.forEach((c) => { legend[c.k] += c.a; });
+    }
+  }
+  for (const sku of skusInView) legend.free += model.supplyFree.get(sku) || 0;
+
+  return { cols, groups, legend, rowCount: groups.reduce((s, g) => s + g.rows.length, 0) };
 }
+
+const fmtN = (v) => (v || 0).toLocaleString("en-US");
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const parse = (s) => new Date(`${s}T12:00:00`);

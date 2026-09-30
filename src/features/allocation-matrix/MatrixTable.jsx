@@ -58,7 +58,17 @@ function Row({ r }) {
   const [toShip, allocated, left] = r.nums;
   return (
     <tr className="rw">
-      <td className="s1"><div className="rh"><div className="t"><b>{r.title}</b></div></div></td>
+      <td className="s1">
+        <div className="rh">
+          <div className="t"><b>{r.title}</b></div>
+          {r.warnings.map((w) => (
+            <div key={w} className="m warn"
+              title={w.startsWith("lost") ? "Reserved on a container or PO that no longer exists or no longer carries this SKU. These units are back in Left." : "More units are reserved than are left to ship: part of the reservation was already shipped. Review the line."}>
+              {w}
+            </div>
+          ))}
+        </div>
+      </td>
       <td className="s2">
         <div className="nn">
           <span className="n">{fmt(toShip)}</span>
@@ -126,7 +136,7 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits }) {
                         <button type="button" className="cv" onClick={() => onToggle(g, !open)} aria-label={open ? "Collapse" : "Expand"} aria-expanded={open}>{open ? "▼" : "▶"}</button>
                         <span className="tx">
                           <span className="t"><b className="eivr">{g.number}</b><span className="slash">/</span><span className="ret">{g.retailer}</span></span>
-                          <span className="m">{g.meta}</span>
+                          <span className="m">{g.meta}{g.review > 0 && <span className="warn"> · {plural(g.review, "line", "lines")} to review</span>}</span>
                         </span>
                       </div>
                     </td>
