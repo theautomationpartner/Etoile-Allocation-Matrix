@@ -4,6 +4,8 @@
 //   · monday Vibe:     (q, v) => monday.api(q, { variables: v }).then(r => r.data)
 // Board and column IDs are the ones the current Allocation Queue app already uses.
 
+import { NS } from "./mondayWrites.js";
+
 export const BOARDS = {
   wholesale: "18402982970",
   wholesaleSub: "18402982973",
@@ -197,10 +199,33 @@ export function createMondayApi(transport = fetchTransport) {
     }));
   }
 
+  // Step 4 — saved shipments: items of New Shipments connected to a wholesale order (the board's sample
+  // items without an order are ignored). Returned in creation order.
+  async function loadShipments() {
+    const c = NS.col, sc = NS.subCol;
+    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(c))}]) { id text ... on BoardRelationValue { linked_item_ids } }
+      subitems { id name column_values(ids:[${gqlList(Object.values(sc))}]) { id text } }`;
+    const items = await allItems(NS.board, fields);
+    return items
+      .map((it) => {
+        const rel = it.column_values.find((x) => x.id === c.order)?.linked_item_ids || [];
+        return {
+          mondayId: String(it.id),
+          orderId: rel[0] ? String(rel[0]) : null,
+          name: cv(it, c.name) || it.name,
+          target: date(cv(it, c.date)),
+          createdAt: it.created_at || "",
+          lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)) })).filter((l) => l.sku),
+        };
+      })
+      .filter((s) => s.orderId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.mondayId.localeCompare(b.mondayId));
+  }
+
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger, boardCounts] = await Promise.all([
-      loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})),
+    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments] = await Promise.all([
+      loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
     ]);
     if (useLedger) {
       for (const o of orders) {
@@ -211,7 +236,7 @@ export function createMondayApi(transport = fetchTransport) {
         }
       }
     }
-    return { orders, warehouse, containers, pos, boardCounts, allocationSource, loadedAt: new Date() };
+    return { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
   }
 
   return { loadMatrixData, loadLedger };

@@ -5,7 +5,7 @@ import { allocationSource, mondayApi } from "../config.js";
 // Every figure is computed in the browser from the raw monday data; only that raw data is cached.
 // Opening the page within CACHE_TTL_MS shows the cached data instantly; after that, or when the
 // user clicks Refresh, everything is read again from monday.com.
-const CACHE_KEY = "etoile-matrix-cache-v2";
+const CACHE_KEY = "etoile-matrix-cache-v3";
 export const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (client decision); Refresh always reads fresh data
 
 function readCache() {
@@ -56,6 +56,17 @@ export function useMatrixData() {
     if (!cached || Date.now() - cached.loadedAt.getTime() > CACHE_TTL_MS) load();
   }, [load]);
 
+  // Apply a local change already written to monday (e.g. a saved shipment) without reloading everything.
+  const patchData = useCallback((fn) => {
+    setData((cur) => {
+      if (!cur) return cur;
+      const next = fn(cur);
+      dataRef.current = next;
+      writeCache(next);
+      return next;
+    });
+  }, []);
+
   const model = useMemo(() => (data ? buildModel(data) : null), [data]);
-  return { data, model, status, error, reload: load };
+  return { data, model, status, error, reload: load, patchData };
 }

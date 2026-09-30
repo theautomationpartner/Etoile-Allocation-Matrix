@@ -22,7 +22,8 @@ npm test                     # engine tests
 | `src/` | React app (Vite). `features/allocation-matrix/` holds the screen |
 | `src/lib/engine.js` | Calculation rules (pure functions, covered by `tests/`) |
 | `src/lib/monday.js` | Reads the monday.com boards; transport-agnostic (proxy locally, `monday.api` in Vibe) |
-| `api/monday.js` | Server-side proxy; the monday token never reaches the browser |
+| `api/monday.js` | Server-side read proxy; the monday token never reaches the browser |
+| `api/monday-write.js` | Server-side writes, limited to the operations in `src/lib/mondayWrites.js` |
 | `vite.config.js` | Runs `api/` during `npm run dev` the same way Vercel does |
 | `PROMPT-MONDAY-VIBE.txt` | Detailed spec that becomes the monday Vibe prompt, updated step by step |
 

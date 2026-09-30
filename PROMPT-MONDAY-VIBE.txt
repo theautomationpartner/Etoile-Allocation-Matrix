@@ -1,8 +1,9 @@
 ================================================================================
  PROMPT PARA MONDAY VIBE — ETOILE FLOW · ALLOCATION MATRIX
 ================================================================================
-Estado del documento: PUNTO 1 (Métricas + Filtros + Búsqueda) y PUNTO 2 (Ventas /
-Sources: la matriz por Wholesale order) — validados en React local
+Estado del documento: PUNTO 1 (Métricas + Filtros + Búsqueda), PUNTO 2 (Ventas /
+Sources: la matriz por Wholesale order) y PUNTO 4 (Shipments) — validados en React local.
+PUNTO 3 (editor de Allocation) pendiente.
 Última actualización: 2026-09-30
 Referencia probada: repo theautomationpartner/Etoile-Allocation-Matrix, rama dev
 
@@ -26,8 +27,9 @@ It is a single screen where the US team sees, for every open wholesale order
 and every SKU, how much is still uncovered and which source of stock can cover
 it: warehouse stock, each container in transit, each purchase order.
 Read all data with the monday SDK (monday.api GraphQL) from the boards and
-columns listed below. Do not create boards or columns. For now the app is
-read-only: it never writes to monday.
+columns listed below. Do not create boards or columns. The only writes are the
+shipments of section 11 (board "🔗 New Shipments - Monday Vibe" and two connection
+columns), with exactly the mutations listed there.
 Use the attached stylesheet exactly (same fonts, colours, spacing, class names).
 Follow sections 1 to 9 of this document exactly.
 
@@ -427,6 +429,94 @@ PO = Qty Ordered del SKU; contenedor = Qty a bordo; warehouse = US qty.
 
 
 --------------------------------------------------------------------------------
+ 11. SHIPMENTS (PUNTO 4) — pestaña Shipments de cada orden (documento §16)
+--------------------------------------------------------------------------------
+Un shipment es una parte de la orden que sale junta. Toma unidades YA asignadas y
+confirmadas (nunca drafts) y dice cuántas de cada SKU van en cada envío. No modifica la
+allocation.
+
+11.1 Tablero 🔗 New Shipments - Monday Vibe (18433404829) — item = un shipment, grupo "topics"
+  Item: name "<número de orden> · <nombre del shipment>" (ej. "EIVR118 · Shipment 1")
+        board_relation_mm7pc3qe Wholesale Order (→ item de la orden en 18402982970)
+        text_mm7pj5nc Shipment Name · date4 Ship Date · numeric_mm7p9jrf Units (Σ del shipment)
+        numeric_mm7pvjrx Order To Ship (Σ To ship de la orden) · date_mm7p655r Last Saved
+  Subitem (board 18433458521) = una línea SKU del shipment:
+        name "<SKU> - <producto>" · text_mm7pzh4y SKU · numeric_mm7p9w92 Qty To Ship
+        numeric_mm7p8qnb Allocated · numeric_mm7p2wg0 Remaining To Ship
+        text_mm7pp7c6 Wholesale Line (ID del subitem de Wholesale)
+        text_mm7p4b6 Source Split (ej. "Warehouse: 45 · FLEX-4170234: 180 · PO-00450: 25")
+  Conexiones de cada línea de venta a sus shipments (solo shipments guardados con qty > 0 de
+  ese SKU): subitem de Wholesale board_relation_mm7pd15e · item del Ledger board_relation_mm7p81dk.
+  Carga: todos los items del tablero con Wholesale Order conectada a una orden abierta, en
+  orden de creación (los items sin orden se ignoran).
+
+11.2 Pestañas de la orden (al abrirla): "Allocation" · "Shipments (<n>)" · "+ New shipment" ·
+  "Copy remaining to ship · <n>" (n = Σ por SKU de max(0, Allocated − Σ en todos los shipments)).
+  Sin shipments: "No shipments yet. Copy remaining to ship brings in every allocated unit, or
+  start from + New shipment and fill in quantities."
+
+11.3 Encabezado de cada shipment (tr.shc > .shc-in): ▼/▶ · nombre (.shn) · .badge "Draft" (siempre,
+  TBD-20) · "<units> / <To ship de la orden> units" (+ " · not saved yet" si hay cambios sin
+  guardar) · avisos rojos .shw "<n> units land after the ship date" y "after the <30 Nov>
+  cancel date" · error en rojo (.ap-err) · "Ship date" (input date, mínimo hoy) · botón
+  "Save" (.btn.on cuando hay cambios; "Saving…"; "Saved" deshabilitado si no hay cambios)
+  · menú "···" con "Rename" y "Delete shipment" (segundo clic "Click again to delete" confirma).
+
+11.4 Tabla del shipment: encabezado tr.shth "SKU · Product name" · "Order qty" · "Allocated" ·
+  "To ship in this shipment" · "Remaining to ship" · las mismas columnas de fuente de la matriz.
+  Fila tr.rw.shr (.zero si qty 0, atenuada): SKU - producto en negrita · Order qty (US Qty
+  Outstanding) · Allocated (de la línea) · input numérico .qin · Remaining to ship · celdas con
+  el reparto por fuente (.cl.a.<fuente>; .cl.a.lt en rojo si esa fuente llega después del Ship
+  date) · botón papelera .rmx para quitar la fila.
+
+11.5 Cálculos
+  To ship in this shipment: lo escribe el usuario; máximo = Allocated − Σ de ese SKU en los
+    demás shipments.
+  Remaining to ship = max(0, Allocated − Σ de ese SKU en este shipment y los anteriores).
+  Unidades del shipment = Σ de sus filas.
+  Reparto por fuente: se toman las fuentes asignadas a la línea en orden — warehouse, luego
+    contenedores por ETA, luego POs por ETA — y los shipments en orden (1, 2, 3…); cada uno toma
+    su cantidad de lo que dejaron los anteriores (las mismas unidades nunca en dos shipments).
+    Fecha de llegada de cada fuente: warehouse = hoy; contenedor = ETA; PO = ETA.
+
+11.6 Acciones (mensajes literales en el toast)
+  + New shipment: filas = SKUs con remanente > 0, todas en 0, sin fecha → "Shipment <n+1>
+    created. Type how many units of each SKU go in it." Sin remanente → "Every allocated unit
+    of <EIVR> is already in a shipment." y no se crea nada.
+  Copy remaining to ship: igual, cada fila con su remanente → "Shipment <n> created with the
+    <units> allocated units not in a shipment yet. Add a ship date and lower what isn't ready."
+  Editar cantidad: entre 0 y el máximo; si se pasa → "Only <max> allocated units of <SKU>
+    aren't in another shipment." y queda en el máximo. Si hay Ship date y parte del reparto
+    llega después → se baja esa parte: "<n> of those units would come from a source that lands
+    after <fecha>. <Shipment> takes <v>."
+  Cambiar Ship date: no antes de hoy. Bloqueado si alguna unidad sale de una fuente que llega
+    después: "Can't ship <Shipment> on <fecha>: <FUENTE (fecha)>, … lands later. Lower those
+    quantities first." (la fecha no cambia). Si no: "<Shipment> ships <fecha>."
+  Rename: nombre no vacío; Enter o salir guarda, Esc cancela.
+  Quitar fila: "<SKU> removed from <Shipment>. <n> units are back in "remaining to ship"."
+  Delete shipment: borra el item en monday (va a la papelera) y actualiza las conexiones →
+    "<Shipment> deleted. Its <n> units are back in "remaining to ship"."
+  Save: valida que por SKU Σ en todos los shipments ≤ Allocated; crea o actualiza el item,
+    crea/actualiza un subitem por fila, borra los subitems de filas quitadas y reescribe las
+    conexiones de las líneas involucradas → "<Shipment> saved to Monday." Si falla, el error
+    queda en rojo en el encabezado y el shipment sigue sin guardar.
+  Al cargar: si lo asignado de una línea bajó y los shipments quedan por encima, se descuentan
+    unidades empezando por el último shipment y se avisa (queda sin guardar).
+
+11.7 Mutations (las únicas escrituras de la app)
+  createShipment:     create_item(board_id:18433404829, group_id:"topics", item_name:$n, column_values:$v)
+  updateShipment:     change_multiple_column_values(board_id:18433404829, item_id:$i, column_values:$v)
+  createShipmentLine: create_subitem(parent_item_id:$p, item_name:$n, column_values:$v)
+  updateShipmentLine: change_multiple_column_values(board_id:18433458521, item_id:$i, column_values:$v)
+  deleteShipmentItem: delete_item(item_id:$i)
+  linkWholesaleLine:  change_multiple_column_values(board_id:18402982973, item_id:$i,
+                      column_values:{"board_relation_mm7pd15e":{"item_ids":[…]}})
+  linkLedgerItem:     change_multiple_column_values(board_id:18430965833, item_id:$i,
+                      column_values:{"board_relation_mm7p81dk":{"item_ids":[…]}})
+  Cada una solo puede escribir sus columnas (ver src/lib/mondayWrites.js).
+
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -439,3 +529,5 @@ PO = Qty Ordered del SKU; contenedor = Qty a bordo; warehouse = US qty.
             celdas, subtotales, Expand/Collapse, pestañas como esqueleto).
 2026-09-30  PUNTO 2 (ajustes) — Leyenda con totales reales; avisos en rojo por fila ("lost its
             source", "reserved for … to ship · review") y "n lines to review" por orden.
+2026-09-30  PUNTO 4 — Shipments: tablero New Shipments configurado (6 columnas de item, 6 de
+            subitem); crear / editar / guardar / borrar shipments; conexiones a la línea de venta.

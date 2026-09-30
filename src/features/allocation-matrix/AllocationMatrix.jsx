@@ -7,10 +7,13 @@ import { ControlsBar } from "./ControlsBar.jsx";
 import { ShowFilters } from "./ShowFilters.jsx";
 import { Legend } from "./Legend.jsx";
 import { MatrixTable } from "./MatrixTable.jsx";
+import { useShipments } from "../../hooks/useShipments.js";
+import { fetchWrite } from "../../lib/mondayWrites.js";
 
 // Allocation matrix screen (§3). Step 1: metrics + Show filters + search. Step 2: the matrix in the
 // Wholesale order view. Step 3 (allocation editor) and step 4 (shipments) come next.
-export function AllocationMatrix({ data, model, status, error, search, onRefresh }) {
+export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData }) {
+  const shipments = useShipments({ data, model, write: fetchWrite, toast, patchData });
   const [filter, setFilter] = useState("all"); // §15.1: one filter at a time
   const [open, setOpen] = useState({}); // group open/closed, kept while the page is open (§3)
   const ready = Boolean(model);
@@ -62,7 +65,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />
       <Legend totals={matrix?.legend} />
-      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} />
+      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} shipments={shipments} />
     </>
   );
 }

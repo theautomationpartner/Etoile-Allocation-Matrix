@@ -50,7 +50,7 @@ export default function App() {
       <main className="main">
         <Topbar search={search} onSearch={setSearch} />
         <div className="view">
-          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} />
+          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} />
         </div>
       </main>
       <Toast {...toast} />

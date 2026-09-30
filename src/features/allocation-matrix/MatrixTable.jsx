@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { fmt, plural } from "../../lib/format.js";
+import { ShipmentsRows } from "./ShipmentsRows.jsx";
 
 const RULE = "Suggested order: warehouse first when it covers at least half of the line — then the container arriving soonest, then a purchase order.";
 
@@ -91,7 +92,7 @@ function Row({ r }) {
   );
 }
 
-export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits }) {
+export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments }) {
   const cols = matrix?.cols || [{ k: "wh", id: "warehouse", label: "Warehouse", meta: "on hand" }];
   const nCol = 2 + cols.length + 1;
 
@@ -150,25 +151,34 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits }) {
                     {g.roll.map((v, i) => <td key={i} className="roll">{v ? fmt(v) : ""}</td>)}
                     <td className={`end ${g.end ? "bad" : "ok"}`}>{g.end ? fmt(g.end) : "—"}</td>
                   </tr>
-                  {open && (
-                    <>
-                      {/* §16 tabs: the Shipments tab is step 4 */}
-                      <tr className="otabs-r">
-                        <td colSpan={nCol}>
-                          <div className="otabs">
-                            <button type="button" className="on">Allocation</button>
-                            <button type="button" disabled title="Shipments come in step 4">Shipments (0)</button>
-                            <button type="button" className="add" disabled title="Shipments come in step 4">+ New shipment</button>
-                            <span className="sp" />
-                            <button type="button" className="btn copy" disabled title="Shipments come in step 4">
-                              Copy remaining to ship{g.allocated ? ` · ${fmt(g.allocated)}` : ""}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {g.rows.map((r) => <Row key={r.key} r={r} />)}
-                    </>
-                  )}
+                  {open && (() => {
+                    // §16.1 order tabs: Allocation · Shipments (<n>) · + New shipment · Copy remaining to ship · <n>
+                    const orderId = String(g.key);
+                    const tab = shipments.ui.tab[orderId] || "alloc";
+                    const count = shipments.shipsOf(orderId).length;
+                    const left = shipments.remainingToCopy(orderId);
+                    return (
+                      <>
+                        <tr className="otabs-r">
+                          <td colSpan={nCol}>
+                            <div className="otabs">
+                              <button type="button" className={tab === "alloc" ? "on" : ""} onClick={() => shipments.actions.setTab(orderId, "alloc")}>Allocation</button>
+                              <button type="button" className={tab === "ships" ? "on" : ""} onClick={() => shipments.actions.setTab(orderId, "ships")}>Shipments ({count})</button>
+                              <button type="button" className="add" onClick={() => shipments.actions.newShip(orderId, false)}>+ New shipment</button>
+                              <span className="sp" />
+                              <button type="button" className="btn copy" onClick={() => shipments.actions.newShip(orderId, true)}
+                                title={left ? `New shipment with the ${fmt(left)} allocated units not in a shipment yet` : "Every allocated unit is already in a shipment"}>
+                                Copy remaining to ship{left ? ` · ${fmt(left)}` : ""}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {tab === "alloc"
+                          ? g.rows.map((r) => <Row key={r.key} r={r} />)
+                          : <ShipmentsRows group={g} cols={cols} nCol={nCol} sh={shipments} />}
+                      </>
+                    );
+                  })()}
                 </Fragment>
               );
             })}
