@@ -1,0 +1,46 @@
+/* App-specific additions on top of mockup.css (which is the mockup's stylesheet, unchanged).
+   Keep this file small: every rule here is something the mockup does not have. */
+
+/* Full width on any screen (no empty side gutters beyond the mockup's 22px). */
+.view { max-width: none; }
+
+/* Side nav: sections not built yet are visible but cannot be opened. */
+.nav a.off { opacity: .42; cursor: not-allowed; }
+.nav a.off:hover { background: none; color: var(--nav-ink); }
+
+/* Metric cards: clickable cards are divs with role="button" (as in the mockup markup). */
+.kpi.act:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* "Impossible to cover" at 0 → green, nothing blocked (client decision). Red (.warn) from 1 unit. */
+.kpi.ok { border-color: var(--wh-b); background: var(--wh-t); }
+.kpi.ok .val, .kpi.ok .lab, .kpi.ok .sub, .kpi.ok .cta { color: var(--wh); }
+.kpi.ok.on { border-color: var(--wh); box-shadow: inset 0 0 0 1px var(--wh); }
+.kpi .cta.soon { opacity: .6; cursor: help; }
+
+/* Loading skeleton for the card values. */
+.sk { display: inline-block; border-radius: 4px; background: linear-gradient(90deg, var(--line-2), var(--line), var(--line-2)); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; }
+.sk.v { width: 96px; height: 27px; }
+.sk.s { width: 80%; height: 11px; }
+@keyframes sk { to { background-position: -200% 0; } }
+
+/* Data freshness + Refresh, next to the metric cards. */
+.kpi-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: -4px 0 8px; flex-wrap: wrap; }
+.kpi-bar .fresh { font-size: 11.5px; color: var(--ink-3); }
+.btn.refresh { display: inline-flex; align-items: center; gap: 6px; }
+.spin { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Matrix: cells and pills are read-only until step 3 (Allocation) wires the editor. */
+.mx tr.rw .cl button, .mx tr.rw .pill { cursor: default; }
+.hsrc .inner.landed .m { color: var(--po); }
+.mx .gh .tx { cursor: default; }
+.otabs button:disabled { opacity: .45; cursor: not-allowed; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 860px) {
+  /* Keep the horizontal nav its natural height (the grid would stretch it to fill 100vh). */
+  .app, .app.min { grid-template-rows: auto 1fr; }
+  .nav { flex: none; align-items: center; }
+  .side-tg, .side-foot { display: none; }
+  .kpi-bar { justify-content: space-between; }
+}

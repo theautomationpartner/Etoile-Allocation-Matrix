@@ -134,7 +134,9 @@ function plan(line, sources, master) {
     return { source: e.source, sourceId: String(e.sourceId), ref, qty: num(e.qty), total, eta: eta.slice(0, 10), packingDone, state, group: src?.group?.title || "", remapped: e.originalSourceId || null };
   });
   const of = (t) => parts.filter((p) => p.source === t);
-  const join = (arr, f) => arr.map(f).join(", ");
+  // Client format (2026-09-30): refs comma-separated (each ref once); quantities summed.
+  const refs = (arr) => [...new Set(arr.map((p) => p.ref))].join(", ");
+  const total = (arr, f) => String(arr.reduce((a, p) => a + (f(p) || 0), 0));
   const types = [...new Set(parts.map((p) => p.source))].sort().join("+");
   const etas = parts.filter((p) => p.source !== "warehouse" && p.eta).map((p) => p.eta).sort();
   const so = line.orderName.includes(" - ") ? line.orderName.split(" - ").pop().trim() : line.orderName;
@@ -154,14 +156,14 @@ function plan(line, sources, master) {
     [L.allocated]: String(parts.reduce((a, p) => a + p.qty, 0)),
     [L.status]: { label: STATUS_BY_SET[types] || "Unallocated" },
     [L.poRel]: { item_ids: [...new Set(po.filter((p) => p.state === "active").map((p) => Number(p.sourceId)))] },
-    [L.poRefs]: join(po, (p) => p.ref),
-    [L.poUsed]: join(po, (p) => p.qty),
-    [L.poTotal]: join(po, (p) => p.total ?? ""),
+    [L.poRefs]: refs(po),
+    [L.poUsed]: total(po, (p) => p.qty),
+    [L.poTotal]: total(po, (p) => p.total),
     [L.poUsedTotal]: String(po.reduce((a, p) => a + p.qty, 0)),
     [L.itRel]: { item_ids: [...new Set(it.filter((p) => p.state === "active").map((p) => Number(p.sourceId)))] },
-    [L.itRefs]: join(it, (p) => p.ref),
-    [L.itUsed]: join(it, (p) => p.qty),
-    [L.itTotal]: join(it, (p) => p.total ?? ""),
+    [L.itRefs]: refs(it),
+    [L.itUsed]: total(it, (p) => p.qty),
+    [L.itTotal]: total(it, (p) => p.total),
     [L.itUsedTotal]: String(it.reduce((a, p) => a + p.qty, 0)),
     [L.whUsed]: String(wh.reduce((a, p) => a + p.qty, 0)),
     ...(etas[0] ? { [L.earliestEta]: { date: etas[0] } } : {}),
@@ -233,6 +235,15 @@ console.log(report);
 writeFileSync(new URL(`./migrate-ledger-${APPLY ? "apply" : "dryrun"}.log`, import.meta.url), report);
 
 if (!APPLY) process.exit(0);
+
+// The test item created by hand ("SO-00871 | EC0390") holds the Allocation Key of EIVR117 · EC0415:
+// the client asked to delete it so the migration creates the correct item (goes to monday's trash).
+const TEST_ITEM = existing.find((e) => e.name === "SO-00871 | EC0390");
+if (TEST_ITEM) {
+  await gql(`mutation($i:ID!){ delete_item(item_id:$i){ id } }`, { i: TEST_ITEM.id });
+  for (const x of plans) if (x.existing?.id === TEST_ITEM.id) x.existing = null;
+  console.log(`deleted test item ${TEST_ITEM.id} (${TEST_ITEM.name})`);
+}
 
 // ── 4. Apply ──
 for (const { line, plan: p, existing: ex } of plans) {

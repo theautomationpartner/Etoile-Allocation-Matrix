@@ -1,6 +1,8 @@
 import { Icon } from "./Icon.jsx";
+import { clock } from "../lib/format.js";
 
-// Only "Allocation matrix" is built in this phase; the rest are shown but cannot be opened.
+// Same markup as the mockup's side nav. Only "Allocation matrix" is built in this phase; the rest
+// are shown (with their counts) but cannot be opened.
 const NAV = [
   { section: "OVERVIEW" },
   { id: "home", label: "Control center", icon: "grid" },
@@ -13,7 +15,8 @@ const NAV = [
   { id: "importer", label: "In-Transit Importer", icon: "up" },
 ];
 
-export function Sidebar({ collapsed, onToggle, onToggleTheme }) {
+// counts: { home (SKUs that cannot be covered, shown as an alert), wholesale, transit, po, sku, importer }
+export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt }) {
   return (
     <aside className="side">
       <div className="brand">
@@ -27,24 +30,23 @@ export function Sidebar({ collapsed, onToggle, onToggleTheme }) {
         </button>
       </div>
       <nav className="nav" aria-label="Sections">
-        {NAV.map((item) =>
-          item.section ? (
-            <div key={item.section} className="nav-h">{item.section}</div>
-          ) : item.active ? (
-            <a key={item.id} className="nav-i on" href="#" aria-current="page" title={item.label} onClick={(e) => e.preventDefault()}>
-              <Icon name={item.icon} />
-              <span className="lb">{item.label}</span>
+        {NAV.map((item) => {
+          if (item.section) return <div key={item.section} className="nav-h">{item.section}</div>;
+          const n = counts[item.id];
+          const badge = item.id === "home" ? (n > 0 ? <span className="cnt alert">{n}</span> : null) : n ? <span className="cnt">{n}</span> : null;
+          return item.active ? (
+            <a key={item.id} href="#" className="on" aria-current="page" title={item.label} onClick={(e) => e.preventDefault()}>
+              <Icon name={item.icon} /><span className="lb">{item.label}</span>{badge}
             </a>
           ) : (
-            <span key={item.id} className="nav-i off" role="link" aria-disabled="true" title={`${item.label} — not available yet`}>
-              <Icon name={item.icon} />
-              <span className="lb">{item.label}</span>
-            </span>
-          ),
-        )}
+            <a key={item.id} className="off" aria-disabled="true" title={`${item.label} — not available yet`} onClick={(e) => e.preventDefault()}>
+              <Icon name={item.icon} /><span className="lb">{item.label}</span>{badge}
+            </a>
+          );
+        })}
       </nav>
       <div className="side-foot">
-        <span>Monday · US</span>
+        <span>{loadedAt ? `Monday synced ${clock(loadedAt)}` : "Monday · US"}</span>
         <button type="button" onClick={onToggleTheme}>Theme</button>
       </div>
     </aside>

@@ -2,17 +2,20 @@ import { fmt, plural } from "../../lib/format.js";
 
 const LABELS = ["Units to allocate", "Impossible to cover", "Free inventory to draw on", "Already allocated"];
 
-function FilterCard({ id, label, value, sub, tone = "", filter, onFilter }) {
-  const on = filter === id;
+// Same markup as the mockup's metricStrip(): div.kpi (.act when it filters, .on when active).
+function Card({ label, value, sub, tone = "", filterKey, filter, onFilter, cta, ctaSoon }) {
+  const on = filterKey && filter === filterKey;
+  const act = Boolean(filterKey);
+  const activate = () => act && onFilter(filterKey);
   return (
-    <button type="button" className={`kpi ${tone} ${on ? "on" : ""}`} aria-pressed={on} onClick={() => onFilter(id)}>
-      <span className="lab">{label}</span>
-      <span className="val">{value}</span>
-      <span className="sub">{sub}</span>
-      <span className="cta">
-        {on ? "Showing these" : "Show these"} <span aria-hidden="true">→</span>
-      </span>
-    </button>
+    <div className={`kpi ${tone} ${act ? "act" : ""} ${on ? "on" : ""}`}
+      {...(act ? { role: "button", tabIndex: 0, "aria-pressed": on, onClick: activate, onKeyDown: (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), activate()) } : {})}>
+      <div className="lab">{label}</div>
+      <div className="val">{value}</div>
+      <div className="sub">{sub}</div>
+      {act && <div className="cta">{on ? "Showing these" : "Show these"} <span>→</span></div>}
+      {ctaSoon && <div className="cta soon" title={ctaSoon}>{cta} <span>→</span></div>}
+    </div>
   );
 }
 
@@ -32,27 +35,18 @@ export function MetricCards({ metrics: m, filter, onFilter }) {
       </div>
     );
   }
-  const split = m.allocatedSplit;
+  const a = m.allocatedSplit, f = m.freeSplit;
   return (
     <div className="kpis">
-      <FilterCard id="pending" label="Units to allocate" value={fmt(m.unitsToAllocate)} filter={filter} onFilter={onFilter}
+      <Card label="Units to allocate" value={fmt(m.unitsToAllocate)} filterKey="pending" filter={filter} onFilter={onFilter}
         sub={`${plural(m.linesWithLeft, "line item", "line items")} · ${fmt(m.draftUnits)} already proposed as draft`} />
-      <FilterCard id="blocked" label="Impossible to cover" value={fmt(m.impossible)} tone={m.impossible > 0 ? "warn" : ""}
-        filter={filter} onFilter={onFilter}
+      <Card label="Impossible to cover" value={fmt(m.impossible)} tone={m.impossible > 0 ? "warn" : "ok"} filterKey="blocked" filter={filter} onFilter={onFilter}
         sub={m.impossible > 0 ? `${plural(m.shortSkuCount, "SKU needs", "SKUs need")} a new purchase order` : "Nothing is blocked"} />
-      <div className="kpi">
-        <div className="lab">Free inventory to draw on</div>
-        <div className="val">{fmt(m.freeInventory)}</div>
-        <div className="sub">on hand plus arriving, nobody has claimed it</div>
-        <span className="cta soon" title="The In-Transit Shipments screen is not available yet">
-          See where it sits <span aria-hidden="true">→</span>
-        </span>
-      </div>
-      <div className="kpi">
-        <div className="lab">Already allocated</div>
-        <div className="val">{fmt(m.alreadyAllocated)}</div>
-        <div className="sub">{fmt(split.onHand)} on hand · {fmt(split.inTransit)} in transit · {fmt(split.onOrder)} on order</div>
-      </div>
+      <Card label="Free inventory to draw on" value={fmt(m.freeInventory)}
+        sub={`${fmt(f.onHand)} on hand · ${fmt(f.inTransit)} in transit · ${fmt(f.onOrder)} on order`}
+        cta="See where it sits" ctaSoon="The In-Transit Shipments screen is not available yet" />
+      <Card label="Already allocated" value={fmt(m.alreadyAllocated)}
+        sub={`${fmt(a.onHand)} on hand · ${fmt(a.inTransit)} in transit · ${fmt(a.onOrder)} on order`} />
     </div>
   );
 }

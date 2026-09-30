@@ -1,4 +1,4 @@
-// §3 legend — static, one example per cell state, same colours as the cells.
+// §3 legend — static, same markup and colours as the mockup.
 export function Legend() {
   return (
     <div className="mx-hint">
@@ -7,7 +7,7 @@ export function Legend() {
       <span className="k"><span className="sw po">240</span> from a purchase order</span>
       <span className="k"><span className="sw dr">240</span> draft · proposed, not allocated</span>
       <span className="k"><span className="sw av">240</span> free, not assigned yet</span>
-      <span className="tip">Open a draft or a grey number, check it, then click <b>Allocate</b>.</span>
+      <span className="k" style={{ marginLeft: "auto" }}>Open a draft or a grey number, check it, then click <b style={{ color: "var(--ink)" }}>Allocate</b>.</span>
     </div>
   );
 }

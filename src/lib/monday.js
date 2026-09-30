@@ -17,15 +17,19 @@ export const BOARDS = {
 
 export const COL = {
   sale: { retailer: "dropdown_mm17we0j", region: "color_mm17q217", status: "color_mm17bttk", orderDate: "date_mm1s15v9", cancelDate: "date_mm5bxkpz", saleCin7: "link_mm26kvdr", allocStatus: "color_mm7146kz", allocPct: "numeric_mm71h5ps" },
-  saleSub: { skuId: "text_mm251am5", ordered: "numeric_mm17ttsn", fulfilled: "numeric_mm19rrnv", outstanding: "numeric_mm19gkqq", allocJson: "long_text_mm4kee9f", allocSource: "dropdown_mm4fwfk7", poRel: "board_relation_mm3hna2c", itRel: "board_relation_mm342hhx" },
+  saleSub: { skuId: "text_mm251am5", ordered: "numeric_mm17ttsn", fulfilled: "numeric_mm19rrnv", outstanding: "numeric_mm19gkqq", allocJson: "long_text_mm4kee9f", allocSource: "dropdown_mm4fwfk7", poRel: "board_relation_mm3hna2c", itRel: "board_relation_mm342hhx", ledgerRel: "board_relation_mm7pqf7j" },
   wh: { sku: "text_mm17625z", usQty: "numeric_mm1765fq" },
   it: { location: "color_mm3bhhys", eta: "date4", packingList: "color_mm1c7w2a", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76" },
   po: { reference: "text_mm14nxap", region: "color_mm1hmv7r", eta: "date4", status: "status", supplier: "dropdown_mm17rsxm", subSku: "text_mm1598d7", subQtyOrdered: "numeric_mm15va7p", subQtyOutstanding: "numeric_mm1g5z37" },
   ledger: { key: "text_mm76g12x", saleRel: "board_relation_mm76cxt5", saleId: "text_mm76t66a", sku: "text_mm76wfw4", allocatedQty: "numeric_mm76s5dm", status: "color_mm76q1fj", json: "long_text_mm764vdq", shipmentsRel: "board_relation_mm7p81dk" },
+  // Ledger subitems: one per source that feeds the sale line (the structured record of the allocation).
+  ledgerSub: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6" },
 };
 
 export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active (Fulfilled / Released hold no units)
+export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer (only its item count, for the side nav)
+const LEDGER_SOURCE_TYPE = { "Warehouse Stock": "warehouse", "In-Transit": "intransit", "Purchase Order": "po" };
 
 // Where confirmed allocations are read from. Pending the client's decision (see PROMPT txt, open points).
 export const ALLOCATION_SOURCE = { SUBITEM_JSON: "subitem-json", LEDGER: "ledger" };
@@ -92,7 +96,8 @@ export function createMondayApi(transport = fetchTransport) {
     const s = COL.sale, sc = COL.saleSub;
     const fields = `id name group { id }
       column_values(ids:[${gqlList(Object.values(s))}]) { id text }
-      subitems { id name column_values(ids:[${gqlList([sc.skuId, sc.ordered, sc.fulfilled, sc.outstanding, sc.allocJson])}]) { id text } }`;
+      subitems { id name column_values(ids:[${gqlList([sc.skuId, sc.ordered, sc.fulfilled, sc.outstanding, sc.allocJson, sc.ledgerRel])}]) {
+        id text ... on BoardRelationValue { linked_item_ids } } }`;
     const items = await allItems(BOARDS.wholesale, fields, { groups: OPEN_GROUPS });
     return items.map((it) => ({
       id: it.id,
@@ -113,22 +118,38 @@ export function createMondayApi(transport = fetchTransport) {
           fulfilled: num(cv(sub, sc.fulfilled)),
           outstanding: num(cv(sub, sc.outstanding)),
           entries: parseAllocationJson(cv(sub, sc.allocJson)),
+          ledgerItemId: (sub.column_values.find((c) => c.id === sc.ledgerRel)?.linked_item_ids || [])[0] || null,
         };
       }),
     }));
   }
 
-  // One Ledger item per sale line; Allocation Key = the Wholesale subitem id.
+  // One Ledger item per sale line (group Active), one subitem per source feeding it.
+  // byId → the Ledger item a Wholesale subitem links to (board_relation_mm7pqf7j);
+  // byKey → fallback by Allocation Key (= Wholesale subitem id).
   async function loadLedger() {
-    const l = COL.ledger;
-    const fields = `id name column_values(ids:[${gqlList([l.key, l.saleId, l.sku, l.json])}]) { id text }`;
+    const l = COL.ledger, ls = COL.ledgerSub;
+    const fields = `id name column_values(ids:[${gqlList([l.key, l.sku, l.json])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList(Object.values(ls))}]) { id text } }`;
     const items = await allItems(BOARDS.ledger, fields, { groups: [LEDGER_ACTIVE_GROUP] });
-    const byLine = new Map();
+    const byId = new Map(), byKey = new Map();
     for (const it of items) {
+      const fromSubitems = (it.subitems || [])
+        .map((s) => ({ source: LEDGER_SOURCE_TYPE[cv(s, ls.type)], sourceId: cv(s, ls.sourceId).trim(), ref: cv(s, ls.ref), qty: num(cv(s, ls.qty)), eta: date(cv(s, ls.eta)) }))
+        .filter((e) => e.source && e.qty > 0);
+      // The subitems are the record; the JSON copy is only a fallback for an item without subitems.
+      const record = { itemId: it.id, sku: cv(it, l.sku).trim(), entries: fromSubitems.length ? fromSubitems : parseAllocationJson(cv(it, l.json)) };
+      byId.set(String(it.id), record);
       const key = cv(it, l.key).trim();
-      if (key) byLine.set(key, { itemId: it.id, sku: cv(it, l.sku).trim(), entries: parseAllocationJson(cv(it, l.json)) });
+      if (key) byKey.set(key, record);
     }
-    return byLine;
+    return { byId, byKey };
+  }
+
+  // Item counts for the side nav badges (as in the mockup).
+  async function loadBoardCounts() {
+    const d = await transport(`query($b:[ID!]){ boards(ids:$b){ id items_count } }`, { b: [BOARDS.wholesale, BOARDS.po, BOARDS.warehouse, IMPORTER_BOARD] });
+    return Object.fromEntries((d?.boards || []).map((b) => [String(b.id), b.items_count]));
   }
 
   async function loadWarehouse() {
@@ -176,15 +197,21 @@ export function createMondayApi(transport = fetchTransport) {
     }));
   }
 
-  async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.SUBITEM_JSON } = {}) {
+  async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger] = await Promise.all([
-      loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null,
+    const [orders, warehouse, containers, pos, ledger, boardCounts] = await Promise.all([
+      loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})),
     ]);
     if (useLedger) {
-      for (const o of orders) for (const l of o.lines) l.entries = ledger.get(String(l.id))?.entries || [];
+      for (const o of orders) {
+        for (const l of o.lines) {
+          const rec = (l.ledgerItemId && ledger.byId.get(String(l.ledgerItemId))) || ledger.byKey.get(String(l.id));
+          l.entries = rec?.entries || [];
+          l.ledgerItemId = rec?.itemId || null;
+        }
+      }
     }
-    return { orders, warehouse, containers, pos, allocationSource, loadedAt: new Date() };
+    return { orders, warehouse, containers, pos, boardCounts, allocationSource, loadedAt: new Date() };
   }
 
   return { loadMatrixData, loadLedger };
