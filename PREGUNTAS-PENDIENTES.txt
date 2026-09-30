@@ -1,0 +1,61 @@
+================================================================================
+ ETOILE FLOW · ALLOCATION MATRIX — PREGUNTAS PENDIENTES A RESOLVER
+================================================================================
+Última actualización: 2026-09-30
+Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIBE.txt.
+
+
+1. PUNTO 3 SIN HACER — Editor de allocation
+   Falta el editor para confirmar allocations desde la matriz: clic en una celda o en la
+   píldora Left → editor debajo de la fila → "Allocate" escribe en el Allocation Ledger
+   (subitems y columnas del item). Hoy la matriz solo muestra lo confirmado, y los
+   shipments trabajan con lo que ya está confirmado en el Ledger.
+   → Decisión:
+
+
+2. ESTADOS DEL SHIPMENT Y FULFILLMENT DE CIN7 (TBD-20 y TBD-21)
+   El documento no define más estados que "Draft" ni la relación de un shipment con el
+   fulfillment de Cin7 (Pick → Pack → Ship). Por eso el badge siempre dice "Draft" y no hay
+   "marcar como completo".
+   Pregunta: ¿qué estados tiene un shipment, cuándo cambia cada uno, y si un shipment
+   corresponde a un fulfillment de Cin7?
+   → Decisión:
+
+
+3. ITEMS DE EJEMPLO EN 🔗 New Shipments (18433404829)
+   El tablero tiene 5 items de ejemplo ("Item 1" a "Item 5") sin conexión a ninguna orden.
+   La app los ignora.
+   Pregunta: ¿se borran?
+   → Decisión:
+
+
+4. REFRESH CON CAMBIOS SIN GUARDAR
+   Si se aprieta Refresh con un shipment sin guardar, ese cambio se pierde (hay que guardar
+   antes de refrescar).
+   Pregunta: ¿avisar antes de refrescar, conservar los cambios sin guardar, o dejarlo así?
+   → Decisión:
+
+
+--------------------------------------------------------------------------------
+ OTROS PUNTOS ABIERTOS DE LAS CONVERSACIONES ANTERIORES
+--------------------------------------------------------------------------------
+5. Orden de las órdenes en la matriz (TBD-05): hoy es el orden del tablero. ¿Por cancel date?
+   → Decisión:
+
+6. Columnas de contenedores "landed" (Packing List Done) en la matriz: muestran las reservas
+   que siguen In-Transit porque el warehouse no cubre el 50 % de la línea. ¿Se mantienen?
+   → Decisión:
+
+7. Columna "Impossible / needs a PO" (captura marcada): ¿qué se quería cambiar? ¿Que quede fija
+   a la derecha, visible sin scroll?
+   → Decisión:
+
+8. Seguridad del sitio publicado en Vercel: la URL de producción es pública y el servidor usa
+   el token de monday. Cualquiera con el link puede leer los datos de monday que muestra la app
+   y crear o borrar shipments. Opciones: activar Deployment Protection de Vercel (login) o
+   agregar un login propio.
+   → Decisión:
+
+9. Token de monday: se pegó en el chat el 2026-09-30. Conviene regenerarlo en monday y
+   actualizarlo en Vercel (MONDAY_TOKEN) y en .env.local.
+   → Decisión:
