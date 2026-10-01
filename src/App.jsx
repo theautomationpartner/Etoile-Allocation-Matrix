@@ -7,6 +7,7 @@ import { useMatrixData } from "./hooks/useMatrixData.js";
 import { useStoredState } from "./hooks/useStoredState.js";
 import { BOARDS, IMPORTER_BOARD } from "./lib/monday.js";
 import { AuthGate } from "./components/AuthGate.jsx";
+import { UsersAccess } from "./features/users/UsersAccess.jsx";
 
 // Side nav badges, as in the mockup: SKUs that cannot be covered (alert on Control center),
 // containers in transit, and each board's item count.
@@ -31,7 +32,11 @@ export default function App() {
 function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
+  const isAdmin = user?.role === "admin";
+  const [view, setView] = useState("matrix"); // matrix | users (admins only)
   const [search, setSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const onUsers = isAdmin && view === "users";
   const matrix = useMatrixData();
   const toast = useToast();
 
@@ -52,12 +57,22 @@ function Workspace({ user }) {
   return (
     <div className={`app ${collapsed ? "min" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme}
-        counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} />
+        counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} view={onUsers ? "users" : "matrix"} onView={setView} isAdmin={isAdmin} />
       <main className="main">
-        <Topbar search={search} onSearch={setSearch} user={user} />
-        <div className="view">
+        {onUsers ? (
+          <Topbar search={userSearch} onSearch={setUserSearch} user={user} title="Users & access" placeholder="Search a user by name or email…" />
+        ) : (
+          <Topbar search={search} onSearch={setSearch} user={user} />
+        )}
+        {/* The matrix stays mounted while Users & access is open: unsaved shipments are kept. */}
+        <div className="view" hidden={onUsers}>
           <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} />
         </div>
+        {onUsers && (
+          <div className="view">
+            <UsersAccess search={userSearch} toast={toast.show} />
+          </div>
+        )}
       </main>
       <Toast {...toast} />
     </div>

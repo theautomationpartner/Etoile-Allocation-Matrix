@@ -1,12 +1,12 @@
 import { Icon } from "./Icon.jsx";
 import { clock } from "../lib/format.js";
 
-// Same markup as the mockup's side nav. Only "Allocation matrix" is built in this phase; the rest
-// are shown (with their counts) but cannot be opened.
+// Same markup as the mockup's side nav. Built so far: "Allocation matrix" and, for admins only,
+// "Users & access"; the rest are shown (with their counts) but cannot be opened.
 const NAV = [
   { section: "OVERVIEW" },
   { id: "home", label: "Control center", icon: "grid" },
-  { id: "matrix", label: "Allocation matrix", icon: "table", active: true },
+  { id: "matrix", label: "Allocation matrix", icon: "table", open: true },
   { section: "BOARDS" },
   { id: "wholesale", label: "Wholesale Allocation", icon: "bag" },
   { id: "transit", label: "In-Transit Shipments", icon: "ship" },
@@ -14,9 +14,10 @@ const NAV = [
   { id: "sku", label: "Master SKU Inventory", icon: "tag" },
   { id: "importer", label: "In-Transit Importer", icon: "up" },
 ];
+const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];
 
 // counts: { home (SKUs that cannot be covered, shown as an alert), wholesale, transit, po, sku, importer }
-export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt }) {
+export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt, view = "matrix", onView, isAdmin = false }) {
   return (
     <aside className="side">
       <div className="brand">
@@ -30,12 +31,13 @@ export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loade
         </button>
       </div>
       <nav className="nav" aria-label="Sections">
-        {NAV.map((item) => {
+        {(isAdmin ? [...NAV, ...ADMIN_NAV] : NAV).map((item) => {
           if (item.section) return <div key={item.section} className="nav-h">{item.section}</div>;
           const n = counts[item.id];
           const badge = item.id === "home" ? (n > 0 ? <span className="cnt alert">{n}</span> : null) : n ? <span className="cnt">{n}</span> : null;
-          return item.active ? (
-            <a key={item.id} href="#" className="on" aria-current="page" title={item.label} onClick={(e) => e.preventDefault()}>
+          return item.open ? (
+            <a key={item.id} href="#" className={view === item.id ? "on" : ""} aria-current={view === item.id ? "page" : undefined} title={item.label}
+              data-nav={item.id} onClick={(e) => { e.preventDefault(); onView?.(item.id); }}>
               <Icon name={item.icon} /><span className="lb">{item.label}</span>{badge}
             </a>
           ) : (

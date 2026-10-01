@@ -96,6 +96,12 @@ export async function whitelistUser(userId) {
   return user;
 }
 
+// After an admin changes someone's access (api/users.js): this server instance applies it at once;
+// other instances within WHITELIST_TTL_MS.
+export function forgetWhitelistUser(userId) {
+  whitelistCache.delete(String(userId));
+}
+
 // Returns { session, user } or throws AccessDenied. Never tells the caller why.
 export async function authenticate(request) {
   const auth = request.headers.get("authorization") || "";

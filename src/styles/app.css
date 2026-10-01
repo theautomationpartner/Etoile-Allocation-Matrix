@@ -142,9 +142,68 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+.view[hidden] { display: none; }
+
+/* Users & access (admins only): mockup tokens, chips, seg buttons, card and rail. */
+.ua-card { overflow: visible; }
+.ua-scroll { overflow-x: auto; }
+.ua-t { width: 100%; border-collapse: separate; border-spacing: 0; }
+.ua-t th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--ink-3); padding: 10px 14px 9px; border-bottom: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
+.ua-t td { padding: 9px 14px; border-bottom: 1px solid var(--line-2); vertical-align: middle; font-size: 12.5px; }
+.ua-t tbody tr:last-child td { border-bottom: none; }
+.ua-t tbody tr:hover td { background: var(--surface-2); }
+.ua-t tr.off .ua-who b { color: var(--ink-2); }
+.ua-mut { color: var(--ink-2); white-space: nowrap; }
+.ua-who { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 220px; }
+.ua-who b { font-weight: 600; }
+.ua .av, .ua-rail .av { width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--it-t); color: var(--it); font-size: 10.5px; font-weight: 700; }
+.ua-seg { white-space: nowrap; }
+.ua-seg button { height: 28px; padding: 0 12px; }
+.ua-seg button:disabled { cursor: not-allowed; opacity: .6; }
+.ua-seg button:not(.on):not(:disabled):hover { background: var(--surface-2); color: var(--ink); }
+.ua-st button.on.yes { background: var(--wh-t); color: var(--wh); font-weight: 600; }
+.ua-st button.on.no { background: var(--gap-t); color: var(--gap); font-weight: 600; }
+.ua-saving { margin-left: 8px; font-size: 11.5px; color: var(--ink-3); }
+.ua .mx-bar .btn { height: 30px; }
+.ua .note.warn { margin-bottom: 12px; }
+
+/* Confirmation dialog, on top of the scrim. */
+.ua-dlg { position: fixed; z-index: 75; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 18px 16px; }
+.ua-dlg h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.ua-dlg p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.ua-dlg-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ua-dlg-b .btn { height: 30px; }
+
+/* Add user rail. */
+.ua-tabs { display: flex; width: 100%; }
+.ua-tabs button { flex: 1; height: 30px; }
+.ua-in { width: 100%; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+.ua-in:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); background: var(--surface); }
+.ua-pick { margin-top: 8px; max-height: 46vh; overflow-y: auto; }
+.ua-pick .rel-row { width: 100%; text-align: left; }
+.ua-pick .rel-row.on { background: var(--it-t); box-shadow: inset 3px 0 0 var(--it); }
+.ua-pick .rel-row:disabled { cursor: not-allowed; opacity: .55; }
+.ua-pick .rel-row:disabled:hover { background: none; }
+.ua-pick .empty-note { margin: 8px; }
+.ua-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); }
+.ua-link { color: var(--it); font-weight: 600; font-size: 11.5px; }
+.ua-link:hover { text-decoration: underline; }
+.ua-f { display: grid; gap: 4px; margin-bottom: 10px; font-size: 11.5px; color: var(--ink-2); font-weight: 500; }
+.ua-rail .note { margin: 4px 0 0; }
+.ua-err { margin-top: 14px; }
+.ua-rail-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line-2); }
+.ua-rail-b .btn { height: 30px; }
+
 @media (max-width: 860px) {
   /* Keep the horizontal nav its natural height (the grid would stretch it to fill 100vh). */
-  .app, .app.min { grid-template-rows: auto 1fr; }
+  .app, .app.min { grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); }
+  /* The one-line nav scrolls sideways; it must not widen the whole page (it did, to ~1100px). */
+  .side { min-width: 0; }
+  /* Top bar on two lines: crumb · warehouses · user, then the search at full width. */
+  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 10px 14px; }
+  .topbar .sync { margin-left: auto; }
+  .topbar .search { order: 3; flex-basis: 100%; margin-left: 0; }
+  .topbar .search input { width: 100%; }
   .nav { flex: none; align-items: center; }
   .side-tg, .side-foot { display: none; }
   .kpi-bar { justify-content: space-between; }

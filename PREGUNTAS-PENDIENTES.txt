@@ -63,10 +63,12 @@ Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIB
 
 10. Permisos de Admin vs Member: hoy los dos pueden hacer lo mismo (ver y guardar shipments).
     ¿Qué puede hacer solo un Admin?
-    → Decisión:
+    → Decisión (2026-10-01): solo el Admin administra usuarios y accesos ("Users & access").
+      Fuera de eso, los dos pueden lo mismo. ¿Algo más queda solo para Admin?
 
-11. Quién tiene acceso: en la Access List solo "The Automation Partner" está Active. Michelle Hu,
-    Kate, Ella, Ellie Preston y Hannah Quirk están Inactive. ¿A quiénes se activa?
+11. Quién tiene acceso: al 2026-10-01 están Active The Automation Partner (Admin), Michelle Hu y
+    Ella (Member); Kate, Ellie Preston y Hannah Quirk, Inactive. Desde ahora se maneja en la app
+    (Users & access). ¿A quiénes se activa y quién más es Admin?
     → Decisión:
 
 12. Segundo factor (Google Authenticator) mencionado en la explicación técnica: no está
@@ -76,4 +78,12 @@ Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIB
 13. Qué secreto firma el sessionToken (Signing Secret o Client Secret): se sabrá en la primera
     prueba dentro de monday (el servidor lo registra en el log). Anotarlo acá.
     → Resultado:
+
+14. Cambiar de tablero/vista dentro de monday con shipments sin guardar: el navegador NO avisa
+    (probado; recargar o cerrar la pestaña sí avisa). ¿Se quiere que la app guarde el borrador en
+    el navegador y lo ofrezca al volver? (no está hecho)
+    → Decisión:
+
+15. "Send invitation" no se probó con un email real. ¿Con qué email de prueba lo verificamos?
+    → Decisión:
 

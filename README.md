@@ -25,6 +25,7 @@ npm run ui-check             # visual/usability regression checks (needs npm run
 | `src/lib/monday.js` | Reads the monday.com boards; transport-agnostic (proxy locally, `monday.api` in Vibe) |
 | `api/monday.js` | Server-side read proxy; the monday token never reaches the browser |
 | `api/monday-write.js` | Server-side writes, limited to the operations in `src/lib/mondayWrites.js` |
+| `api/users.js` | Users & access (admins only): add / invite users, Role and App access in the Access List board; rules in `src/lib/userAdmin.js` |
 | `vite.config.js` | Runs `api/` during `npm run dev` the same way Vercel does |
 | `PROMPT-MONDAY-VIBE.txt` | Detailed spec that becomes the monday Vibe prompt, updated step by step |
 

@@ -1,6 +1,6 @@
 // UI regression check — drives the running app (npm run dev) in a real browser and fails if any of
 // the layout problems found in QA comes back. Nothing is saved to monday (it only creates a local,
-// unsaved shipment and never clicks Save).
+// unsaved shipment and never clicks Save; on Users & access it opens dialogs and always cancels).
 //
 //   npm run dev            (in another terminal)
 //   npm run ui-check       (EDGE_PATH / APP_URL can override the defaults)
@@ -140,7 +140,70 @@ async function run() {
     for (let t = 0; t < 10 && !qsel; t++) { await sleep(80); qsel = await ev(`const i=document.querySelector("tr.shr .qin"); return document.activeElement===i && i.value.length>0 && i.selectionStart===0 && i.selectionEnd===i.value.length`).catch(() => false); }
     check(`quantity field selects its number on focus (type to replace) ${tag}`, qsel, qsel ? "" : await ev(`const i=document.querySelector("tr.shr .qin"); return JSON.stringify({ type: i.type, active: document.activeElement===i, value: i.value, sel: [i.selectionStart, i.selectionEnd] })`));
     check(`trash sits right after "Remaining to ship" ${tag}`, await ev(`return !!document.querySelector("tr.shr td.s2 .rm-slot .rmx")`));
+
+    await usersChecks(tag);
+    // Back to the matrix: the unsaved shipment must still be there (switching views never loses it).
+    await ev(`document.querySelector('[data-nav="matrix"]').click()`);
+    await sleep(250);
+    check(`unsaved shipment kept after visiting Users & access ${tag}`, await ev(`return !!document.querySelector("tr.shc .sh-controls") && !!document.querySelector(".shs .unsaved")`));
   }
+
+  // Phone width: Users & access only (no page scroll; the table scrolls inside its card).
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 800, deviceScaleFactor: 1, mobile: true });
+  await sleep(300);
+  await ev(`document.querySelector('[data-nav="users"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".ua-t tr[data-item]")`)); t++) await sleep(250);
+  check("Users & access: no horizontal page scroll @390px", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
+}
+
+// Users & access (the dev user must be an Admin). Opens dialogs and the rail and always cancels:
+// nothing is written to monday.
+async function usersChecks(tag) {
+  const nav = await ev(`return !!document.querySelector('[data-nav="users"]')`);
+  check(`admin sees "Users & access" in the side nav ${tag}`, nav, nav ? "" : await ev(`return [...document.querySelectorAll(".nav a, .nav-h")].map(a=>a.textContent+"|"+(a.dataset.nav||"")).join(", ") + " · chip: " + (document.querySelector(".user-chip")?.textContent||"none")`));
+  if (!nav) return;
+  await ev(`document.querySelector('[data-nav="users"]').click()`);
+  let loaded = false;
+  for (let t = 0; t < 60 && !loaded; t++) { await sleep(250); loaded = await ev(`return document.querySelectorAll(".ua-t tr[data-item]").length > 0`); }
+  check(`Users & access lists the users ${tag}`, loaded);
+  if (!loaded) return;
+  check(`Users & access: matrix hidden, crumb updated ${tag}`, await ev(`return document.querySelector(".view[hidden] .mx-wrap") !== null && /Users & access/.test(document.querySelector(".crumb b").textContent)`));
+  check(`Users & access: no horizontal page scroll ${tag}`, await ev(`return document.documentElement.scrollWidth <= innerWidth + 1`));
+  check(`Users & access: role and access buttons 28px ${tag}`, await ev(`return [...document.querySelectorAll(".ua-t .ua-seg button")].every(b => Math.abs(b.getBoundingClientRect().height - 28) <= 1)`));
+
+  // Another user's role → a confirmation opens; Cancel closes it and nothing changes.
+  const other = await ev(`const r=[...document.querySelectorAll(".ua-t tr[data-item]")].find(r=>!r.querySelector(".chip.mut")); if(!r) return null;
+    const off=[...r.querySelectorAll(".ua-seg")[0].querySelectorAll("button")].find(b=>!b.classList.contains("on")); off.click(); return r.dataset.item`);
+  await sleep(150);
+  const dlg = JSON.parse(await ev(`const d=document.querySelector(".ua-dlg"); if(!d) return JSON.stringify({open:false}); const r=d.getBoundingClientRect();
+    return JSON.stringify({ open:true, inViewport: r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight, buttons: d.querySelectorAll("button").length, onTop: d.contains(document.elementFromPoint(r.left+r.width/2, r.top+20)) })`));
+  check(`role change asks for confirmation (dialog visible, on top) ${tag}`, other && dlg.open && dlg.inViewport && dlg.onTop && dlg.buttons === 2, JSON.stringify(dlg));
+  await ev(`[...document.querySelectorAll(".ua-dlg button")].find(b=>b.textContent==="Cancel")?.click()`);
+  await sleep(150);
+  check(`Cancel closes the confirmation, nothing saved ${tag}`, await ev(`return !document.querySelector(".ua-dlg") && !document.querySelector(".ua-saving")`));
+
+  // Own row → Inactive is refused with the reason, before anything is sent.
+  await ev(`const r=[...document.querySelectorAll(".ua-t tr[data-item]")].find(r=>r.querySelector(".chip.mut")?.textContent==="You"); [...r.querySelectorAll(".ua-st button")].find(b=>b.textContent==="Inactive").click()`);
+  await sleep(150);
+  check(`own access can't be removed (explained) ${tag}`, await ev(`const d=document.querySelector(".ua-dlg"); return !!d && /own access/.test(d.textContent) && d.querySelectorAll("button").length===1`));
+  await ev(`document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))`);
+  await sleep(150);
+  check(`Esc closes the dialog ${tag}`, await ev(`return !document.querySelector(".ua-dlg")`));
+
+  // Add user rail: opens, lists monday users (already listed ones can't be picked), invite tab has its fields.
+  await ev(`document.querySelector(".ua-add").click()`);
+  await sleep(350);
+  const rail = JSON.parse(await ev(`const r=document.querySelector(".ua-rail"); const b=r.getBoundingClientRect();
+    return JSON.stringify({ open: r.classList.contains("on") && b.right <= innerWidth + 1 && b.left >= 0, people: r.querySelectorAll(".ua-pick .rel-row").length,
+      listedDisabled: [...r.querySelectorAll(".ua-pick .rel-row")].filter(x=>/In the list/.test(x.textContent)).every(x=>x.disabled), focus: document.activeElement?.classList.contains("ua-in") })`));
+  check(`"Add user" opens the side panel with monday users ${tag}`, rail.open && rail.people > 0 && rail.listedDisabled, JSON.stringify(rail));
+  await ev(`[...document.querySelectorAll(".ua-tabs button")].find(b=>/Invite/.test(b.textContent)).click()`);
+  await sleep(150);
+  check(`"Invite by email" shows name, email and the monday note ${tag}`, await ev(`const r=document.querySelector(".ua-rail"); return r.querySelectorAll(".ua-f input").length===2 && /Member/.test(r.querySelector(".note")?.textContent||"") && /Send invitation/.test(r.querySelector(".ua-rail-b .btn.on").textContent)`));
+  await ev(`document.querySelector(".ua-rail .rail-x").click()`);
+  await sleep(300);
+  check(`side panel closes ${tag}`, await ev(`return !document.querySelector(".ua-rail.on")`));
 }
 
 try {

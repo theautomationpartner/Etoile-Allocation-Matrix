@@ -209,3 +209,41 @@ Sugerencias para más adelante (no implementadas; decidir):
 - S-5 Atajo de teclado Ctrl/Cmd + S para guardar el shipment abierto.
 - S-6 Modo compacto (filas más bajas) para pantallas chicas.
 
+
+--------------------------------------------------------------------------------
+ 9. USERS & ACCESS (solo Admin) — casos probados
+--------------------------------------------------------------------------------
+Probado contra la API real (servidor local, usuario Admin) — se rechazan sin escribir nada:
+  A-01 Quitarse el acceso a uno mismo -> "You can't remove your own access. Ask another admin."
+  A-02 Quitarse el rol de Admin a uno mismo -> "You can't remove your own Admin role..."
+  A-03 Agregar a un usuario desactivado en monday (Amber Hodges) -> "This user is deactivated in monday."
+  A-04 Agregar a alguien que ya está en la lista (Kate) -> "This user is already in the list..."
+  A-05 Invitar un email que ya está en la lista -> "This email is already in the list..."
+  A-06 Email inválido / nombre vacío / rol desconocido / acción desconocida -> mensaje claro (400/409).
+  A-07 Un Member (Michelle Hu, servidor local aparte) -> GET y POST /api/users = 403
+       "Only admins can manage users."
+  A-08 La lista nunca queda sin Admin activo (test unitario; con un solo Admin no se lo puede bajar).
+Escritura real (ida y vuelta): Kate (Inactive, así nunca tuvo acceso) Member -> Admin -> Member: el
+tablero cambió y quedaron los dos updates con el nombre del admin; después se borraron esos dos
+updates de prueba. La prueba de A-07 dejó un "Last Access" en Michelle Hu: se volvió a dejar vacío.
+No probado de punta a punta: "Send invitation" (mandaría un email real). Probar con un email de
+prueba que elija el cliente.
+
+Chequeo visual automático (npm run ui-check, 66 chequeos, nunca guarda nada): el Admin ve
+"Users & access"; la lista carga; matriz oculta y título actualizado; sin scroll horizontal;
+botones de 28 px; cambiar el rol abre la confirmación (visible y encima de todo); Cancel no guarda;
+quitarse el acceso propio se explica y no se envía; Esc cierra; "Add user" abre el panel con los
+usuarios de monday (los ya listados no se pueden elegir); "Invite by email" muestra nombre, email y
+la nota de Member; el panel se cierra; al volver a la matriz el shipment sin guardar sigue ahí;
+a 390 px la página no se ensancha.
+
+Encontrado y corregido en celular (venía de antes): la página medía ~1.100 px de ancho porque el
+menú horizontal y la barra superior no se achicaban; texto y botones quedaban cortados a la
+derecha. Ahora la página mide lo que la pantalla; el menú se desliza de costado y la barra
+superior pasa a dos líneas (buscador abajo, a todo el ancho).
+
+beforeunload dentro de monday (Chrome 154, app en un iframe de otro dominio):
+  pregunta -> recargar la pestaña, cerrarla, ir a otra URL, o que monday cambie la URL del iframe.
+  no pregunta -> cambiar de tablero/vista dentro de monday (saca el iframe), o si nunca se hizo
+  clic dentro de la app.
+

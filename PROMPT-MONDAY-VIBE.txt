@@ -611,6 +611,53 @@ ya estaban. Lo hace el servidor con el usuario verificado, nunca con un dato del
 En monday Vibe (sin backend propio): leer me { id } con monday.api y verificar el mismo tablero de
 lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
 
+12.1 USERS & ACCESS — administrar la lista blanca desde la app (solo Admin)
+Nadie necesita entrar al tablero Access List: la app lo escribe. Basado en Stagnar-Oportunidades
+(commit adf4963), simplificado: solo la columna Role (sin teams de monday, sin 2FA, sin desactivar
+cuentas de monday, sin reasignaciones).
+  Roles: Admin = usa la app + administra esta lista · Member = usa la app.
+  Menú lateral: sección "ADMIN" → "Users & access", visible solo si el usuario es Admin. La matriz
+  queda montada (oculta) mientras se mira esta pantalla: los shipments sin guardar no se pierden.
+  Pantalla (estilo del mockup): título + explicación; chips "N active" / "N inactive"; Refresh;
+  "+ Add user". Tabla: Name (iniciales, "You", "Invitation pending", "Deactivated in monday",
+  "Guest in monday", "No monday user") · Email · Role [Member | Admin] · App access
+  [Active (verde) | Inactive (rojo)] · Last access. El buscador de arriba filtra por nombre o email.
+  Cambiar Role o App access → SIEMPRE una confirmación que dice qué va a pasar:
+    "Make X an Admin?" · "Change X to Member?" · "Give X access to the app?" ·
+    "Remove X's access?" (botón rojo; su cuenta de monday no cambia; sus shipments quedan).
+    Si la regla lo impide, el diálogo dice por qué ("This change can't be made") y no envía nada.
+  "+ Add user" abre el panel lateral del mockup (rail) con dos pestañas:
+    - "Already in monday": buscador con TODOS los usuarios de la cuenta de monday; primero los
+      que se pueden elegir; los que ya están en la lista, los invitados (guests) y los
+      desactivados aparecen en gris con su etiqueta. Se elige el rol → "Add user".
+    - "Invite by email": Name + Email + rol → "Send invitation". monday le manda la invitación
+      como Member de monday (ocupa licencia; los guests no pueden usar la app). Si el email ya es
+      de monday, no se invita de nuevo. Puede entrar cuando acepta la invitación.
+    En los dos casos se crea el item en la Access List con Status Active, Role, User ID, Email y
+    Person.
+  Reglas (las verifica el servidor contra el tablero en vivo, en cada pedido):
+    - solo un Admin Active puede usar /api/users (si no: 403 "Only admins can manage users.");
+    - nadie puede quitarse su propio acceso ni su rol de Admin;
+    - la lista nunca queda sin un Admin Active;
+    - no se agrega dos veces a la misma persona (por User ID o por email).
+  Registro: cada cambio deja un update (comentario) en el item del usuario:
+    "Role changed from Member to Admin — by <admin> (Users & access, Allocation Matrix app)."
+  Rige al instante en ese servidor y en <= 30 s en todos (caché de la lista blanca).
+  API: GET /api/users -> { rows, account, me } · POST { action: add | invite | role | status }.
+  Monday API: invite_users(emails, user_role: MEMBER) · create_item · change_multiple_column_values
+  · create_update · users(limit:500) + users(non_active:true) (se ocultan las cuentas borradas
+  "...@deleted.user"). Requiere que el dueño del token sea admin de la cuenta de monday (lo es).
+  En monday Vibe: misma pantalla y mismas reglas, escribiendo con monday.api (el usuario tiene que
+  ser admin de monday para invitar).
+
+12.2 Aviso al salir con shipments sin guardar (beforeunload) dentro de monday — probado en
+Chrome 154 con la app en un iframe de otro dominio (como monday):
+  - Recargar la pestaña de monday (F5), cerrarla o ir a otra URL -> el navegador PREGUNTA.
+  - Cambiar a otro tablero/vista dentro de monday (monday saca el iframe de la página) -> NO
+    pregunta: el navegador no lo permite en ese caso.
+  - Solo pregunta si el usuario hizo clic dentro de la app (siempre ocurre al armar un shipment).
+  - El texto del aviso es del navegador; no se puede cambiar.
+
 
 --------------------------------------------------------------------------------
  HISTORIAL
@@ -637,5 +684,8 @@ lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
             Remaining; Save verde; chequeo de concurrencia y guardado sin duplicados; fecha local.
 2026-10-01  Escrituras en tandas de 50; menú flotante; Copy junto a New shipment; estado saved;
             contador de shipments; chequeo de columnas al cargar; encabezado Impossible legible.
+2026-10-01  USERS & ACCESS (solo Admin): alta de usuarios de monday o invitación por email, Role y
+            App access con confirmación, reglas en el servidor, registro en updates. Celular: la
+            página ya no se ensancha (menú y barra superior). Prueba de beforeunload en iframe.
 2026-10-01  UX: controles del shipment junto al estado, iconos SVG, menú en portal, fecha en inglés,
             selección al editar, leyenda más marcada, aviso al cerrar con cambios; npm run ui-check.
