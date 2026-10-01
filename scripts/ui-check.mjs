@@ -79,6 +79,7 @@ async function run() {
     await sleep(200);
 
     check(`no horizontal page scroll ${tag}`, await ev(`return document.documentElement.scrollWidth <= innerWidth + 1`));
+    check(`column resize handles have no tooltip ${tag}`, await ev(`const h=document.querySelectorAll(".col-rs"); return h.length > 0 && [...h].every(x => !x.dataset.tip && !x.title)`));
     check(`no help (?) cursor anywhere ${tag}`, await ev(`return [...document.querySelectorAll("*")].every(e => getComputedStyle(e).cursor !== "help")`));
     const head = JSON.parse(await ev(`const h=document.querySelector("th.hend"), f=document.querySelector(".mx-scroll"); const fr=f.getBoundingClientRect(), r=h.getBoundingClientRect();
       return JSON.stringify({ fits: [...h.querySelectorAll(".t,.m")].every(x => x.scrollWidth <= x.clientWidth), inside: r.right <= fr.left + f.clientWidth + 0.5 })`));

@@ -372,7 +372,8 @@ sticky: .s1 300px + .s2 290px).
   "Nothing to show here." / "No row matches this filter — switch back to Everything."
 
 6.5b Columnas ajustables (como monday): cada encabezado tiene una manija en su borde derecho;
-  arrastrarla agranda o achica la columna; doble clic vuelve al ancho por defecto. Anchos por
+  arrastrarla agranda o achica la columna; doble clic vuelve al ancho por defecto. Sin cartel
+  (tooltip) sobre la manija: solo el cursor de redimensionar y la línea azul al pasar. Anchos por
   defecto: bloque 300 + 290, fuentes 120, Impossible 128 (mínimos 180 / 220 / 72 / 108). La tabla se
   arma con <colgroup> y table-layout: fixed; nunca es más angosta que el marco. Los anchos se
   recuerdan en el navegador (localStorage "etoile-col-widths").

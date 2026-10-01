@@ -111,7 +111,7 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
   const tableWidth = keys.reduce((a, k) => a + cw.widthOf(k), 0);
   const Resizer = ({ k, left = false }) => (
     <span className={`col-rs ${left ? "left" : ""}`} role="separator" aria-orientation="vertical" aria-label="Resize column"
-      onPointerDown={(e) => cw.startResize(k, e, left)} onDoubleClick={() => cw.reset(k)} data-tip="Drag to resize · double-click to reset" />
+      onPointerDown={(e) => cw.startResize(k, e, left)} onDoubleClick={() => cw.reset(k)} />
   );
 
   let empty = null;
