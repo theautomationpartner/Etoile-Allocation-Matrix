@@ -33,7 +33,15 @@ export function useMatrixData() {
   const [error, setError] = useState("");
   const dataRef = useRef(data);
 
-  const load = useCallback(async () => {
+  // One load at a time: a second call while one is running reuses it (no duplicate monday reads, and a
+  // late duplicate response can never overwrite what the user did meanwhile).
+  const inFlight = useRef(null);
+  const load = useCallback(() => {
+    if (!inFlight.current) inFlight.current = runLoad().finally(() => { inFlight.current = null; });
+    return inFlight.current;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runLoad = async () => {
     setStatus(dataRef.current ? "refreshing" : "loading");
     setError("");
     try {
@@ -49,7 +57,7 @@ export function useMatrixData() {
       setStatus(dataRef.current ? "ready" : "error");
       return false;
     }
-  }, []);
+  };
 
   useEffect(() => {
     const cached = dataRef.current;

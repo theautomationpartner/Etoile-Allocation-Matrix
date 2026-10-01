@@ -163,3 +163,49 @@ Sobre "modificar un shipment": los shipments guardados se cargan solos desde mon
 Shipments de su orden; ahí se cambian cantidades, fecha, nombre o filas y "Save" actualiza el mismo
 item (no crea otro). Ahora además la orden muestra "· <n> shipments" y cada shipment "saved <fecha>".
 
+
+--------------------------------------------------------------------------------
+ 8. REVISIÓN DE UX/UI (3ª revisión) — encontrado, corregido y cómo queda probado
+--------------------------------------------------------------------------------
+Chequeo automático visual: npm run ui-check (con npm run dev corriendo). Abre la app en un navegador
+real a 1200 y 1440 px, crea un shipment LOCAL (nunca guarda) y hace 39 verificaciones. Falla si
+vuelve cualquiera de estos problemas, y nunca se queda colgado (corta a los 4 minutos).
+Resultado actual: 39/39 en 4 corridas seguidas.
+
+U-01 Ícono "···" descentrado (los puntos se veían "subidos"): era un carácter de texto con
+     padding asimétrico → ahora es un ícono dibujado; el check mide que esté centrado (±1 px).
+U-02 Ship date · Save · ··· al extremo derecho, lejos de lo que modifican → ahora siguen al estado
+     ("not saved yet"), separados por un divisor; el check mide la separación (8–40 px), que estén
+     en la misma línea, a la misma altura (28 px) y alineados (±1 px).
+U-03 Menú "···" estirado hasta el borde y, a veces, tapado por las filas fijas de la tabla →
+     ahora es un panel compacto dibujado sobre toda la página (portal); el check verifica que se
+     vea entero, esté por encima de todo y mida ≤ 260 px.
+U-04 El menú se cerraba solo si la página se movía un poco al hacer clic → ahora sigue al botón al
+     hacer scroll y solo se cierra si el botón sale de pantalla, con clic afuera o Esc.
+U-05 Renombrar: el nombre no quedaba seleccionado (al escribir se agregaba al final) → corregido;
+     el check verifica foco + texto completo seleccionado.
+U-06 Cantidades: al hacer clic se selecciona el número (se escribe encima); campo numérico de texto:
+     sin flechitas, teclado numérico en celular, solo dígitos.
+U-07 Fecha: el campo nativo mostraba "dd/mm/aaaa" (idioma del sistema, español) → ahora se muestra
+     en inglés ("Set a date" / "21 Dec 2026") y abre el calendario del navegador; "×" la borra.
+     (El calendario desplegable en sí sigue el idioma del navegador; no se puede cambiar.)
+U-08 Encabezados de la tabla del shipment cortados ("Remai… to") → pueden ocupar dos líneas.
+U-09 Leyenda: números (700) y textos (500) un poco más marcados; sin espacio antes del punto en
+     "…click Allocate.".
+U-10 Save con estados claros: "Save" (verde) · "Saving…" con indicador · "✓ Saved".
+U-11 Lápiz al pasar sobre el nombre del shipment (se entiende que es editable).
+U-12 Cerrar o recargar la pestaña con shipments sin guardar → el navegador pregunta antes.
+U-13 Dos cargas de monday a la vez (doble clic en Refresh) → ahora se hace una sola; además evita
+     que una respuesta tardía pise un shipment recién creado.
+U-14 El check confirmó que el aviso "Leave site?" aparece al salir con un shipment sin guardar.
+
+Sugerencias para más adelante (no implementadas; decidir):
+- S-1 Contraste: el gris chico del mockup (#8B929C sobre blanco) queda debajo del mínimo de
+      accesibilidad (WCAG AA) para textos de 11 px. Oscurecerlo un poco mejora la lectura, pero
+      cambia la paleta del mockup.
+- S-2 En órdenes largas (EIVR114 tiene 56 líneas) fijar la fila de la orden arriba al hacer scroll.
+- S-3 Elegir columnas visibles / mostrar solo las fuentes que usa la orden (TBD-22).
+- S-4 "Deshacer" en el aviso al quitar una fila o borrar un shipment.
+- S-5 Atajo de teclado Ctrl/Cmd + S para guardar el shipment abierto.
+- S-6 Modo compacto (filas más bajas) para pantallas chicas.
+

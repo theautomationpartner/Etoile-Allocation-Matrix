@@ -90,27 +90,55 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 /* Shipment header: click the name to rename; bigger "···" menu; Save in a subtle green. */
 .shn-edit { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); padding: 2px 6px; margin: -2px -6px; border-radius: 5px; border: 1px dashed transparent; cursor: text; }
 .shn-edit:hover { border-color: var(--ink-3); background: var(--surface); }
-.shc-in .shm { font-size: 18px; font-weight: 700; letter-spacing: 1px; line-height: 1; padding: 3px 9px 7px; min-width: 34px; min-height: 28px; border-radius: 6px; border: 1px solid transparent; color: var(--ink-2); }
-.shc-in .shm:hover, .shc-in .shm[aria-expanded="true"] { border-color: var(--line); background: var(--surface); color: var(--ink); }
 .btn.save { color: var(--ink-3); }
 .btn.save.dirty { background: var(--wh-t); border-color: var(--wh-b); color: var(--wh); font-weight: 600; }
 .btn.save.dirty:hover:not(:disabled) { background: color-mix(in srgb, var(--wh) 16%, var(--surface)); color: var(--wh); border-color: var(--wh); }
 
 /* Trash right next to "Remaining to ship". */
-.mx .nn.n4 .rm-slot { flex: 0 0 30px; display: grid; place-items: center; padding: 0; }
+.mx .nn.n4 .rm-slot { flex: 0 0 26px; display: grid; place-items: center; padding: 0; }
+/* Shipment table header: labels may take two lines — never clipped. */
+.mx tr.shth td { height: auto; padding-top: 6px; padding-bottom: 6px; }
+.mx tr.shth .nn.n4 span { white-space: normal; line-height: 1.25; overflow: visible; }
+/* Legend tip: no gap between "Allocate" and the full stop. */
+.mx-hint .k.tip { display: inline; }
 
 /* Order tabs: "Copy remaining to ship" sits right after "+ New shipment". */
 .otabs { width: auto !important; max-width: none !important; }
 .otabs .copy { margin: 0 0 6px 8px !important; }
 
 /* Shipment "···" menu: a floating panel above the table (never clipped by it). */
-.mnu-p.float { position: fixed; z-index: 120; min-width: 190px; }
+.mnu-p.float { position: fixed; z-index: 120; min-width: 190px; width: max-content; right: auto; }
 .mnu-p.float button { font-size: 13px; padding: 9px 12px; }
 
 /* Saved state of a shipment, next to its units. */
 .gh .m .ships { color: var(--it); font-weight: 600; }
 .shs .saved { color: var(--wh); font-weight: 600; }
 .shs .unsaved { color: var(--po); font-weight: 600; }
+
+/* Shipment header controls: right after the status, separated by a divider, all 28px high. */
+.shc-in { flex-wrap: wrap; row-gap: 6px; }
+.shc-in .sh-controls { display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; padding-left: 14px; border-left: 1px solid var(--line); flex: none; }
+.shc-in .shd { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: 11.5px; color: var(--ink-3); }
+.shc-in .date-field { position: relative; display: inline-flex; align-items: center; }
+.shc-in .date-btn { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.shc-in .date-btn.empty { color: var(--ink-3); }
+.shc-in .date-btn:hover { border-color: var(--ink-3); }
+.shc-in .date-btn:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+.shc-in .date-clear { margin-left: 4px; width: 20px; height: 20px; border-radius: 50%; color: var(--ink-3); font-size: 15px; line-height: 1; display: inline-grid; place-items: center; }
+.shc-in .date-clear:hover { background: var(--gap-t); color: var(--gap); }
+.shc-in .date-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.shc-in .btn.save { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; }
+.shc-in .shm { width: 30px; height: 28px; display: inline-grid; place-items: center; padding: 0; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); }
+.shc-in .shm:hover, .shc-in .shm[aria-expanded="true"] { border-color: var(--ink-3); color: var(--ink); background: var(--surface-2); }
+.shc-in .sh-err { flex-basis: 100%; margin: 0 0 0 26px; }
+.shn-edit { display: inline-flex; align-items: center; gap: 5px; }
+.shn-edit .ico-edit { opacity: 0; color: var(--ink-3); transition: opacity .12s; }
+.shn-edit:hover .ico-edit, .shn-edit:focus-visible .ico-edit { opacity: 1; }
+.mx tr.shr:hover td { background: var(--surface-2); }
+
+/* Legend: numbers and labels a touch bolder, easier to read at a glance. */
+.mx-hint .sw { font-weight: 700; }
+.mx-hint .k { font-weight: 500; color: var(--ink-2); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

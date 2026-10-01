@@ -555,6 +555,22 @@ allocation.
   - Nombre del shipment: máximo 60 caracteres.
   - Sin cursor de ayuda ("?") en ninguna parte.
 
+11.8b Pulido de la cabecera del shipment y de los campos
+  - Orden: ▼ · nombre (botón; lápiz al pasar) · "Draft" · "<u> / <To ship> units" + estado · avisos ·
+    divisor vertical · "Ship date" · campo de fecha · "Save" · "···". Todos los controles miden 28 px
+    de alto y quedan alineados. El error del guardado va en una línea propia, debajo.
+  - Campo de fecha: botón que muestra la fecha en inglés ("Set a date" / "21 Dec 2026") y abre el
+    calendario nativo (input type=date oculto + showPicker()); "×" borra la fecha.
+  - Íconos dibujados (SVG) para "···", "✓ Saved" y el indicador de "Saving…".
+  - Menú "···": se dibuja en <body> (portal) para quedar sobre la tabla; sigue al botón al hacer
+    scroll; se cierra con clic afuera, Esc, o si el botón sale de pantalla.
+  - Rename: foco + nombre completo seleccionado (se vuelve a aplicar la selección después del foco).
+  - Cantidades: input type="text" inputMode="numeric" (solo dígitos); al enfocar se selecciona.
+  - Encabezados de la tabla del shipment: pueden ocupar dos líneas, nunca cortados.
+  - Leyenda: números 700, textos 500.
+  - Cerrar/recargar la pestaña con shipments sin guardar: aviso del navegador (beforeunload).
+  - Una sola carga de monday a la vez (una segunda llamada reutiliza la que está en curso).
+
 11.9 Protecciones
   - Al cargar, la app verifica que existan en monday TODAS las columnas que usa (11 tableros). Si
     falta alguna: "Monday is missing column <id> on <tablero>. The figures can't be calculated
@@ -621,3 +637,5 @@ lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
             Remaining; Save verde; chequeo de concurrencia y guardado sin duplicados; fecha local.
 2026-10-01  Escrituras en tandas de 50; menú flotante; Copy junto a New shipment; estado saved;
             contador de shipments; chequeo de columnas al cargar; encabezado Impossible legible.
+2026-10-01  UX: controles del shipment junto al estado, iconos SVG, menú en portal, fecha en inglés,
+            selección al editar, leyenda más marcada, aviso al cerrar con cambios; npm run ui-check.

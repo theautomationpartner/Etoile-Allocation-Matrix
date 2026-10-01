@@ -14,7 +14,7 @@ export function Legend({ totals }) {
       <span className="k"><span className="sw po">{v(t.po)}</span> from a purchase order</span>
       <span className="k"><span className="sw dr">{v(t.draft)}</span> draft · proposed, not allocated</span>
       <span className="k"><span className="sw av">{v(t.free)}</span> free, not assigned yet</span>
-      <span className="k" style={{ marginLeft: "auto" }}>Open a draft or a grey number, check it, then click <b style={{ color: "var(--ink)" }}>Allocate</b>.</span>
+      <span className="k tip" style={{ marginLeft: "auto" }}>Open a draft or a grey number, check it, then click <b style={{ color: "var(--ink)" }}>Allocate</b>.</span>
     </div>
   );
 }

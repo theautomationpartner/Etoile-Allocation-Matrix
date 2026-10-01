@@ -13,6 +13,7 @@ npm install
 cp .env.example .env.local   # then set MONDAY_TOKEN
 npm run dev                  # http://localhost:5173
 npm test                     # engine tests
+npm run ui-check             # visual/usability regression checks (needs npm run dev running)
 ```
 
 ## Layout

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { clock } from "../../lib/format.js";
 import { buildOrderMatrix } from "../../lib/matrix.js";
 import { rowMatchesSearch } from "../../lib/search.js";
@@ -14,6 +14,14 @@ import { fetchWrite } from "../../lib/mondayWrites.js";
 // Wholesale order view. Step 4: shipments (Shipments tab of each order). Step 3 (allocation editor) is pending.
 export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData }) {
   const shipments = useShipments({ data, model, write: fetchWrite, toast, patchData });
+
+  // Closing or reloading the tab with unsaved shipments: the browser asks first.
+  useEffect(() => {
+    if (!shipments.hasUnsaved) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [shipments.hasUnsaved]);
 
   // Refresh reloads everything from monday: with unsaved shipments it asks for a second click first.
   const armed = useRef(0);
