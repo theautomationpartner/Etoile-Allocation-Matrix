@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmt, dayMonth, dayMonthYear } from "../lib/format.js";
 import { orderParts } from "../lib/matrix.js";
-import { lateUnits, leftToShip, maxFor, nextShip, remainingAfter, shipSplit, shipUnits, trimShips } from "../lib/shipments.js";
+import { lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, remainingAfter, shipSplit, shipUnits, trimShips } from "../lib/shipments.js";
+import { mondayApi } from "../config.js";
 import { deleteShipment, linkLines, saveShipment } from "../lib/shipmentsSync.js";
 import { containerCode } from "../lib/matrix.js";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => localToday();
 
 // Step 4 — shipments of every open order (PDF §16): loaded from monday, edited locally, saved with "Save".
 export function useShipments({ data, model, write, toast, patchData }) {
@@ -183,6 +184,15 @@ export function useShipments({ data, model, write, toast, patchData }) {
       if (over.length) return setUi((u) => ({ ...u, errors: { ...u.errors, [shipId]: `More units than allocated for ${over.join(", ")}. Lower them before saving.` } }));
       setUi((u) => ({ ...u, saving: { ...u.saving, [shipId]: true }, errors: { ...u.errors, [shipId]: "" } }));
       try {
+        // §10 concurrency: someone else may have saved shipments of this order since the page was loaded.
+        const latest = (await mondayApi.loadShipments()).filter((s) => s.orderId === String(orderId))
+          .map((s) => ({ mondayId: s.mondayId, qty: s.lines.reduce((m, l) => ({ ...m, [l.sku]: (m[l.sku] || 0) + l.qty }), {}) }));
+        const local = ships.filter((s) => s.id !== shipId && !s.mondayId); // unsaved ones of this user count too
+        const conflict = overShipped([...latest, ...local], sh, (k) => allocatedOf(orderId, k));
+        if (conflict.length) {
+          const c = conflict[0];
+          throw new Error(`${c.sku}: ${fmt(c.others)} units are already in other shipments in Monday and only ${fmt(c.allocated)} are allocated. Someone else may have changed this order — refresh and try again.`);
+        }
         const order = orderInfo(orderId);
         const ctx = {
           order,
@@ -198,6 +208,8 @@ export function useShipments({ data, model, write, toast, patchData }) {
         persistSaved(orderId, savedShip);
         toast(`${sh.name} saved to Monday.`);
       } catch (e) {
+        // Keep what was already created in monday so a retry updates it instead of duplicating it.
+        if (e.partial?.mondayId) update(orderId, (cur) => cur.map((s) => (s.id === shipId ? { ...s, mondayId: e.partial.mondayId, subIds: e.partial.subIds, dirty: true } : s)));
         setUi((u) => ({ ...u, errors: { ...u.errors, [shipId]: `Not saved: ${e.message}` } }));
       } finally {
         setUi((u) => ({ ...u, saving: { ...u.saving, [shipId]: false } }));

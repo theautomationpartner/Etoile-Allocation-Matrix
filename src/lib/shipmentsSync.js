@@ -13,7 +13,19 @@ const now = () => {
 
 // ctx: { order: { id, number, toShip }, lineOf(sku) → { lineId, ledgerItemId, allocated, productName },
 //        remaining(sku), splitText(sku) }
+// If a write fails half-way, the error carries `partial` ({ mondayId, subIds }) with what already exists in
+// monday, so a retry updates those items instead of creating duplicates.
 export async function saveShipment(write, ship, ctx) {
+  const done = { mondayId: ship.mondayId, subIds: { ...(ship.subIds || {}) } };
+  try {
+    return await saveSteps(write, ship, ctx, done);
+  } catch (error) {
+    error.partial = done;
+    throw error;
+  }
+}
+
+async function saveSteps(write, ship, ctx, done) {
   const c = NS.col, sc = NS.subCol;
   const units = ship.skus.reduce((a, k) => a + (ship.qty[k] || 0), 0);
   const itemName = `${ctx.order.number} · ${ship.name}`;
@@ -31,6 +43,7 @@ export async function saveShipment(write, ship, ctx) {
     await write("updateShipment", { i: mondayId, v: JSON.stringify({ name: itemName, ...values }) });
   } else {
     mondayId = String((await write("createShipment", { n: itemName, v: JSON.stringify(values) })).create_item.id);
+    done.mondayId = mondayId;
   }
 
   const subIds = {};
@@ -51,11 +64,14 @@ export async function saveShipment(write, ship, ctx) {
     } else {
       const name = `${sku} - ${line?.productName || sku}`;
       subIds[sku] = String((await write("createShipmentLine", { p: mondayId, n: name, v })).create_subitem.id);
+      done.subIds[sku] = subIds[sku];
     }
   }
   // Rows removed from the shipment (§16.3 "Quitar una fila"): their subitems go too.
   for (const [sku, id] of Object.entries(ship.subIds || {})) {
-    if (!ship.skus.includes(sku)) await write("deleteShipmentItem", { i: id });
+    if (ship.skus.includes(sku)) continue;
+    await write("deleteShipmentItem", { i: id });
+    delete done.subIds[sku];
   }
   return { mondayId, subIds };
 }

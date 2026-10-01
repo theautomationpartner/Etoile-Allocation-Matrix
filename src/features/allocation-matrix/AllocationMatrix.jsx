@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { clock } from "../../lib/format.js";
 import { buildOrderMatrix } from "../../lib/matrix.js";
 import { rowMatchesSearch } from "../../lib/search.js";
@@ -11,9 +11,20 @@ import { useShipments } from "../../hooks/useShipments.js";
 import { fetchWrite } from "../../lib/mondayWrites.js";
 
 // Allocation matrix screen (§3). Step 1: metrics + Show filters + search. Step 2: the matrix in the
-// Wholesale order view. Step 3 (allocation editor) and step 4 (shipments) come next.
+// Wholesale order view. Step 4: shipments (Shipments tab of each order). Step 3 (allocation editor) is pending.
 export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData }) {
   const shipments = useShipments({ data, model, write: fetchWrite, toast, patchData });
+
+  // Refresh reloads everything from monday: with unsaved shipments it asks for a second click first.
+  const armed = useRef(0);
+  const refresh = () => {
+    if (shipments.hasUnsaved && Date.now() - armed.current > 6000) {
+      armed.current = Date.now();
+      return toast("Some shipments are not saved yet. Click Refresh again to discard those changes and reload.");
+    }
+    armed.current = 0;
+    onRefresh();
+  };
   const [filter, setFilter] = useState("all"); // §15.1: one filter at a time
   const [open, setOpen] = useState({}); // group open/closed, kept while the page is open (§3)
   const ready = Boolean(model);
@@ -47,13 +58,13 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
         <div className="note warn" role="alert">
           <b>{ready ? "Refresh failed." : "Monday could not be read."}</b> {error}
           {ready && ` Showing the figures loaded at ${clock(data.loadedAt)}.`}{" "}
-          <button type="button" className="btn" onClick={onRefresh}>Try again</button>
+          <button type="button" className="btn" onClick={refresh}>Try again</button>
         </div>
       )}
 
       <div className="kpi-bar">
         <span className="fresh" aria-live="polite">{fresh}</span>
-        <button type="button" className="btn refresh" onClick={onRefresh} disabled={busy}
+        <button type="button" className="btn refresh" onClick={refresh} disabled={busy}
           title="Read every board again from Monday and recalculate all figures">
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className={busy ? "spin" : ""}>
             <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3" />

@@ -371,6 +371,14 @@ sticky: .s1 300px + .s2 290px).
 6.5 Filtros: se aplican a las filas; un grupo sin filas visibles se oculta. Vacío:
   "Nothing to show here." / "No row matches this filter — switch back to Everything."
 
+6.5b Columnas ajustables (como monday): cada encabezado tiene una manija en su borde derecho;
+  arrastrarla agranda o achica la columna; doble clic vuelve al ancho por defecto. Anchos por
+  defecto: bloque 300 + 290, fuentes 116, Impossible 104 (mínimos 180 / 220 / 72 / 84). La tabla se
+  arma con <colgroup> y table-layout: fixed; nunca es más angosta que el marco. Los anchos se
+  recuerdan en el navegador (localStorage "etoile-col-widths").
+  La columna "Impossible / needs a PO" queda fija al borde derecho (sticky right), siempre
+  completa; su manija está en el borde izquierdo.
+
 6.6 Pie .mx-foot: "<n> orders · <m> rows" · "Suggested order: warehouse first when it
   covers at least half of the line — then the container arriving soonest, then a
   purchase order." · si hay huérfanas, en rojo "<n> units point to a source that is no
@@ -392,6 +400,9 @@ sticky: .s1 300px + .s2 290px).
 - Refresh fallido: se conservan las cifras; "Refresh failed. … Showing the figures loaded
   at HH:MM." + "Try again".
 - Refresh correcto: toast "Figures recalculated with fresh data from Monday.".
+- Refresh con shipments sin guardar: primer clic avisa "Some shipments are not saved yet. Click
+  Refresh again to discard those changes and reload."; un segundo clic (en 6 s) recarga.
+- "Hoy" es la fecha LOCAL del usuario (no UTC) para el mínimo del Ship date.
 - Accesibilidad: tarjetas clickeables role="button" + teclado (Enter/Espacio);
   aria-pressed en chips; foco visible.
 
@@ -467,13 +478,17 @@ allocation.
   cancel date" · error en rojo (.ap-err) · "Ship date" (input date, mínimo hoy) · botón
   "Save" (.btn.on cuando hay cambios; "Saving…"; "Saved" deshabilitado si no hay cambios)
   · menú "···" con "Rename" y "Delete shipment" (segundo clic "Click again to delete" confirma).
+  El nombre es un botón: clic → campo editable con el texto seleccionado (se sobrescribe al
+  escribir). "Save" va en verde sutil (--wh-t / --wh-b / --wh) cuando hay cambios. El "···" es un
+  botón de al menos 34×28 px.
 
 11.4 Tabla del shipment: encabezado tr.shth "SKU · Product name" · "Order qty" · "Allocated" ·
   "To ship in this shipment" · "Remaining to ship" · las mismas columnas de fuente de la matriz.
   Fila tr.rw.shr (.zero si qty 0, atenuada): SKU - producto en negrita · Order qty (US Qty
   Outstanding) · Allocated (de la línea) · input numérico .qin · Remaining to ship · celdas con
   el reparto por fuente (.cl.a.<fuente>; .cl.a.lt en rojo si esa fuente llega después del Ship
-  date) · botón papelera .rmx para quitar la fila.
+  date). La papelera .rmx para quitar la fila va dentro del bloque de números, inmediatamente a
+  la derecha de "Remaining to ship" (no al final de la fila).
 
 11.5 Cálculos
   To ship in this shipment: lo escribe el usuario; máximo = Allocated − Σ de ese SKU en los
@@ -502,7 +517,12 @@ allocation.
   Quitar fila: "<SKU> removed from <Shipment>. <n> units are back in "remaining to ship"."
   Delete shipment: borra el item en monday (va a la papelera) y actualiza las conexiones →
     "<Shipment> deleted. Its <n> units are back in "remaining to ship"."
-  Save: valida que por SKU Σ en todos los shipments ≤ Allocated; crea o actualiza el item,
+  Save: valida que por SKU Σ en todos los shipments ≤ Allocated, y además RELEE de monday los
+    shipments guardados de esa orden (otra persona pudo guardar mientras tanto); si se pasaría:
+    "<SKU>: <n> units are already in other shipments in Monday and only <n> are allocated.
+    Someone else may have changed this order — refresh and try again." Si la escritura se corta a
+    mitad de camino, la app recuerda lo ya creado y el reintento lo actualiza (sin duplicados).
+    Crea o actualiza el item,
     crea/actualiza un subitem por fila, borra los subitems de filas quitadas y reescribe las
     conexiones de las líneas involucradas → "<Shipment> saved to Monday." Si falla, el error
     queda en rojo en el encabezado y el shipment sigue sin guardar.
@@ -575,3 +595,5 @@ lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
             no autorizado; usuario arriba a la derecha; People en la línea al guardar shipments.
 2026-10-01  Ship Date pasa a date_mm7qv5p6 (date4 eliminada por el cliente); Owner (person) del
             subitem del shipment = quién guardó.
+2026-10-01  Columnas ajustables; Impossible fijo a la derecha; rename con clic; papelera junto a
+            Remaining; Save verde; chequeo de concurrencia y guardado sin duplicados; fecha local.

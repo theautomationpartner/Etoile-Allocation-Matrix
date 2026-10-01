@@ -60,3 +60,17 @@ test("next shipment number and column ids", () => {
   assert.equal(colIdOf({ stage: "warehouse", sourceId: "x" }), "warehouse");
   assert.equal(colIdOf({ stage: "po", sourceId: 12 }), "12");
 });
+
+test("today is the local date, not the UTC one", async () => {
+  const { localToday } = await import("../src/lib/shipments.js");
+  const lateEvening = new Date(2026, 9, 1, 23, 30); // 1 Oct 2026, 23:30 local time
+  assert.equal(localToday(lateEvening), "2026-10-01");
+});
+
+test("saving is blocked when other saved shipments already use the allocation (concurrency)", async () => {
+  const { overShipped } = await import("../src/lib/shipments.js");
+  const mine = { mondayId: "A", skus: ["EC0450"], qty: { EC0450: 200 } };
+  const saved = [{ mondayId: "A", qty: { EC0450: 50 } }, { mondayId: "B", qty: { EC0450: 150 } }];
+  assert.deepEqual(overShipped(saved, mine, () => 300), [{ sku: "EC0450", others: 150, mine: 200, allocated: 300 }]);
+  assert.deepEqual(overShipped(saved, mine, () => 400), []);
+});

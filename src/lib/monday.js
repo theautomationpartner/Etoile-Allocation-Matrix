@@ -244,5 +244,5 @@ export function createMondayApi(transport = fetchTransport) {
     return { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
   }
 
-  return { loadMatrixData, loadLedger };
+  return { loadMatrixData, loadLedger, loadShipments };
 }

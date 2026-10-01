@@ -17,7 +17,7 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
 
   if (!ships.length) {
     return (
-      <tr className="shnote">
+      <tr className="shnote sticky-note">
         <td colSpan={nCol}>
           <div>No shipments yet. <b>Copy remaining to ship</b> brings in every allocated unit, or start from <b>+ New shipment</b> and fill in quantities.</div>
         </td>
@@ -39,14 +39,14 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
             <div className="shc-in">
               <button type="button" className="cv" onClick={() => a.toggleShip(sh.id)} aria-label={opened ? "Collapse" : "Expand"}>{opened ? "▼" : "▶"}</button>
               {S.ui.rename === sh.id ? (
-                <input className="shname" defaultValue={sh.name} autoFocus
+                <input className="shname" defaultValue={sh.name} autoFocus onFocus={(e) => e.target.select()} aria-label="Shipment name"
                   onBlur={(e) => a.finishRename(orderId, sh.id, e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
                     if (e.key === "Escape") a.finishRename(orderId, sh.id, "", true);
                   }} />
               ) : (
-                <b className="shn">{sh.name}</b>
+                <button type="button" className="shn shn-edit" onClick={() => a.startRename(sh.id)} title="Click to rename">{sh.name}</button>
               )}
               <span className="badge">Draft</span>
               <span className="shs"><b>{fmt(units)}</b> / {fmt(order.toShip)} units{sh.dirty ? " · not saved yet" : ""}</span>
@@ -58,12 +58,12 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
                 Ship date{" "}
                 <input type="date" value={sh.target || ""} min={S.today} onChange={(e) => a.setDate(orderId, sh.id, e.target.value)} />
               </label>
-              <button type="button" className={`btn ${sh.dirty ? "on" : ""}`} disabled={saving || !sh.dirty} onClick={() => a.save(orderId, sh.id)}
+              <button type="button" className={`btn save ${sh.dirty ? "dirty" : ""}`} disabled={saving || !sh.dirty} onClick={() => a.save(orderId, sh.id)}
                 title={sh.dirty ? "Save this shipment to Monday" : "Saved in Monday"}>
                 {saving ? "Saving…" : sh.dirty ? "Save" : "Saved"}
               </button>
               <span className="mnu">
-                <button type="button" className="shm" onClick={() => a.toggleMenu(sh.id)} aria-label="More actions">···</button>
+                <button type="button" className="shm" onClick={() => a.toggleMenu(sh.id)} aria-label="More actions" aria-expanded={S.ui.menu === sh.id} title="More actions">···</button>
                 {S.ui.menu === sh.id && (
                   <span className="mnu-p">
                     <button type="button" onClick={() => a.startRename(sh.id)}>Rename</button>
@@ -80,7 +80,7 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
           <>
             <tr className="shth">
               <td className="s1"><div className="rh">SKU · Product name</div></td>
-              <td className="s2"><div className="nn n4"><span>Order qty</span><span>Allocated</span><span>To ship in this shipment</span><span>Remaining to ship</span></div></td>
+              <td className="s2"><div className="nn n4"><span>Order qty</span><span>Allocated</span><span>To ship in this shipment</span><span>Remaining to ship</span><span className="rm-slot" aria-hidden="true" /></div></td>
               {cols.map((c) => <td key={c.id} className={`shcol ${c.k}`}><span>{c.label}</span><i>{c.meta || ""}</i></td>)}
               <td className="end" />
             </tr>
@@ -107,6 +107,11 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
                           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
                       </span>
                       <span className="n">{fmt(S.remainingOf(orderId, sh, sku))}</span>
+                      <span className="rm-slot">
+                        <button type="button" className="rmx" onClick={() => a.removeRow(orderId, sh.id, sku)} aria-label={`Remove ${sku} from ${sh.name}`} title={`Remove from ${sh.name}`}>
+                          <TrashIcon />
+                        </button>
+                      </span>
                     </div>
                   </td>
                   {cols.map((c) => {
@@ -118,11 +123,7 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
                       </td>
                     ) : <td key={c.id} className="cl" />;
                   })}
-                  <td className="end">
-                    <button type="button" className="rmx" onClick={() => a.removeRow(orderId, sh.id, sku)} aria-label={`Remove ${sku} from ${sh.name}`} title={`Remove from ${sh.name}`}>
-                      <TrashIcon />
-                    </button>
-                  </td>
+                  <td className="end" />
                 </tr>
               );
             })}

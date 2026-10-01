@@ -33,7 +33,8 @@ Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIB
    Si se aprieta Refresh con un shipment sin guardar, ese cambio se pierde (hay que guardar
    antes de refrescar).
    Pregunta: ¿avisar antes de refrescar, conservar los cambios sin guardar, o dejarlo así?
-   → Decisión:
+   → Decisión: 2026-10-01 — se avisa: el primer clic en Refresh muestra un mensaje y hace falta un
+     segundo clic para descartar los cambios.
 
 
 --------------------------------------------------------------------------------

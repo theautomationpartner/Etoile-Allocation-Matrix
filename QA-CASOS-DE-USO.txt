@@ -1,0 +1,133 @@
+================================================================================
+ ETOILE FLOW · ALLOCATION MATRIX — QA: CASOS DE USO, RESULTADOS Y ANÁLISIS
+================================================================================
+Fecha: 2026-10-01 · Rama: dev · Datos: monday etoile8 (reales)
+Cómo se verificó: [T] test automático (npm test, 28 tests) · [UI] navegador con clics reales
+· [API] llamadas reales a monday / al servidor · [C] revisión de código
+
+Resultado: PASA = funciona como el documento · CORREGIDO = fallaba y se arregló en esta
+revisión · ABIERTO = necesita una decisión (ver PREGUNTAS-PENDIENTES.txt)
+
+
+--------------------------------------------------------------------------------
+ 1. POR QUÉ HAY VENTAS EN ROJO
+--------------------------------------------------------------------------------
+Hoy "Impossible to cover" = 0: ninguna venta está en rojo por falta de mercadería. Todo el
+rojo que se ve es de la orden EIVR114 (SO-200279) — "29 lines to review" — y de las 2,413
+unidades del pie. Son DOS problemas de datos de las reservas, no de cálculo:
+
+A) 26 líneas con más reservado que lo que falta despachar ("reserved for … to ship · review")
+   La reserva se hizo por la cantidad PEDIDA y nunca se descontó cuando Cin7 despachó.
+   Ejemplos:
+     EC0388  reservado 1,192 · falta despachar 42   (pedido 1,200 · despachado 1,158)
+     EC0390  reservado 1,200 · falta despachar 159  (pedido 1,200 · despachado 1,041)
+     EC0389  reservado 2,000 · falta despachar 511  (pedido 2,000 · despachado 1,489)
+     EC0355  reservado   400 · falta despachar 103  (pedido 400 · despachado 297)
+   Consecuencia: la línea se ve cubierta (Allocated = lo que falta), pero esas reservas
+   "de más" siguen ocupando stock que en realidad ya salió. Por eso conviene revisarlas.
+   Cómo se arregla: el usuario abre la línea y reduce la reserva a lo que falta despachar
+   (punto 3, editor de allocation — pendiente). Decisión del cliente: no recortarlas
+   automáticamente.
+
+B) 6 líneas que perdieron su fuente ("lost its source · <n> units") — 2,413 unidades
+     EC0357 1,200 · EC0396 800 · EC0386 204 · EC0400 168 · EC0272 40 · EC0388 1
+   Estaban reservadas en un contenedor que se volvió a importar (FLEX-4119719 o
+   FLEX-4132795) y el contenedor nuevo ya no trae ese SKU, o en una PO que ya no tiene
+   pendiente. Esas unidades no cuentan como asignadas y vuelven a "Left".
+   Cómo se arregla: reasignar esas líneas a otra fuente (punto 3).
+
+Las otras órdenes:
+   EIVR118 y EIVR117 → totalmente asignadas (Left 0), sin avisos.
+   EIVR121 → 8 líneas, 1,810 unidades sin asignar; hay stock para todas (draft propuesto).
+   #ECUS28341 → 1 unidad sin asignar, con draft propuesto.
+   Estas no están en rojo: están "Needs allocation" (falta confirmar, punto 3).
+
+
+--------------------------------------------------------------------------------
+ 2. CORREGIDO EN ESTA REVISIÓN
+--------------------------------------------------------------------------------
+C-1 Ship Date: se guardaba en date4 (eliminada) → ahora date_mm7qv5p6. Sin esto Save fallaba.
+C-2 Fecha "hoy" en UTC: después de las 20:00 de Nueva York la app creía que ya era mañana y no
+    dejaba elegir la fecha del día → ahora usa la fecha local. [T]
+C-3 Dos personas editando la misma orden: cada una veía su copia y al guardar podían pasarse de
+    lo asignado entre las dos → antes de guardar se vuelve a leer monday y se bloquea con un
+    mensaje si se pasaría. [T]
+C-4 Guardado cortado a mitad de camino (red): al reintentar se creaba un shipment duplicado →
+    ahora se recuerda lo ya creado y el reintento lo actualiza. [C]
+C-5 Refresh con shipments sin guardar los perdía sin avisar → ahora pide un segundo clic. [C]
+C-6 Mensaje "No shipments yet…" desaparecía si la tabla estaba desplazada a la derecha → queda
+    fijo a la izquierda. [UI]
+C-7 Columna "Impossible / needs a PO" cortada → fija al borde derecho, siempre completa. [UI]
+C-8 Pedidos de usabilidad: clic en el nombre del shipment para renombrar (texto seleccionado);
+    papelera al lado de "Remaining to ship"; "···" más grande; Save en verde; columnas con
+    ancho ajustable arrastrando el borde (doble clic vuelve al ancho original; se recuerda). [UI]
+
+
+--------------------------------------------------------------------------------
+ 3. CASOS DE USO — SHIPMENTS
+--------------------------------------------------------------------------------
+S-01 "+ New shipment" con unidades pendientes → filas en 0, sin fecha ........... PASA [UI]
+S-02 "Copy remaining to ship" → cada fila con su remanente ......................... PASA [UI]
+S-03 Sin remanente → mensaje y no se crea nada ...................................... PASA [C]
+S-04 Cantidad mayor al máximo → queda en el máximo + mensaje ........................ PASA [T]
+S-05 Venta de 300: Shipment 1 = 200 y Shipment 2 = 400 → el 2 queda en 100 ........ PASA [T]
+S-06 Dos usuarios a la vez sobre la misma orden → bloqueado al guardar ......... CORREGIDO [T]
+S-07 Ship date anterior a hoy → bloqueado (fecha local) ......................... CORREGIDO [T]
+S-08 Ship date anterior a la llegada de una fuente usada → bloqueado, nombra la fuente  PASA [T]
+S-09 Cantidad que en parte llega después del Ship date → se baja esa parte ......... PASA [T]
+S-10 Ship date posterior a la cancel date → aviso rojo, se permite ................ ABIERTO (TBD-12)
+S-11 Renombrar: clic en el nombre; vacío conserva el anterior; Esc cancela ........ PASA [UI]
+S-12 Quitar una fila → unidades vuelven a "remaining"; al guardar se borra su subitem  PASA [API]
+S-13 Borrar shipment: sin guardar no toca monday; guardado → papelera + conexiones .. PASA [API]
+S-14 Falla de red a mitad del Save → sin duplicados al reintentar .............. CORREGIDO [C]
+S-15 Refresh con cambios sin guardar → segundo clic para descartar ............. CORREGIDO [C]
+S-16 Lo asignado de una línea baja por debajo de lo que tienen los shipments → se descuenta
+     desde el último shipment, con aviso; queda sin guardar ........................ PASA [T]
+S-17 Cin7 despacha la línea (Outstanding 0) → la línea sale de la matriz y su fila del
+     shipment se oculta ............................................................ ABIERTO (TBD-21)
+S-18 La orden pasa a Fulfilled → sus shipments dejan de verse (siguen en monday) ... ABIERTO
+S-19 Owner (subitem) y People (línea) = usuario verificado; varios usuarios se suman  PASA [API]
+S-20 Shipment sin filas → se puede guardar; muestra "Nothing in …" ................ PASA [C]
+S-21 Alguien borra el shipment directo en monday → desaparece al refrescar ....... PASA [API]
+     (Hoy 11:47 UTC se borró "EIVR118 · Shipment 1" en monday; la app lo refleja.)
+S-22 Alguien borra o cambia una columna en monday (caso date4) → Save falla con el error
+     en rojo en el encabezado; hay que actualizar el ID en la app .................. RIESGO
+     Recomendación: no borrar ni recrear columnas de los tableros que usa la app sin avisar.
+
+
+--------------------------------------------------------------------------------
+ 4. CASOS DE USO — MATRIZ Y MÉTRICAS
+--------------------------------------------------------------------------------
+M-01 Reservas por encima de lo que falta despachar → aviso rojo en la fila ........ PASA [T]
+M-02 Reservas sin fuente → "lost its source", vuelven a Left ....................... PASA [T]
+M-03 Contenedor llegado (Done) con warehouse < 50 % de la línea → sigue In-Transit .. PASA [T]
+M-04 Unidades de una PO ya en un contenedor no se cuentan dos veces (84 casos reales) PASA [API]
+M-05 Filtros, búsqueda y grupos vacíos ocultos ..................................... PASA [T]
+M-06 Columnas ajustables, ancho recordado, doble clic restablece ................ PASA [UI]
+M-07 Cache de 2 h + Refresh ......................................................... PASA [UI]
+M-08 Orden sin cancel date → "no cancel date"; al final en el orden de drafts ....... PASA [T]
+M-09 Subtotal de orden cerrada con detalle por SKU (tooltip) ........................ PASA [UI]
+M-10 Los números cambian solos entre un día y otro (Cin7 sincroniza 06:00 / 07:00 / 08:00
+     / 16:00 NY) → hay que refrescar o esperar la caché de 2 h ........................ PASA
+
+
+--------------------------------------------------------------------------------
+ 5. CASOS DE USO — SEGURIDAD
+--------------------------------------------------------------------------------
+A-01 URL abierta fuera de monday / incógnito → solo el mensaje de no acceso ......... PASA [API]
+A-02 Token falsificado / vencido / de otra cuenta / de otra app / invitado → 401 ...... PASA [T][API]
+A-03 Usuario Inactive o que no está en la Access List → 401 ........................ PASA [API]
+A-04 Usuario Active (admin) → entra y se ve arriba a la derecha ...................... PASA [UI]
+A-05 Revocar a alguien con la app abierta → bloqueo en la siguiente llamada (≤ 30 s) y
+     se borra su caché local ........................................................ PASA [C]
+A-06 Bypass de desarrollo en Vercel → ignorado ..................................... PASA [API]
+A-07 Escrituras fuera de las permitidas (otra operación / tablero / columna) → rechazadas PASA [API]
+A-08 Token de monday expira con la app abierta → se renueva solo .................... PASA [C]
+
+
+--------------------------------------------------------------------------------
+ 6. PENDIENTE DE DECISIÓN (además de PREGUNTAS-PENDIENTES.txt)
+--------------------------------------------------------------------------------
+- S-10: ¿bloquear Ship dates posteriores a la cancel date o solo avisar? (hoy avisa)
+- S-17 / S-18: qué pasa con un shipment cuando Cin7 despacha o la orden pasa a Fulfilled.
+- Punto 3 (editor de allocation): es lo que resuelve los avisos rojos de EIVR114.

@@ -84,3 +84,24 @@ export function trimShips(ships, sku, allocated) {
   }
   return { ships: next, cut };
 }
+
+// Today as YYYY-MM-DD in the user's own time zone (toISOString would give the UTC date, which in New York
+// is already "tomorrow" after 8 pm and would block shipping today).
+export function localToday(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Concurrency check before saving (§10): with the shipments of this order as they are in monday NOW
+// (someone else may have saved since the page was loaded), would this shipment go over what is allocated?
+// Returns the SKUs that would be over, with the numbers.
+export function overShipped(savedShips, ship, allocatedOf) {
+  const out = [];
+  for (const sku of ship.skus) {
+    const others = savedShips.filter((s) => s.mondayId !== ship.mondayId).reduce((a, s) => a + (s.qty[sku] || 0), 0);
+    const mine = ship.qty[sku] || 0;
+    const allocated = allocatedOf(sku);
+    if (others + mine > allocated) out.push({ sku, others, mine, allocated });
+  }
+  return out;
+}

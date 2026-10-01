@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { fmt, plural } from "../../lib/format.js";
 import { ShipmentsRows } from "./ShipmentsRows.jsx";
 import { Tooltip, useTooltip } from "../../components/Tooltip.jsx";
+import { useColumnWidths } from "../../hooks/useColumnWidths.js";
 
 const RULE = "Suggested order: warehouse first when it covers at least half of the line — then the container arriving soonest, then a purchase order.";
 
@@ -102,8 +103,16 @@ function rollTip(g, col, total, detail) {
 
 export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments }) {
   const { tip, handlers } = useTooltip();
+  const cw = useColumnWidths();
   const cols = matrix?.cols || [{ k: "wh", id: "warehouse", label: "Warehouse", meta: "on hand" }];
   const nCol = 2 + cols.length + 1;
+  // Column widths (resizable). The table is laid out from these widths; it never gets narrower than the frame.
+  const keys = ["s1", "s2", ...cols.map((c) => c.id), "end"];
+  const tableWidth = keys.reduce((a, k) => a + cw.widthOf(k), 0);
+  const Resizer = ({ k, left = false }) => (
+    <span className={`col-rs ${left ? "left" : ""}`} role="separator" aria-orientation="vertical" aria-label="Resize column"
+      onPointerDown={(e) => cw.startResize(k, e, left)} onDoubleClick={() => cw.reset(k)} data-tip="Drag to resize · double-click to reset" />
+  );
 
   let empty = null;
   if (status === "loading") empty = <><b style={{ display: "block", color: "var(--ink)", fontSize: 14, marginBottom: 4 }}>Loading from Monday…</b>Wholesale orders, warehouse stock, containers and purchase orders.</>;
@@ -114,11 +123,14 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
     <div className="mx-wrap" {...handlers}>
       <Tooltip tip={tip} />
       <div className="mx-scroll" onScroll={handlers.onMouseLeave}>
-        <table className="mx">
+        <table className="mx resizable" style={{ width: tableWidth, "--w-s1": `${cw.widthOf("s1")}px`, "--w-s2": `${cw.widthOf("s2")}px`, "--w-end": `${cw.widthOf("end")}px` }}>
+          <colgroup>
+            {keys.map((k) => <col key={k} style={{ width: cw.widthOf(k) }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th className="s1"><div className="hx"><div className="t">Wholesale order</div><div className="m">order · allocation · shipments</div></div></th>
-              <th className="s2"><div className="hn"><span>To ship</span><span>Allocated</span><span>Left</span></div></th>
+              <th className="s1"><div className="hx"><div className="t">Wholesale order</div><div className="m">order · allocation · shipments</div></div><Resizer k="s1" /></th>
+              <th className="s2"><div className="hn"><span>To ship</span><span>Allocated</span><span>Left</span></div><Resizer k="s2" /></th>
               {cols.map((c) => {
                 const w = c.cap?.total ? Math.min(100, Math.round((c.cap.committed / c.cap.total) * 100)) : 0;
                 return (
@@ -129,10 +141,11 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                       <div className="m">{c.meta}</div>
                       <div className="cap" data-tip={c.cap ? `${fmt(c.cap.committed)} of ${fmt(c.cap.total)} already committed` : ""}><i style={{ width: `${w}%` }} /></div>
                     </div>
+                    <Resizer k={c.id} />
                   </th>
                 );
               })}
-              <th className="hend"><div className="t">Impossible</div><div className="m">needs a PO</div></th>
+              <th className="hend"><Resizer k="end" left /><div className="t">Impossible</div><div className="m">needs a PO</div></th>
             </tr>
           </thead>
           <tbody>
