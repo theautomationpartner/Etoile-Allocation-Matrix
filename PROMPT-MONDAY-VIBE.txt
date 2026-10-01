@@ -442,13 +442,15 @@ allocation.
 11.1 Tablero 🔗 New Shipments - Monday Vibe (18433404829) — item = un shipment, grupo "topics"
   Item: name "<número de orden> · <nombre del shipment>" (ej. "EIVR118 · Shipment 1")
         board_relation_mm7pc3qe Wholesale Order (→ item de la orden en 18402982970)
-        text_mm7pj5nc Shipment Name · date4 Ship Date · numeric_mm7p9jrf Units (Σ del shipment)
+        text_mm7pj5nc Shipment Name · date_mm7qv5p6 Ship Date · numeric_mm7p9jrf Units (Σ del shipment)
         numeric_mm7pvjrx Order To Ship (Σ To ship de la orden) · date_mm7p655r Last Saved
   Subitem (board 18433458521) = una línea SKU del shipment:
         name "<SKU> - <producto>" · text_mm7pzh4y SKU · numeric_mm7p9w92 Qty To Ship
         numeric_mm7p8qnb Allocated · numeric_mm7p2wg0 Remaining To Ship
         text_mm7pp7c6 Wholesale Line (ID del subitem de Wholesale)
         text_mm7p4b6 Source Split (ej. "Warehouse: 45 · FLEX-4170234: 180 · PO-00450: 25")
+        person Owner (people): quién guardó esa línea; al guardar se agrega el usuario verificado
+        sin quitar a los que ya estaban (lo escribe el servidor, nunca el navegador)
   Conexiones de cada línea de venta a sus shipments (solo shipments guardados con qty > 0 de
   ese SKU): subitem de Wholesale board_relation_mm7pd15e · item del Ledger board_relation_mm7p81dk.
   Carga: todos los items del tablero con Wholesale Order conectada a una orden abierta, en
@@ -571,3 +573,5 @@ lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
             cerrada, con el detalle por SKU.
 2026-09-30  SEGURIDAD — sessionToken de monday + lista blanca (Access List); pantalla genérica de
             no autorizado; usuario arriba a la derecha; People en la línea al guardar shipments.
+2026-10-01  Ship Date pasa a date_mm7qv5p6 (date4 eliminada por el cliente); Owner (person) del
+            subitem del shipment = quién guardó.

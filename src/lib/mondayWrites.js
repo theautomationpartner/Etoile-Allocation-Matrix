@@ -6,8 +6,10 @@ export const NS = {
   board: "18433404829", // 🔗 New Shipments - Monday Vibe — item = one shipment
   sub: "18433458521", // its subitems — one SKU line of the shipment
   group: "topics",
-  col: { order: "board_relation_mm7pc3qe", name: "text_mm7pj5nc", date: "date4", units: "numeric_mm7p9jrf", orderToShip: "numeric_mm7pvjrx", saved: "date_mm7p655r" },
+  col: { order: "board_relation_mm7pc3qe", name: "text_mm7pj5nc", date: "date_mm7qv5p6", units: "numeric_mm7p9jrf", orderToShip: "numeric_mm7pvjrx", saved: "date_mm7p655r" },
   subCol: { sku: "text_mm7pzh4y", qty: "numeric_mm7p9w92", allocated: "numeric_mm7p8qnb", remaining: "numeric_mm7p2wg0", line: "text_mm7pp7c6", split: "text_mm7p4b6" },
+  // "Owner" (people) of each SKU line: who saved it. Written only by the server, with the verified user.
+  subOwner: "person",
 };
 // Connections to the shipments of a sale line.
 export const SHIPMENT_LINKS = {

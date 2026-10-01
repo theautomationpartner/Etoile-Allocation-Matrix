@@ -1,11 +1,13 @@
 // Server-side writes to monday.com, only for authenticated, whitelisted users (see _auth.js).
 // Only the operations in src/lib/mondayWrites.js are accepted, only on their boards and columns;
 // items to update or delete are checked to belong to the allowed board first.
-// When a sale line is connected to its shipments, the user who saved is added to the line's
-// "People" column (who edited the shipments of that line; several people can be listed).
+// The signed-in user (verified, never taken from the browser) is recorded as who saved:
+//   · each SKU line of the shipment → "Owner" (person) on the New Shipments subitem
+//   · the sale line connected to its shipments → "People" on the Wholesale subitem
+// Several people can be listed; whoever was already there is kept.
 
 import { guarded, serverMonday } from "./_auth.js";
-import { WRITE_OPS, checkWrite } from "../src/lib/mondayWrites.js";
+import { NS, WRITE_OPS, checkWrite } from "../src/lib/mondayWrites.js";
 import { LINE_PEOPLE_COLUMN } from "../src/lib/access.js";
 
 const json = (status, body) =>
@@ -32,7 +34,7 @@ export const POST = guarded(async (request, { user }) => {
   let current = null;
   if (guard) {
     const check = await serverMonday(
-      `query($i:[ID!]){ items(ids:$i){ id board { id } column_values(ids:["${LINE_PEOPLE_COLUMN}"]) { id value } } }`,
+      `query($i:[ID!]){ items(ids:$i){ id board { id } column_values(ids:["${LINE_PEOPLE_COLUMN}","${NS.subOwner}"]) { id value } } }`,
       { i: [String(guard.id)] },
     ).catch(() => null);
     current = check?.items?.[0];
@@ -40,18 +42,22 @@ export const POST = guarded(async (request, { user }) => {
     if (!board || !guard.boards.includes(String(board))) return json(403, { error: `Item ${guard.id} is not on an allowed board for ${op}.` });
   }
 
-  // Add the signed-in user to the sale line's People column (keeping whoever is already there).
-  if (op === "linkWholesaleLine") {
+  // Add the signed-in user to a people column, keeping whoever is already there.
+  const withUser = (columnId, existingValue) => {
     let people = [];
     try {
-      people = JSON.parse(current?.column_values?.[0]?.value || "{}")?.personsAndTeams || [];
+      people = JSON.parse(existingValue || "{}")?.personsAndTeams || [];
     } catch {
       people = [];
     }
     if (!people.some((p) => p.kind === "person" && String(p.id) === user.userId)) people.push({ id: Number(user.userId), kind: "person" });
-    const values = { ...JSON.parse(variables.v), [LINE_PEOPLE_COLUMN]: { personsAndTeams: people } };
+    const values = { ...JSON.parse(variables.v), [columnId]: { personsAndTeams: people } };
     variables = { ...variables, v: JSON.stringify(values) };
-  }
+  };
+  const valueOf = (columnId) => current?.column_values?.find((c) => c.id === columnId)?.value;
+  if (op === "linkWholesaleLine") withUser(LINE_PEOPLE_COLUMN, valueOf(LINE_PEOPLE_COLUMN));
+  if (op === "updateShipmentLine") withUser(NS.subOwner, valueOf(NS.subOwner));
+  if (op === "createShipmentLine") withUser(NS.subOwner, null);
 
   try {
     const res = await fetch("https://api.monday.com/v2", {

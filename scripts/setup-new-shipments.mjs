@@ -15,7 +15,9 @@ const ITEM_COLUMNS = [
   { title: "Units", type: "numbers" },
   { title: "Order To Ship", type: "numbers" },
   { title: "Last Saved", type: "date" },
+  { title: "Ship Date", type: "date" }, // date_mm7qv5p6 (recreated by the client on 2026-10-01; date4 was removed)
 ];
+// The subitem's "Owner" (people, id "person") comes with the board; the server fills it on save.
 const SUB_COLUMNS = [
   { title: "SKU", type: "text" },
   { title: "Qty To Ship", type: "numbers" },
@@ -54,11 +56,6 @@ async function ensureColumns(boardId, wanted) {
 
 console.log(`${APPLY ? "APPLY" : "DRY RUN"} — New Shipments board ${BOARD}`);
 const cols = await columnsOf(BOARD);
-const date4 = cols.find((c) => c.id === "date4");
-if (date4 && date4.title !== "Ship Date") {
-  if (APPLY) await gql(`mutation{ change_column_title(board_id:${BOARD}, column_id:"date4", title:"Ship Date"){ id } }`);
-  console.log(`  ${APPLY ? "~" : "~ would"} rename column date4 "${date4.title}" → "Ship Date"`);
-}
 console.log("Item columns:");
 const itemIds = await ensureColumns(BOARD, ITEM_COLUMNS);
 
@@ -73,4 +70,4 @@ if (!subBoard && APPLY) {
 }
 console.log(`Subitem columns (board ${subBoard || "not created yet"}):`);
 const subIds = subBoard ? await ensureColumns(String(subBoard), SUB_COLUMNS) : (SUB_COLUMNS.forEach((c) => console.log(`  + ${c.title} [${c.type}] would be created`)), {});
-console.log("\nIDs:", JSON.stringify({ subBoard, item: { ...itemIds, "Ship Date": "date4" }, sub: subIds }, null, 1));
+console.log("\nIDs:", JSON.stringify({ subBoard, item: itemIds, sub: subIds }, null, 1));
