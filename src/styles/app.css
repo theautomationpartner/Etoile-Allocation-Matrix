@@ -14,7 +14,7 @@
 .kpi.ok { border-color: var(--wh-b); background: var(--wh-t); }
 .kpi.ok .val, .kpi.ok .lab, .kpi.ok .sub, .kpi.ok .cta { color: var(--wh); }
 .kpi.ok.on { border-color: var(--wh); box-shadow: inset 0 0 0 1px var(--wh); }
-.kpi .cta.soon { opacity: .6; cursor: help; }
+.kpi .cta.soon { opacity: .6; cursor: default; }
 
 /* Loading skeleton for the card values. */
 .sk { display: inline-block; border-radius: 4px; background: linear-gradient(90deg, var(--line-2), var(--line), var(--line-2)); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; }
@@ -45,7 +45,6 @@
 /* Instant tooltip of the matrix cells and subtotals. */
 .mx-tip { position: fixed; z-index: 95; width: max-content; max-width: 340px; padding: 8px 10px; border-radius: 6px; background: var(--ink); color: var(--surface);
   font-size: 12px; line-height: 1.5; white-space: pre-line; box-shadow: var(--shadow); pointer-events: none; font-variant-numeric: tabular-nums; }
-.mx td.roll[data-tip] { cursor: help; }
 .mx tr.g .roll[data-tip]:hover { color: var(--ink); background: var(--surface-2); }
 
 /* Access gate: checking / not authorized (nothing of the app is shown). */
@@ -78,7 +77,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 /* "Impossible / needs a PO" stays fixed at the right edge, always fully visible. */
 .mx th.hend, .mx td.end { position: sticky; right: 0; z-index: 9; background: var(--surface); box-shadow: inset 1px 0 0 var(--line); }
-.mx thead th.hend { z-index: 14; padding-left: 12px; }
+/* table.mx th/td {padding:0} in the mockup would win over .hend: give the header and cells real padding. */
+.mx thead th.hend { z-index: 14; padding: 8px 14px 7px; text-align: center; white-space: nowrap; }
+.mx td.end { text-align: center; padding: 0 10px; }
 .mx tr.g td.end { background: var(--surface); }
 .mx tr.g.open td.end, .mx tr.shth td.end, .mx tr.rw.editing td.end { background: var(--surface-2); }
 .mx tbody tr.rw:hover td.end { background: var(--surface-2); }
@@ -97,6 +98,19 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 /* Trash right next to "Remaining to ship". */
 .mx .nn.n4 .rm-slot { flex: 0 0 30px; display: grid; place-items: center; padding: 0; }
+
+/* Order tabs: "Copy remaining to ship" sits right after "+ New shipment". */
+.otabs { width: auto !important; max-width: none !important; }
+.otabs .copy { margin: 0 0 6px 8px !important; }
+
+/* Shipment "···" menu: a floating panel above the table (never clipped by it). */
+.mnu-p.float { position: fixed; z-index: 120; min-width: 190px; }
+.mnu-p.float button { font-size: 13px; padding: 9px 12px; }
+
+/* Saved state of a shipment, next to its units. */
+.gh .m .ships { color: var(--it); font-weight: 600; }
+.shs .saved { color: var(--wh); font-weight: 600; }
+.shs .unsaved { color: var(--po); font-weight: 600; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

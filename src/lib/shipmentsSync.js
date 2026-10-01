@@ -4,7 +4,8 @@
 //   subitem = one SKU line: SKU, qty to ship, allocated, remaining to ship, Wholesale line id, source split
 // Then every sale line involved is connected to the shipments that carry it:
 //   Wholesale subitem (board_relation_mm7pd15e) and Allocation Ledger item (board_relation_mm7p81dk).
-import { NS, SHIPMENT_LINKS } from "./mondayWrites.js";
+// Line writes go in batches of up to 50 per request (create, update, delete and connect).
+import { NS, SHIPMENT_LINKS, batchIds, chunks } from "./mondayWrites.js";
 
 const now = () => {
   const d = new Date();
@@ -46,10 +47,9 @@ async function saveSteps(write, ship, ctx, done) {
     done.mondayId = mondayId;
   }
 
-  const subIds = {};
-  for (const sku of ship.skus) {
+  const lineValues = (sku) => {
     const line = ctx.lineOf(sku);
-    const v = JSON.stringify({
+    return JSON.stringify({
       [sc.sku]: sku,
       [sc.qty]: String(ship.qty[sku] || 0),
       [sc.allocated]: String(line?.allocated || 0),
@@ -57,36 +57,47 @@ async function saveSteps(write, ship, ctx, done) {
       [sc.line]: String(line?.lineId || ""),
       [sc.split]: ctx.splitText(sku),
     });
-    const existing = ship.subIds?.[sku];
-    if (existing) {
-      await write("updateShipmentLine", { i: existing, v });
-      subIds[sku] = existing;
-    } else {
-      const name = `${sku} - ${line?.productName || sku}`;
-      subIds[sku] = String((await write("createShipmentLine", { p: mondayId, n: name, v })).create_subitem.id);
-      done.subIds[sku] = subIds[sku];
-    }
+  };
+
+  // Existing lines: batched updates.
+  const toUpdate = ship.skus.filter((sku) => done.subIds[sku]);
+  for (const part of chunks(toUpdate)) {
+    await write("updateShipmentLines", { entries: part.map((sku) => ({ i: done.subIds[sku], v: lineValues(sku) })) });
+  }
+  // New lines: batched creates of up to 50.
+  const toCreate = ship.skus.filter((sku) => !done.subIds[sku]);
+  for (const part of chunks(toCreate)) {
+    const data = await write("createShipmentLines", {
+      p: mondayId,
+      entries: part.map((sku) => ({ n: `${sku} - ${ctx.lineOf(sku)?.productName || sku}`, v: lineValues(sku) })),
+    });
+    batchIds(data, part.length).forEach((id, k) => {
+      if (!id) throw new Error(`Monday did not create the line for ${part[k]}.`);
+      done.subIds[part[k]] = id;
+    });
   }
   // Rows removed from the shipment (§16.3 "Quitar una fila"): their subitems go too.
-  for (const [sku, id] of Object.entries(ship.subIds || {})) {
-    if (ship.skus.includes(sku)) continue;
-    await write("deleteShipmentItem", { i: id });
-    delete done.subIds[sku];
+  const removed = Object.keys(done.subIds).filter((sku) => !ship.skus.includes(sku));
+  for (const part of chunks(removed)) {
+    await write("deleteShipmentItems", { entries: part.map((sku) => ({ i: done.subIds[sku] })) });
+    part.forEach((sku) => delete done.subIds[sku]);
   }
-  return { mondayId, subIds };
+  return { mondayId, subIds: { ...done.subIds } };
 }
 
 export async function deleteShipment(write, ship) {
-  if (ship.mondayId) await write("deleteShipmentItem", { i: ship.mondayId }); // subitems are removed with it
+  if (ship.mondayId) await write("deleteShipmentItems", { entries: [{ i: ship.mondayId }] }); // its subitems go with it
 }
 
-// Connect each sale line of these SKUs to the saved shipments that carry units of it.
+// Connect each sale line of these SKUs to the saved shipments that carry units of it (batched).
 export async function linkLines(write, ships, skus, lineOf) {
+  const entries = [];
   for (const sku of new Set(skus)) {
     const line = lineOf(sku);
     if (!line) continue;
     const ids = ships.filter((s) => s.mondayId && (s.qty[sku] || 0) > 0 && s.skus.includes(sku)).map((s) => Number(s.mondayId));
-    await write("linkWholesaleLine", { i: line.lineId, v: JSON.stringify({ [SHIPMENT_LINKS.wholesaleSub.col]: { item_ids: ids } }) });
-    if (line.ledgerItemId) await write("linkLedgerItem", { i: line.ledgerItemId, v: JSON.stringify({ [SHIPMENT_LINKS.ledger.col]: { item_ids: ids } }) });
+    entries.push({ target: "line", i: line.lineId, v: JSON.stringify({ [SHIPMENT_LINKS.wholesaleSub.col]: { item_ids: ids } }) });
+    if (line.ledgerItemId) entries.push({ target: "ledger", i: line.ledgerItemId, v: JSON.stringify({ [SHIPMENT_LINKS.ledger.col]: { item_ids: ids } }) });
   }
+  for (const part of chunks(entries)) await write("linkLines", { entries: part });
 }

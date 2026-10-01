@@ -3,8 +3,8 @@ import { useStoredState } from "./useStoredState.js";
 
 // Resizable matrix columns, like monday: drag the right edge of a header to widen or narrow it,
 // double-click the edge to go back to the default. Widths are remembered by the browser (per viewer).
-export const DEFAULT_WIDTHS = { s1: 300, s2: 290, src: 116, end: 104 };
-const MIN = { s1: 180, s2: 220, src: 72, end: 84 };
+export const DEFAULT_WIDTHS = { s1: 300, s2: 290, src: 120, end: 128 };
+const MIN = { s1: 180, s2: 220, src: 72, end: 108 };
 
 export function useColumnWidths() {
   const [widths, setWidths] = useStoredState("etoile-col-widths", {});

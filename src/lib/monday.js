@@ -45,6 +45,15 @@ const num = (t) => {
 const date = (t) => (t ? String(t).slice(0, 10) : "");
 const cv = (item, id) => (item.column_values || []).find((c) => c.id === id)?.text ?? "";
 const gqlList = (list) => list.map((x) => JSON.stringify(x)).join(",");
+// Date column value {"date":"2026-10-01","time":"11:24:00"} (UTC) → ISO string, or "".
+const savedIso = (value) => {
+  try {
+    const v = JSON.parse(value || "null");
+    return v?.date ? `${v.date}T${v.time || "00:00:00"}Z` : "";
+  } catch {
+    return "";
+  }
+};
 
 export async function fetchTransport(query, variables = {}) {
   const res = await fetch("/api/monday", {
@@ -208,7 +217,7 @@ export function createMondayApi(transport = fetchTransport) {
   // items without an order are ignored). Returned in creation order.
   async function loadShipments() {
     const c = NS.col, sc = NS.subCol;
-    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(c))}]) { id text ... on BoardRelationValue { linked_item_ids } }
+    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(c))}]) { id text value ... on BoardRelationValue { linked_item_ids } }
       subitems { id name column_values(ids:[${gqlList(Object.values(sc))}]) { id text } }`;
     const items = await allItems(NS.board, fields);
     return items
@@ -219,6 +228,7 @@ export function createMondayApi(transport = fetchTransport) {
           orderId: rel[0] ? String(rel[0]) : null,
           name: cv(it, c.name) || it.name,
           target: date(cv(it, c.date)),
+          savedAt: savedIso(it.column_values.find((x) => x.id === c.saved)?.value), // UTC, from the column value
           createdAt: it.created_at || "",
           lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)) })).filter((l) => l.sku),
         };
@@ -227,7 +237,35 @@ export function createMondayApi(transport = fetchTransport) {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.mondayId.localeCompare(b.mondayId));
   }
 
+  // Every column the app reads or writes must exist. If someone deletes or recreates one in monday
+  // (it happened with date4), the app stops with a clear message instead of silently showing zeros.
+  async function checkSchema() {
+    const need = {
+      [BOARDS.wholesale]: { name: "Wholesale Allocation", cols: [COL.sale.region, COL.sale.cancelDate] },
+      [BOARDS.wholesaleSub]: { name: "Wholesale Allocation (subitems)", cols: [COL.saleSub.skuId, COL.saleSub.outstanding, COL.saleSub.ledgerRel, "board_relation_mm7pd15e", "multiple_person_mm7pdm50"] },
+      [BOARDS.warehouse]: { name: "Master SKU Inventory", cols: [COL.wh.sku, COL.wh.usQty] },
+      [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.packingList] },
+      "18402783956": { name: "In-Transit Shipments (subitems)", cols: [COL.it.subSku, COL.it.subQty, COL.it.subPoRef] },
+      [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta] },
+      "18402780137": { name: "Purchase Orders (subitems)", cols: [COL.po.subSku, COL.po.subQtyOutstanding] },
+      [BOARDS.ledger]: { name: "Allocation Ledger", cols: [COL.ledger.key, COL.ledger.json, COL.ledger.shipmentsRel] },
+      [BOARDS.ledgerSub]: { name: "Allocation Ledger (subitems)", cols: [COL.ledgerSub.type, COL.ledgerSub.sourceId, COL.ledgerSub.qty] },
+      [NS.board]: { name: "New Shipments", cols: Object.values(NS.col) },
+      [NS.sub]: { name: "New Shipments (subitems)", cols: [...Object.values(NS.subCol), NS.subOwner] },
+    };
+    const d = await transport(`query($b:[ID!]){ boards(ids:$b){ id columns { id } } }`, { b: Object.keys(need) });
+    const missing = [];
+    for (const [id, req] of Object.entries(need)) {
+      const board = (d?.boards || []).find((b) => String(b.id) === id);
+      if (!board) { missing.push(`board "${req.name}"`); continue; }
+      const have = new Set(board.columns.map((c) => c.id));
+      for (const c of req.cols) if (!have.has(c)) missing.push(`column ${c} on "${req.name}"`);
+    }
+    if (missing.length) throw new Error(`Monday is missing ${missing.join(", ")}. The figures can't be calculated safely — ask your administrator to restore it.`);
+  }
+
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
+    await checkSchema();
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
     const [orders, warehouse, containers, pos, ledger, boardCounts, shipments] = await Promise.all([
       loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),

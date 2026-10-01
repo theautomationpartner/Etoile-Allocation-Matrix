@@ -1,6 +1,39 @@
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { fmt, dayMonth, dayMonthYear } from "../../lib/format.js";
 import { shipUnits } from "../../lib/shipments.js";
+
+// "···" menu of a shipment: a floating panel placed under the button (fixed position, so the table
+// never clips it). Closes on a click outside, on Escape, and when the page scrolls.
+function ShipMenu({ open, confirmDelete, onToggle, onClose, onRename, onDelete }) {
+  const btn = useRef(null), panel = useRef(null);
+  const [pos, setPos] = useState(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const r = btn.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.right - 190, window.innerWidth - 198)) });
+    const outside = (e) => !panel.current?.contains(e.target) && !btn.current?.contains(e.target) && onClose();
+    const esc = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <span className="mnu">
+      <button ref={btn} type="button" className="shm" onClick={onToggle} aria-label="More actions" aria-haspopup="menu" aria-expanded={open} title="More actions">···</button>
+      {open && pos && (
+        <span ref={panel} className="mnu-p float" role="menu" style={pos}>
+          <button type="button" role="menuitem" onClick={onRename}>Rename</button>
+          <button type="button" role="menuitem" className="dng" onClick={onDelete}>{confirmDelete ? "Click again to delete" : "Delete shipment"}</button>
+        </span>
+      )}
+    </span>
+  );
+}
 
 const TrashIcon = () => (
   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
@@ -39,7 +72,7 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
             <div className="shc-in">
               <button type="button" className="cv" onClick={() => a.toggleShip(sh.id)} aria-label={opened ? "Collapse" : "Expand"}>{opened ? "▼" : "▶"}</button>
               {S.ui.rename === sh.id ? (
-                <input className="shname" defaultValue={sh.name} autoFocus onFocus={(e) => e.target.select()} aria-label="Shipment name"
+                <input className="shname" defaultValue={sh.name} maxLength={60} autoFocus onFocus={(e) => e.target.select()} aria-label="Shipment name"
                   onBlur={(e) => a.finishRename(orderId, sh.id, e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
@@ -49,7 +82,10 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
                 <button type="button" className="shn shn-edit" onClick={() => a.startRename(sh.id)} title="Click to rename">{sh.name}</button>
               )}
               <span className="badge">Draft</span>
-              <span className="shs"><b>{fmt(units)}</b> / {fmt(order.toShip)} units{sh.dirty ? " · not saved yet" : ""}</span>
+              <span className="shs">
+                <b>{fmt(units)}</b> / {fmt(order.toShip)} units
+                {sh.dirty ? <span className="unsaved"> · not saved yet</span> : sh.savedAt ? <span className="saved"> · saved {sh.savedAt}</span> : null}
+              </span>
               {late > 0 && <span className="shw">{fmt(late)} units land after the ship date</span>}
               {sh.target && order.cancelDate && sh.target > order.cancelDate && <span className="shw">after the {dayMonth(order.cancelDate)} cancel date</span>}
               {error && <span className="ap-err">{error}</span>}
@@ -62,17 +98,9 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
                 title={sh.dirty ? "Save this shipment to Monday" : "Saved in Monday"}>
                 {saving ? "Saving…" : sh.dirty ? "Save" : "Saved"}
               </button>
-              <span className="mnu">
-                <button type="button" className="shm" onClick={() => a.toggleMenu(sh.id)} aria-label="More actions" aria-expanded={S.ui.menu === sh.id} title="More actions">···</button>
-                {S.ui.menu === sh.id && (
-                  <span className="mnu-p">
-                    <button type="button" onClick={() => a.startRename(sh.id)}>Rename</button>
-                    <button type="button" className="dng" onClick={() => a.deleteShip(orderId, sh.id)}>
-                      {S.ui.confirmDelete === sh.id ? "Click again to delete" : "Delete shipment"}
-                    </button>
-                  </span>
-                )}
-              </span>
+              <ShipMenu open={S.ui.menu === sh.id} confirmDelete={S.ui.confirmDelete === sh.id}
+                onToggle={() => a.toggleMenu(sh.id)} onClose={() => a.closeMenu()}
+                onRename={() => a.startRename(sh.id)} onDelete={() => a.deleteShip(orderId, sh.id)} />
             </div>
           </td>
         </tr>

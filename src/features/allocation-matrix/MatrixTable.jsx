@@ -160,7 +160,11 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                         <button type="button" className="cv" onClick={() => onToggle(g, !open)} aria-label={open ? "Collapse" : "Expand"} aria-expanded={open}>{open ? "▼" : "▶"}</button>
                         <span className="tx">
                           <span className="t"><b className="eivr">{g.number}</b><span className="slash">/</span><span className="ret">{g.retailer}</span></span>
-                          <span className="m">{g.meta}{g.review > 0 && <span className="warn"> · {plural(g.review, "line", "lines")} to review</span>}</span>
+                          <span className="m">
+                            {g.meta}
+                            {shipments.shipsOf(String(g.key)).length > 0 && <span className="ships"> · {plural(shipments.shipsOf(String(g.key)).length, "shipment", "shipments")}</span>}
+                            {g.review > 0 && <span className="warn"> · {plural(g.review, "line", "lines")} to review</span>}
+                          </span>
                         </span>
                       </div>
                     </td>
@@ -193,7 +197,6 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                               <button type="button" className={tab === "alloc" ? "on" : ""} onClick={() => shipments.actions.setTab(orderId, "alloc")}>Allocation</button>
                               <button type="button" className={tab === "ships" ? "on" : ""} onClick={() => shipments.actions.setTab(orderId, "ships")}>Shipments ({count})</button>
                               <button type="button" className="add" onClick={() => shipments.actions.newShip(orderId, false)}>+ New shipment</button>
-                              <span className="sp" />
                               <button type="button" className="btn copy" onClick={() => shipments.actions.newShip(orderId, true)}
                                 title={left ? `New shipment with the ${fmt(left)} allocated units not in a shipment yet` : "Every allocated unit is already in a shipment"}>
                                 Copy remaining to ship{left ? ` · ${fmt(left)}` : ""}

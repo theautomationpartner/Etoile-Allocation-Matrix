@@ -1,6 +1,9 @@
 // Every write the app can make to monday.com (step 4: shipments). Shared by the browser and the
 // server: the server (api/monday-write.js) only runs these operations, on these boards and columns.
 // In monday Vibe the same queries go through monday.api(query, { variables }) after checkWrite().
+//
+// Line-level writes are BATCHED: one GraphQL request carries up to BATCH_SIZE aliased mutations
+// (e0: create_subitem(...), e1: create_subitem(...), …) instead of one request per line.
 
 export const NS = {
   board: "18433404829", // 🔗 New Shipments - Monday Vibe — item = one shipment
@@ -17,36 +20,102 @@ export const SHIPMENT_LINKS = {
   ledger: { board: "18430965833", col: "board_relation_mm7p81dk" }, // Allocation Ledger item → its shipments
 };
 
-const cmcv = (board) => `mutation($i:ID!,$v:JSON!){ change_multiple_column_values(board_id:${board}, item_id:$i, column_values:$v){ id } }`;
-
-export const WRITE_OPS = {
-  createShipment: {
-    query: `mutation($n:String!,$v:JSON!){ create_item(board_id:${NS.board}, group_id:"${NS.group}", item_name:$n, column_values:$v){ id } }`,
-    vars: ["n", "v"], columns: Object.values(NS.col),
-  },
-  updateShipment: { query: cmcv(NS.board), vars: ["i", "v"], columns: ["name", ...Object.values(NS.col)], itemBoards: [NS.board] },
-  createShipmentLine: {
-    query: `mutation($p:ID!,$n:String!,$v:JSON!){ create_subitem(parent_item_id:$p, item_name:$n, column_values:$v){ id } }`,
-    vars: ["p", "n", "v"], columns: Object.values(NS.subCol), parentBoards: [NS.board],
-  },
-  updateShipmentLine: { query: cmcv(NS.sub), vars: ["i", "v"], columns: ["name", ...Object.values(NS.subCol)], itemBoards: [NS.sub] },
-  deleteShipmentItem: { query: `mutation($i:ID!){ delete_item(item_id:$i){ id } }`, vars: ["i"], itemBoards: [NS.board, NS.sub] },
-  linkWholesaleLine: { query: cmcv(SHIPMENT_LINKS.wholesaleSub.board), vars: ["i", "v"], columns: [SHIPMENT_LINKS.wholesaleSub.col], itemBoards: [SHIPMENT_LINKS.wholesaleSub.board] },
-  linkLedgerItem: { query: cmcv(SHIPMENT_LINKS.ledger.board), vars: ["i", "v"], columns: [SHIPMENT_LINKS.ledger.col], itemBoards: [SHIPMENT_LINKS.ledger.board] },
+export const BATCH_SIZE = 50;
+const LINK_TARGET = {
+  line: { board: SHIPMENT_LINKS.wholesaleSub.board, columns: [SHIPMENT_LINKS.wholesaleSub.col] },
+  ledger: { board: SHIPMENT_LINKS.ledger.board, columns: [SHIPMENT_LINKS.ledger.col] },
 };
 
-// Static checks: known operation, required variables, and only allowed column ids in the values.
+// Builds one request with one aliased mutation per entry. Returns { query, variables }.
+function aliased(entries, header, call) {
+  const decl = [header, ...entries.map((_, k) => call.decl(k))].filter(Boolean).join(", ");
+  const body = entries.map((e, k) => `e${k}: ${call.body(k, e)} { id }`).join(" ");
+  const variables = {};
+  entries.forEach((e, k) => Object.assign(variables, call.vars(k, e)));
+  return { query: `mutation(${decl}){ ${body} }`, variables };
+}
+
+export const WRITE_OPS = {
+  // ── the shipment item ──
+  createShipment: {
+    build: (v) => ({ query: `mutation($n:String!,$v:JSON!){ create_item(board_id:${NS.board}, group_id:"${NS.group}", item_name:$n, column_values:$v){ id } }`, variables: v }),
+    vars: ["n", "v"], columns: () => Object.values(NS.col),
+  },
+  updateShipment: {
+    build: (v) => ({ query: `mutation($i:ID!,$v:JSON!){ change_multiple_column_values(board_id:${NS.board}, item_id:$i, column_values:$v){ id } }`, variables: v }),
+    vars: ["i", "v"], columns: () => ["name", ...Object.values(NS.col)], itemBoards: () => [NS.board],
+  },
+  // ── its SKU lines, in batches ──
+  createShipmentLines: {
+    batch: true, parentBoards: [NS.board], vars: ["p"], fields: ["n", "v"], columns: () => Object.values(NS.subCol),
+    build: ({ p, entries }) => {
+      const r = aliased(entries, "$p:ID!", {
+        decl: (k) => `$n${k}:String!, $v${k}:JSON!`,
+        body: (k) => `create_subitem(parent_item_id:$p, item_name:$n${k}, column_values:$v${k})`,
+        vars: (k, e) => ({ [`n${k}`]: e.n, [`v${k}`]: e.v }),
+      });
+      return { query: r.query, variables: { p, ...r.variables } };
+    },
+  },
+  updateShipmentLines: {
+    batch: true, fields: ["i", "v"], columns: () => ["name", ...Object.values(NS.subCol)], itemBoards: () => [NS.sub],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k) => `change_multiple_column_values(board_id:${NS.sub}, item_id:$i${k}, column_values:$v${k})`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
+  // Shipment items or SKU lines. Items someone already deleted in monday are skipped by the server.
+  deleteShipmentItems: {
+    batch: true, fields: ["i"], itemBoards: () => [NS.board, NS.sub],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!`,
+      body: (k) => `delete_item(item_id:$i${k})`,
+      vars: (k, e) => ({ [`i${k}`]: e.i }),
+    }),
+  },
+  // Connect sale lines (target "line": Wholesale subitem; "ledger": Allocation Ledger item) to their shipments.
+  linkLines: {
+    batch: true, fields: ["target", "i", "v"], columns: (e) => LINK_TARGET[e.target]?.columns || [], itemBoards: (e) => [LINK_TARGET[e.target]?.board],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k, e) => `change_multiple_column_values(board_id:${LINK_TARGET[e.target].board}, item_id:$i${k}, column_values:$v${k})`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
+};
+
+const parse = (v) => (typeof v === "string" ? JSON.parse(v) : v || {});
+const badColumns = (values, allowed) => Object.keys(parse(values)).filter((k) => !allowed.includes(k));
+
+// Static checks: known operation, required variables, batch size, and only allowed column ids.
 export function checkWrite(op, variables = {}) {
   const def = WRITE_OPS[op];
   if (!def) throw new Error(`Unknown write operation "${op}".`);
-  for (const k of def.vars) if (variables[k] === undefined || variables[k] === null || variables[k] === "") throw new Error(`Missing "${k}" for ${op}.`);
-  if (def.columns && variables.v !== undefined) {
-    const values = typeof variables.v === "string" ? JSON.parse(variables.v) : variables.v;
-    const bad = Object.keys(values).filter((k) => !def.columns.includes(k));
+  for (const k of def.vars || []) if (variables[k] === undefined || variables[k] === null || variables[k] === "") throw new Error(`Missing "${k}" for ${op}.`);
+  if (def.batch) {
+    const entries = variables.entries;
+    if (!Array.isArray(entries) || !entries.length) throw new Error(`${op} needs at least one entry.`);
+    if (entries.length > BATCH_SIZE) throw new Error(`${op}: at most ${BATCH_SIZE} entries per request.`);
+    for (const e of entries) {
+      for (const f of def.fields) if (e?.[f] === undefined || e?.[f] === null || e?.[f] === "") throw new Error(`Missing "${f}" in an entry of ${op}.`);
+      if (def.columns && e.v !== undefined) {
+        const bad = badColumns(e.v, def.columns(e));
+        if (bad.length) throw new Error(`${op} cannot write column(s): ${bad.join(", ")}.`);
+      }
+      if (op === "linkLines" && !LINK_TARGET[e.target]) throw new Error(`linkLines: unknown target "${e.target}".`);
+    }
+  } else if (def.columns && variables.v !== undefined) {
+    const bad = badColumns(variables.v, def.columns());
     if (bad.length) throw new Error(`${op} cannot write column(s): ${bad.join(", ")}.`);
   }
   return def;
 }
+
+// Ids returned by a batch, in entry order (e0, e1, …).
+export const batchIds = (data, n) => Array.from({ length: n }, (_, k) => (data?.[`e${k}`]?.id ? String(data[`e${k}`].id) : null));
+
+export const chunks = (arr, size = BATCH_SIZE) => Array.from({ length: Math.ceil(arr.length / size) }, (_, k) => arr.slice(k * size, k * size + size));
 
 // Browser transport for writes (local / Vercel): the server re-checks and holds the token.
 export async function fetchWrite(op, variables) {

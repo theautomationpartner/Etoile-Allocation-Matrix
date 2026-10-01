@@ -1,7 +1,7 @@
 ================================================================================
  ETOILE FLOW · ALLOCATION MATRIX — QA: CASOS DE USO, RESULTADOS Y ANÁLISIS
 ================================================================================
-Fecha: 2026-10-01 · Rama: dev · Datos: monday etoile8 (reales)
+Fecha: 2026-10-01 (2ª revisión) · Rama: dev · Datos: monday etoile8 (reales)
 Cómo se verificó: [T] test automático (npm test, 28 tests) · [UI] navegador con clics reales
 · [API] llamadas reales a monday / al servidor · [C] revisión de código
 
@@ -131,3 +131,35 @@ A-08 Token de monday expira con la app abierta → se renueva solo .............
 - S-10: ¿bloquear Ship dates posteriores a la cancel date o solo avisar? (hoy avisa)
 - S-17 / S-18: qué pasa con un shipment cuando Cin7 despacha o la orden pasa a Fulfilled.
 - Punto 3 (editor de allocation): es lo que resuelve los avisos rojos de EIVR114.
+
+
+--------------------------------------------------------------------------------
+ 7. SEGUNDA REVISIÓN — QUÉ PUEDE ROMPER EL SISTEMA (mal uso, mala carga, errores)
+--------------------------------------------------------------------------------
+E-01 Alguien borra o recrea una columna que usa la app (pasó con date4) → antes: cifras en 0 o
+     Save fallando sin explicar. AHORA: al cargar se verifican las columnas de los 11 tableros y
+     se muestra cuál falta, sin mostrar cifras incorrectas ............................. CORREGIDO [API]
+E-02 Alguien borra en monday un shipment mientras otro lo edita → al guardar se detecta y se avisa
+     (antes podía fallar con un error técnico) ........................................ CORREGIDO [C]
+E-03 Alguien borra a mano una línea de un shipment → al guardar se vuelve a crear ..... CORREGIDO [C]
+E-04 Borrar algo que otra persona ya borró → sin error ................................ CORREGIDO [API]
+E-05 Orden sin número en el nombre ("- SO-176618") → se muestra el SO ................ CORREGIDO [T]
+E-06 Nombre de shipment muy largo → máximo 60 caracteres ............................ CORREGIDO [C]
+E-07 Texto con comillas o caracteres especiales en nombres → seguro: todo viaja como
+     variable GraphQL, nunca pegado en la consulta ........................................ PASA [C]
+E-08 Cantidades con letras, negativas o decimales → se toman como entero ≥ 0 .......... PASA [C]
+E-09 Shipment con más de 50 líneas → se guarda en tandas de 50 ........................ PASA [T]
+E-10 Monday no responde / sin internet → banner rojo con el error y se conservan las últimas
+     cifras; lo que quedó a medias se reintenta sin duplicar ............................. PASA [C]
+E-11 Cache del navegador dañada o llena → se ignora y se vuelve a leer monday ........ PASA [C]
+E-12 Mismo SKU dos veces en una orden → hoy no existe en los datos (30 órdenes revisadas). Si Cin7
+     llegara a mandarlo, los shipments sumarían esas dos líneas como una ............... RIESGO BAJO
+E-13 Más de 100 items en un grupo / tablero → la carga pagina sin límite ............. PASA [C]
+
+Rendimiento: guardar un shipment nuevo de 8 líneas = 3 requests (antes ~25); actualizar 5 líneas
+y quitar 3 = 4 requests. [API]
+
+Sobre "modificar un shipment": los shipments guardados se cargan solos desde monday en la pestaña
+Shipments de su orden; ahí se cambian cantidades, fecha, nombre o filas y "Save" actualiza el mismo
+item (no crea otro). Ahora además la orden muestra "· <n> shipments" y cada shipment "saved <fecha>".
+

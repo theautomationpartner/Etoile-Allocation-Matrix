@@ -18,8 +18,10 @@ export const retailerShort = (r) => RETAILER_SHORT[r] || String(r || "").toUpper
 
 // "EIVR118 - SO-201939" → number "EIVR118", SO "SO-201939"
 export function orderParts(name = "") {
-  const i = name.indexOf(" - ");
-  return i >= 0 ? { number: name.slice(0, i).trim(), so: name.slice(i + 3).trim() } : { number: name.trim(), so: "" };
+  const m = String(name).match(/^\s*(.*?)\s*-\s+(.+)$/); // "<number> - <SO>"; the number may be missing
+  const parts = m ? { number: m[1].trim(), so: m[2].trim() } : { number: String(name).trim(), so: "" };
+  if (!parts.number) parts.number = parts.so || "(no number)"; // e.g. "- SO-176618"
+  return parts;
 }
 
 // §5.3 — container code from the item name: "US / FLEX-4119719 / 40HC" → "FLEX-4119719", "US / Harrods" → "Harrods"
@@ -49,7 +51,7 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
   }
   const containerCols = [
     ...model.containers.map((c) => ({ k: "it", id: String(c.id), ref: c, label: containerCode(c.name), meta: `arrives ${dayMonth(c.eta)}`, cap: model.sourceTotals.containers.get(String(c.id)) })),
-    ...[...landed.values()].map((c) => ({ k: "it", id: String(c.id), ref: c, landed: true, label: containerCode(c.name), meta: "landed · packing Done", cap: null })),
+    ...[...landed.values()].map((c) => ({ k: "it", id: String(c.id), ref: c, landed: true, label: containerCode(c.name), meta: "landed · Done", cap: null })),
   ].sort((a, b) => (a.ref.eta || "9999").localeCompare(b.ref.eta || "9999"));
   cols.push(...containerCols);
 

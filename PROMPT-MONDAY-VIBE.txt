@@ -314,7 +314,7 @@ sticky: .s1 300px + .s2 290px).
     Contenedores por ETA: código tomado del nombre ("US / FLEX-4119719 / 40HC" →
       "FLEX-4119719"; "US / Harrods" → "Harrods"; "FLEX - 3951417" → "FLEX-3951417")
       / "arrives 2 Oct". Contenedores llegados que todavía tienen reservas en etapa
-      In-Transit (4.3) también tienen columna: meta "landed · packing Done" (color ámbar)
+      In-Transit (4.3) también tienen columna: meta "landed · Done" (color ámbar)
       y solo muestran esas reservas.
     POs por ETA, solo si algún SKU de la PO tiene Total > 0: "PO-00432" / "ETA 29 Oct".
   Cada una: .rule (2px del color de la fuente) + .t + .m + .cap (barra = comprometido
@@ -373,7 +373,7 @@ sticky: .s1 300px + .s2 290px).
 
 6.5b Columnas ajustables (como monday): cada encabezado tiene una manija en su borde derecho;
   arrastrarla agranda o achica la columna; doble clic vuelve al ancho por defecto. Anchos por
-  defecto: bloque 300 + 290, fuentes 116, Impossible 104 (mínimos 180 / 220 / 72 / 84). La tabla se
+  defecto: bloque 300 + 290, fuentes 120, Impossible 128 (mínimos 180 / 220 / 72 / 108). La tabla se
   arma con <colgroup> y table-layout: fixed; nunca es más angosta que el marco. Los anchos se
   recuerdan en el navegador (localStorage "etoile-col-widths").
   La columna "Impossible / needs a PO" queda fija al borde derecho (sticky right), siempre
@@ -529,18 +529,40 @@ allocation.
   Al cargar: si lo asignado de una línea bajó y los shipments quedan por encima, se descuentan
     unidades empezando por el último shipment y se avisa (queda sin guardar).
 
-11.7 Mutations (las únicas escrituras de la app)
-  createShipment:     create_item(board_id:18433404829, group_id:"topics", item_name:$n, column_values:$v)
-  updateShipment:     change_multiple_column_values(board_id:18433404829, item_id:$i, column_values:$v)
-  createShipmentLine: create_subitem(parent_item_id:$p, item_name:$n, column_values:$v)
-  updateShipmentLine: change_multiple_column_values(board_id:18433458521, item_id:$i, column_values:$v)
-  deleteShipmentItem: delete_item(item_id:$i)
-  linkWholesaleLine:  change_multiple_column_values(board_id:18402982973, item_id:$i,
-                      column_values:{"board_relation_mm7pd15e":{"item_ids":[…]}})
-  linkLedgerItem:     change_multiple_column_values(board_id:18430965833, item_id:$i,
-                      column_values:{"board_relation_mm7p81dk":{"item_ids":[…]}})
-  Cada una solo puede escribir sus columnas (ver src/lib/mondayWrites.js).
+11.7 Mutations (las únicas escrituras de la app). Las de línea van EN TANDAS: un solo request
+  con hasta 50 mutations con alias (e0:, e1:, …); si hay más de 50 líneas, se mandan de a 50.
+  createShipment:      create_item(board_id:18433404829, group_id:"topics", item_name:$n, column_values:$v)
+  updateShipment:      change_multiple_column_values(board_id:18433404829, item_id:$i, column_values:$v)
+  createShipmentLines: mutation($p:ID!, $n0:String!, $v0:JSON!, …){ e0: create_subitem(parent_item_id:$p,
+                       item_name:$n0, column_values:$v0){ id } e1: … }
+  updateShipmentLines: e<k>: change_multiple_column_values(board_id:18433458521, item_id:$i<k>, column_values:$v<k>)
+  deleteShipmentItems: e<k>: delete_item(item_id:$i<k>)   (los ya borrados se saltean, sin error)
+  linkLines:           e<k>: change_multiple_column_values sobre el subitem de Wholesale (18402982973,
+                       board_relation_mm7pd15e) o el item del Ledger (18430965833, board_relation_mm7p81dk)
+  Ejemplo real: guardar un shipment nuevo de 8 líneas = 3 requests (antes ~25).
+  Antes de escribir se verifica, en UNA consulta, que cada item exista y esté en el tablero correcto.
+  Cada operación solo puede escribir sus columnas (ver src/lib/mondayWrites.js). Los datos del usuario
+  van siempre como variables GraphQL, nunca pegados en el texto de la consulta.
 
+11.8 Usabilidad
+  - Pestañas: "Allocation" · "Shipments (<n>)" · "+ New shipment" · "Copy remaining to ship · <n>",
+    los dos botones juntos, uno al lado del otro.
+  - Menú "···": panel flotante (posición fija bajo el botón) que nunca queda tapado por la tabla;
+    se cierra con clic afuera, Esc o al hacer scroll. Opciones "Rename" y "Delete shipment".
+  - Estado del shipment junto a sus unidades: " · not saved yet" (ámbar) o " · saved <Oct 1, 08:06 AM>"
+    (verde, hora local de quien mira; se toma del valor UTC de "Last Saved").
+  - La segunda línea de cada orden suma " · <n> shipments" (azul) cuando tiene shipments.
+  - Nombre del shipment: máximo 60 caracteres.
+  - Sin cursor de ayuda ("?") en ninguna parte.
+
+11.9 Protecciones
+  - Al cargar, la app verifica que existan en monday TODAS las columnas que usa (11 tableros). Si
+    falta alguna: "Monday is missing column <id> on <tablero>. The figures can't be calculated
+    safely — ask your administrator to restore it." y no muestra cifras.
+  - Al guardar: si el shipment fue borrado en monday por otra persona → "This shipment was deleted in
+    Monday by someone else. Refresh to see the current shipments."; si una línea se borró a mano, se
+    vuelve a crear.
+  - Orden sin número (ej. "- SO-176618") → se muestra el SO.
 
 --------------------------------------------------------------------------------
  12. SEGURIDAD — acceso solo desde monday y solo para usuarios de la lista blanca
@@ -597,3 +619,5 @@ lista blanca antes de mostrar nada; mismas reglas y mismo mensaje.
             subitem del shipment = quién guardó.
 2026-10-01  Columnas ajustables; Impossible fijo a la derecha; rename con clic; papelera junto a
             Remaining; Save verde; chequeo de concurrencia y guardado sin duplicados; fecha local.
+2026-10-01  Escrituras en tandas de 50; menú flotante; Copy junto a New shipment; estado saved;
+            contador de shipments; chequeo de columnas al cargar; encabezado Impossible legible.

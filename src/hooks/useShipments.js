@@ -7,6 +7,11 @@ import { deleteShipment, linkLines, saveShipment } from "../lib/shipmentsSync.js
 import { containerCode } from "../lib/matrix.js";
 
 const todayISO = () => localToday();
+// ISO date-time (UTC) → "Oct 1, 08:06 AM" in the viewer's own time zone.
+const savedLabel = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+};
 
 // Step 4 — shipments of every open order (PDF §16): loaded from monday, edited locally, saved with "Save".
 export function useShipments({ data, model, write, toast, patchData }) {
@@ -14,7 +19,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
   const persistSaved = (orderId, ship) => patchData?.((d) => {
     const rest = (d.shipments || []).filter((s) => s.mondayId !== ship.mondayId);
     const prev = (d.shipments || []).find((s) => s.mondayId === ship.mondayId);
-    const entry = { mondayId: ship.mondayId, orderId: String(orderId), name: ship.name, target: ship.target, createdAt: prev?.createdAt || new Date().toISOString(),
+    const entry = { mondayId: ship.mondayId, orderId: String(orderId), name: ship.name, target: ship.target, createdAt: prev?.createdAt || new Date().toISOString(), savedAt: new Date().toISOString(),
       lines: ship.skus.map((k) => ({ subId: ship.subIds[k], sku: k, qty: ship.qty[k] || 0 })) };
     return { ...d, shipments: [...rest, entry].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
   });
@@ -58,7 +63,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
       if (!openIds.has(s.orderId)) continue;
       const skus = [...new Set(s.lines.map((l) => l.sku))];
       (next[s.orderId] ||= []).push({
-        id: s.mondayId, mondayId: s.mondayId, name: s.name, target: s.target, skus,
+        id: s.mondayId, mondayId: s.mondayId, name: s.name, target: s.target, skus, savedAt: savedLabel(s.savedAt),
         qty: Object.fromEntries(skus.map((k) => [k, s.lines.filter((l) => l.sku === k).reduce((a, l) => a + l.qty, 0)])),
         subIds: Object.fromEntries(s.lines.map((l) => [l.sku, l.subId])), dirty: false,
       });
@@ -95,6 +100,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
     setTab: (orderId, tab) => setUi((u) => ({ ...u, tab: { ...u.tab, [orderId]: tab }, menu: null })),
     toggleShip: (shipId) => setUi((u) => ({ ...u, closed: { ...u.closed, [shipId]: !u.closed[shipId] } })),
     toggleMenu: (shipId) => setUi((u) => ({ ...u, menu: u.menu === shipId ? null : shipId, confirmDelete: null })),
+    closeMenu: () => setUi((u) => (u.menu ? { ...u, menu: null, confirmDelete: null } : u)),
 
     newShip(orderId, copy) {
       const ships = shipsOf(orderId);
@@ -178,15 +184,22 @@ export function useShipments({ data, model, write, toast, patchData }) {
     },
 
     async save(orderId, shipId) {
-      const ships = shipsOf(orderId), sh = ships.find((s) => s.id === shipId);
+      const ships = shipsOf(orderId);
+      let sh = ships.find((s) => s.id === shipId);
       // §16.4 — per SKU, Σ in all shipments ≤ Allocated (the inputs already cap it; re-check before writing).
       const over = sh.skus.filter((k) => ships.reduce((a, s) => a + (s.qty[k] || 0), 0) > allocatedOf(orderId, k));
       if (over.length) return setUi((u) => ({ ...u, errors: { ...u.errors, [shipId]: `More units than allocated for ${over.join(", ")}. Lower them before saving.` } }));
       setUi((u) => ({ ...u, saving: { ...u.saving, [shipId]: true }, errors: { ...u.errors, [shipId]: "" } }));
       try {
         // §10 concurrency: someone else may have saved shipments of this order since the page was loaded.
-        const latest = (await mondayApi.loadShipments()).filter((s) => s.orderId === String(orderId))
-          .map((s) => ({ mondayId: s.mondayId, qty: s.lines.reduce((m, l) => ({ ...m, [l.sku]: (m[l.sku] || 0) + l.qty }), {}) }));
+        const latestRaw = (await mondayApi.loadShipments()).filter((s) => s.orderId === String(orderId));
+        const latest = latestRaw.map((s) => ({ mondayId: s.mondayId, qty: s.lines.reduce((m, l) => ({ ...m, [l.sku]: (m[l.sku] || 0) + l.qty }), {}) }));
+        if (sh.mondayId) {
+          const mine = latestRaw.find((s) => s.mondayId === sh.mondayId);
+          if (!mine) throw new Error("This shipment was deleted in Monday by someone else. Refresh to see the current shipments.");
+          // Lines deleted by hand in monday are created again instead of failing.
+          sh = { ...sh, subIds: Object.fromEntries(mine.lines.map((l) => [l.sku, l.subId])) };
+        }
         const local = ships.filter((s) => s.id !== shipId && !s.mondayId); // unsaved ones of this user count too
         const conflict = overShipped([...latest, ...local], sh, (k) => allocatedOf(orderId, k));
         if (conflict.length) {
@@ -201,7 +214,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
           splitText: (k) => Object.entries(splitOf(orderId, ships, k)[shipId] || {}).map(([r, q]) => `${srcLabel(r)}: ${fmt(q)}`).join(" · "),
         };
         const { mondayId, subIds } = await saveShipment(write, sh, ctx);
-        const savedShip = { ...sh, id: sh.id, mondayId, subIds, dirty: false };
+        const savedShip = { ...sh, id: sh.id, mondayId, subIds, dirty: false, savedAt: savedLabel(new Date().toISOString()) };
         const nextShips = ships.map((s) => (s.id === shipId ? savedShip : s));
         await linkLines(write, nextShips, [...sh.skus, ...Object.keys(sh.subIds || {})], (k) => lineOf(orderId, k));
         update(orderId, () => nextShips);

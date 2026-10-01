@@ -1,6 +1,6 @@
 // Server-side writes to monday.com, only for authenticated, whitelisted users (see _auth.js).
 // Only the operations in src/lib/mondayWrites.js are accepted, only on their boards and columns;
-// items to update or delete are checked to belong to the allowed board first.
+// every item to update or delete is checked (one query per request) to belong to the allowed board.
 // The signed-in user (verified, never taken from the browser) is recorded as who saved:
 //   · each SKU line of the shipment → "Owner" (person) on the New Shipments subitem
 //   · the sale line connected to its shipments → "People" on the Wholesale subitem
@@ -13,6 +13,18 @@ import { LINE_PEOPLE_COLUMN } from "../src/lib/access.js";
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
+const peopleWith = (existingValue, userId) => {
+  let people = [];
+  try {
+    people = JSON.parse(existingValue || "{}")?.personsAndTeams || [];
+  } catch {
+    people = [];
+  }
+  if (!people.some((p) => p.kind === "person" && String(p.id) === userId)) people.push({ id: Number(userId), kind: "person" });
+  return { personsAndTeams: people };
+};
+const addColumn = (v, columnId, value) => JSON.stringify({ ...JSON.parse(v), [columnId]: value });
+
 export const POST = guarded(async (request, { user }) => {
   let payload;
   try {
@@ -21,7 +33,7 @@ export const POST = guarded(async (request, { user }) => {
     return json(400, { error: "Body must be JSON: { op, variables }." });
   }
   const { op } = payload || {};
-  let variables = payload?.variables || {};
+  const variables = payload?.variables || {};
   let def;
   try {
     def = checkWrite(op, variables);
@@ -29,41 +41,46 @@ export const POST = guarded(async (request, { user }) => {
     return json(400, { error: e.message });
   }
 
-  // The item being changed (or the parent of a new subitem) must be on one of the allowed boards.
-  const guard = def.itemBoards ? { id: variables.i, boards: def.itemBoards } : def.parentBoards ? { id: variables.p, boards: def.parentBoards } : null;
-  let current = null;
-  if (guard) {
-    const check = await serverMonday(
-      `query($i:[ID!]){ items(ids:$i){ id board { id } column_values(ids:["${LINE_PEOPLE_COLUMN}","${NS.subOwner}"]) { id value } } }`,
-      { i: [String(guard.id)] },
+  // Items touched by this request and the board each one must be on.
+  let entries = def.batch ? variables.entries.map((e) => ({ ...e })) : null;
+  const checks = def.batch
+    ? (def.itemBoards ? entries.map((e) => ({ id: String(e.i), boards: def.itemBoards(e) })) : [])
+    : def.itemBoards ? [{ id: String(variables.i), boards: def.itemBoards() }] : [];
+  if (def.parentBoards) checks.push({ id: String(variables.p), boards: def.parentBoards });
+
+  let found = new Map();
+  if (checks.length) {
+    const ids = [...new Set(checks.map((c) => c.id))];
+    const d = await serverMonday(
+      `query($i:[ID!]){ items(ids:$i, limit:100){ id state board { id } column_values(ids:["${LINE_PEOPLE_COLUMN}","${NS.subOwner}"]) { id value } } }`,
+      { i: ids },
     ).catch(() => null);
-    current = check?.items?.[0];
-    const board = current?.board?.id;
-    if (!board || !guard.boards.includes(String(board))) return json(403, { error: `Item ${guard.id} is not on an allowed board for ${op}.` });
+    found = new Map((d?.items || []).map((it) => [String(it.id), it]));
+    for (const c of checks) {
+      const it = found.get(c.id);
+      const gone = !it || it.state === "deleted";
+      if (gone && op === "deleteShipmentItems") continue; // already deleted by someone else: nothing to do
+      if (gone) return json(409, { error: `Item ${c.id} no longer exists in Monday. Refresh and try again.` });
+      if (!c.boards.includes(String(it.board?.id))) return json(403, { error: `Item ${c.id} is not on an allowed board for ${op}.` });
+    }
+  }
+  const valueOf = (id, columnId) => found.get(String(id))?.column_values?.find((c) => c.id === columnId)?.value;
+
+  // Who saved, added by the server.
+  if (op === "createShipmentLines") entries = entries.map((e) => ({ ...e, v: addColumn(e.v, NS.subOwner, peopleWith(null, user.userId)) }));
+  if (op === "updateShipmentLines") entries = entries.map((e) => ({ ...e, v: addColumn(e.v, NS.subOwner, peopleWith(valueOf(e.i, NS.subOwner), user.userId)) }));
+  if (op === "linkLines") entries = entries.map((e) => (e.target === "line" ? { ...e, v: addColumn(e.v, LINE_PEOPLE_COLUMN, peopleWith(valueOf(e.i, LINE_PEOPLE_COLUMN), user.userId)) } : e));
+  if (op === "deleteShipmentItems") {
+    entries = entries.filter((e) => found.get(String(e.i)) && found.get(String(e.i)).state !== "deleted");
+    if (!entries.length) return json(200, { data: {} });
   }
 
-  // Add the signed-in user to a people column, keeping whoever is already there.
-  const withUser = (columnId, existingValue) => {
-    let people = [];
-    try {
-      people = JSON.parse(existingValue || "{}")?.personsAndTeams || [];
-    } catch {
-      people = [];
-    }
-    if (!people.some((p) => p.kind === "person" && String(p.id) === user.userId)) people.push({ id: Number(user.userId), kind: "person" });
-    const values = { ...JSON.parse(variables.v), [columnId]: { personsAndTeams: people } };
-    variables = { ...variables, v: JSON.stringify(values) };
-  };
-  const valueOf = (columnId) => current?.column_values?.find((c) => c.id === columnId)?.value;
-  if (op === "linkWholesaleLine") withUser(LINE_PEOPLE_COLUMN, valueOf(LINE_PEOPLE_COLUMN));
-  if (op === "updateShipmentLine") withUser(NS.subOwner, valueOf(NS.subOwner));
-  if (op === "createShipmentLine") withUser(NS.subOwner, null);
-
+  const { query, variables: vars } = WRITE_OPS[op].build(def.batch ? { ...variables, entries } : variables);
   try {
     const res = await fetch("https://api.monday.com/v2", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: process.env.MONDAY_TOKEN },
-      body: JSON.stringify({ query: WRITE_OPS[op].query, variables }),
+      body: JSON.stringify({ query, variables: vars }),
     });
     return json(200, await res.json());
   } catch (error) {
