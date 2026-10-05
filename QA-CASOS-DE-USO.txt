@@ -268,6 +268,13 @@ Tests automáticos (npm test, 13 nuevos; 51 en total, todos pasan):
   X-11 Escrituras limitadas a sus tableros, grupos (no Fulfilled) y columnas ................... PASA
   X-13 Item del Ledger en Fulfilled: se reescribe en su lugar, nunca se mueve .................. PASA
   X-14 Filas, grupos y pie sin textos rojos de reservas (ui-check) ............................. PASA
+  X-15 Las 4 acciones juntas a la derecha: Suggest · Clear arriba, Cancel · Allocate abajo ...... PASA
+  X-16 Tabla con scroll horizontal hasta el final → el editor y sus botones siguen a la vista ... PASA
+       (antes se iban de la pantalla: overflow hidden en las celdas anulaba el sticky)
+  X-17 Línea con 8 fuentes (editor más alto que el marco) → Allocate fijo abajo y clickeable .... PASA
+  X-18 Total mayor que To ship → error debajo de Allocate, no escribe nada .................... PASA
+  X-19 Celular 390 px: acciones en barra fija abajo, la página no se ensancha .................. PASA
+  X-20 Etiquetas del panel: negrita, oscuro suave en claro / blanco suave en oscuro ............ PASA
   X-12 Panel: cada unidad una sola vez; contenedor dividido por subitem de PO ................. PASA
 Chequeo visual (npm run ui-check, 80 chequeos, nunca hace Allocate): la píldora abre el editor
 debajo de su fila con el foco en un campo; un segundo clic lo cierra; una celda asignada o draft

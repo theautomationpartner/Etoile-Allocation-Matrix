@@ -687,6 +687,12 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
     Fuentes con 0 disponible y nada asignado: grises y deshabilitadas.
     Un contenedor ya "Done" que todavía guarda unidades de la línea aparece con tope = lo que
     tiene (se puede bajar, no subir).
+  Botones (pedido del cliente, 2026-10-05): los 4 juntos en una columna a la derecha de las
+  fuentes — arriba "Suggest a split" · "Clear" (a la altura del título), abajo "Cancel" ·
+  "Allocate" (a la altura del total). El error va debajo de Allocate. El editor siempre ocupa
+  el ancho visible de la tabla y se queda a la vista aunque la tabla tenga scroll horizontal.
+  Si el editor es más alto que el marco (muchas fuentes), Cancel · Allocate quedan fijos abajo.
+  Marco angosto (< 720 px, p. ej. celular): las 4 acciones pasan debajo, en una barra fija.
   Valores iniciales = lo confirmado + el draft. Botones: Suggest a split (regla del 50 %:
   warehouse si cubre al menos la mitad, después contenedores por ETA, después POs), Clear (todo
   en 0, no borra nada hasta Allocate), Cancel, Allocate.
@@ -739,6 +745,9 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
   No se muestran (no hay datos o fuera de alcance): fecha de salida del contenedor, Importer,
   borrar un shipment desde el panel, registros "Incoming" de Master SKU.
   La división de un contenedor por PO es contable (en tránsito la mercadería está mezclada).
+  Etiquetas de las cifras (In warehouse, In transit, Warehouse free, Short by, By container…):
+  en negrita y en un oscuro suave (#2F343C, no negro puro) en tema claro; en un blanco suave
+  (#E4E7EC) en tema oscuro, para que se lean sin cansar la vista.
 
 13.6 Prueba real (2026-10-02): EC0275 de EIVR114 (32 de FLEX-4132795) se volvió a guardar sin
   cambiar cantidades desde la UI. En el Ledger solo cambiaron: la ETA (tomó la ETA actual del
@@ -782,3 +791,6 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
 2026-10-05  PUNTO 3 (decisiones) — Fulfilled del Ledger se lee y se actualiza en su lugar (sin moverlo);
             ref del warehouse "Warehouse Stock"; las reservas sin fuente activa salen al guardar;
             se quitan los avisos rojos de filas, grupos y pie (solo el nombre).
+2026-10-05  PUNTO 3 (UX) — Acciones del editor juntas a la derecha (arriba Suggest · Clear, abajo
+            Cancel · Allocate), editor siempre visible con scroll horizontal, Allocate fijo en
+            editores altos, barra fija en celular; etiquetas del panel en negrita con más contraste.

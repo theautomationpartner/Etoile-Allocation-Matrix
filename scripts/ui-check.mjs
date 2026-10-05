@@ -101,6 +101,26 @@ async function run() {
     check(`a Left pill opens the editor right below its row ${tag}`, ed.pill && ed.open && ed.parts, JSON.stringify(ed));
     check(`the clicked line's editor gets the focus; a second click closes it ${tag}`, ed.focused && ed.toggles, JSON.stringify(ed));
     check(`clicking an allocated or draft cell opens the editor ${tag}`, ed.cell !== false, JSON.stringify(ed));
+    // The four actions together on the right of the sources (Suggest · Clear on top, Cancel · Allocate at
+    // the bottom next to the total), inside the visible frame — also with the table scrolled sideways.
+    const acts = async () => JSON.parse(await ev(`const ap=document.querySelector("tr.ed .ap"); if(!ap) return JSON.stringify({open:false});
+      const f=document.querySelector(".mx-scroll").getBoundingClientRect(), R=(e)=>e.getBoundingClientRect();
+      const b=Object.fromEntries([...ap.querySelectorAll(".ap-side button")].map(x=>[x.textContent,R(x)])), t=R(ap.querySelector(".ap-t")), sum=R(ap.querySelector(".ap-sum")), rows=R(ap.querySelector(".ap-rows, .ap-empty"));
+      const all=["Suggest a split","Clear","Cancel","Allocate"].map(k=>b[k]).filter(Boolean);
+      return JSON.stringify({ open:true, four: all.length===4, inFrame: all.every(r=>r.left>=f.left-1 && r.right<=f.right+1),
+        top: Math.abs(b["Suggest a split"].top - t.top) <= 4 && Math.abs(b["Clear"].top - b["Suggest a split"].top) <= 1,
+        // next to the total, or — editor taller than the frame — pinned to the frame's bottom edge
+        bottom: (Math.abs(b["Allocate"].bottom - sum.bottom) <= 6 || (sum.bottom > f.bottom && b["Allocate"].bottom <= f.bottom && b["Allocate"].bottom >= f.bottom - 40)) && Math.abs(b["Cancel"].top - b["Allocate"].top) <= 1,
+        rightOfRows: all.every(r=>r.left >= rows.right + 8), gapToRows: Math.round(b["Suggest a split"].left - rows.right) })`));
+    if (!ed.cell) await ev(`document.querySelector("tr.rw .pill")?.click()`);
+    await sleep(250);
+    const a1 = await acts();
+    check(`editor: the 4 actions sit together right of the sources (top · bottom) ${tag}`, a1.open && a1.four && a1.top && a1.bottom && a1.rightOfRows && a1.gapToRows <= 260, JSON.stringify(a1));
+    await ev(`const s=document.querySelector(".mx-scroll"); s.scrollLeft=s.scrollWidth`);
+    await sleep(250);
+    const a2 = await acts();
+    check(`editor stays in view with the table scrolled sideways ${tag}`, a2.open && a2.four && a2.inFrame, JSON.stringify(a2));
+    await ev(`document.querySelector(".mx-scroll").scrollLeft=0`);
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
     await sleep(200);
     check(`Esc closes the editor without saving ${tag}`, await ev(`return !document.querySelector("tr.ed")`));
@@ -109,6 +129,11 @@ async function run() {
     const rail = JSON.parse(await ev(`const r=document.querySelector(".rail.on"); if(!r) return JSON.stringify({open:false}); const b=r.getBoundingClientRect();
       return JSON.stringify({ open:true, inView: b.right<=innerWidth+1 && b.left>=0, table: !!r.querySelector(".pt"), title: r.querySelector(".rail-h h3")?.textContent || "" })`));
     check(`an order's label opens its side panel with its allocation paths ${tag}`, rail.open && rail.inView && rail.table, JSON.stringify(rail));
+    // Light theme: a soft dark (not pure black); dark theme: a soft white.
+    const lab = JSON.parse(await ev(`const e=document.querySelector(".rail.on .fact .l"); if(!e) return JSON.stringify({found:false}); const c=getComputedStyle(e);
+      const sum=(v)=>v.match(/[0-9]+/g).slice(0,3).map(Number).reduce((a,x)=>a+x,0); const dark=sum(getComputedStyle(document.body).backgroundColor) < 300, ink=sum(c.color);
+      return JSON.stringify({found:true, dark, weight:+c.fontWeight, ink, ok: +c.fontWeight>=600 && (dark ? ink > 600 && ink < 765 : ink < 200 && ink > 0)})`));
+    check(`side panel figure labels bold, soft dark on light / soft white on dark ${tag}`, lab.ok, JSON.stringify(lab));
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
     await sleep(300);
     check(`Esc closes the side panel ${tag}`, await ev(`return !document.querySelector(".rail.on")`));

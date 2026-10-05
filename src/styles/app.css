@@ -60,6 +60,9 @@
 .mx.resizable .s2 { left: var(--w-s1); width: var(--w-s2); min-width: var(--w-s2); max-width: var(--w-s2); }
 .mx.resizable .hsrc, .mx.resizable .hend { min-width: 0; }
 .mx.resizable th, .mx.resizable td { overflow: hidden; }
+/* Full-width rows (editor, order tabs, shipment headers) are not clipped: their content sticks to the
+   visible part of the frame when the table is scrolled sideways. */
+.mx.resizable td[colspan] { overflow: visible; }
 .mx thead th .col-rs { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 4; touch-action: none; }
 .mx thead th .col-rs.left { left: 0; right: auto; }
 .mx thead th .col-rs::after { content: ""; position: absolute; top: 18%; bottom: 18%; right: 3px; width: 2px; border-radius: 1px; background: transparent; transition: background .12s; }
@@ -203,3 +206,28 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   .user-chip .nm, .user-chip .rl { display: none; }
   .user-chip { padding: 3px; }
 }
+
+/* Allocation editor (step 3): always fits the visible part of the matrix (also with the table scrolled
+   sideways), and its four actions sit together on the right of the sources — Suggest a split · Clear
+   on top, Cancel · Allocate at the bottom, next to the total. Narrow frames: actions under the sources. */
+.ap.ap-fit { position: sticky; left: 0; z-index: 11; box-sizing: border-box; max-width: 100%; }
+.ap-body { display: grid; grid-template-columns: minmax(0, 980px) auto; column-gap: 20px; align-items: stretch; }
+.ap-main { min-width: 0; }
+.ap-main .ap-rows, .ap-main .ap-draft, .ap-main .ap-empty { max-width: none; }
+.ap-side { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 200px; }
+.ap-side .ap-btns, .ap-side .ap-acts { display: flex; gap: 6px; justify-content: flex-end; margin: 0; }
+.ap-side .btn { height: 30px; padding-top: 0; padding-bottom: 0; white-space: nowrap; }
+.ap-end { display: grid; gap: 8px; justify-items: end; position: sticky; bottom: 10px; }
+.ap-side .ap-err { margin: 0; max-width: 280px; text-align: right; line-height: 1.45; }
+.ap.narrow .ap-body { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
+.ap.narrow .ap-side { flex-direction: row; flex-wrap: wrap; align-items: flex-start; min-width: 0;
+  position: sticky; bottom: 0; z-index: 1; background: var(--surface); padding: 10px 0; border-top: 1px solid var(--line-2); }
+.ap.narrow .ap-end { margin-left: auto; position: static; }
+/* A tall editor (many sources): Cancel · Allocate stay in view while scrolling through it. */
+
+/* Labels of the side panel figures (In warehouse, Warehouse free, By container…): bold and a soft dark
+   on the light theme, a soft white on the dark one, so they read without strain (client request). */
+:root { --label: #2F343C; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --label: #E4E7EC; } }
+:root[data-theme="dark"] { --label: #E4E7EC; }
+.fact .l, .flow .fl, .ru-h { color: var(--label); font-weight: 600; }
