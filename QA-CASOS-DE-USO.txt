@@ -26,8 +26,8 @@ A) 26 líneas con más reservado que lo que falta despachar ("reserved for … t
    Consecuencia: la línea se ve cubierta (Allocated = lo que falta), pero esas reservas
    "de más" siguen ocupando stock que en realidad ya salió. Por eso conviene revisarlas.
    Cómo se arregla: el usuario abre la línea y reduce la reserva a lo que falta despachar
-   (punto 3, editor de allocation — pendiente). Decisión del cliente: no recortarlas
-   automáticamente.
+   (punto 3, editor de allocation: abrir la línea, bajar la cantidad y Allocate). Decisión del
+   cliente: no recortarlas automáticamente.
 
 B) 6 líneas que perdieron su fuente ("lost its source · <n> units") — 2,413 unidades
      EC0357 1,200 · EC0396 800 · EC0386 204 · EC0400 168 · EC0272 40 · EC0388 1
@@ -130,7 +130,8 @@ A-08 Token de monday expira con la app abierta → se renueva solo .............
 --------------------------------------------------------------------------------
 - S-10: ¿bloquear Ship dates posteriores a la cancel date o solo avisar? (hoy avisa)
 - S-17 / S-18: qué pasa con un shipment cuando Cin7 despacha o la orden pasa a Fulfilled.
-- Punto 3 (editor de allocation): es lo que resuelve los avisos rojos de EIVR114.
+- Punto 3 (editor de allocation): ya está; con él se resuelven los avisos rojos de EIVR114
+  (ver PREGUNTAS-PENDIENTES #1 a, b, c).
 
 
 --------------------------------------------------------------------------------
@@ -247,3 +248,27 @@ beforeunload dentro de monday (Chrome 154, app en un iframe de otro dominio):
   no pregunta -> cambiar de tablero/vista dentro de monday (saca el iframe), o si nunca se hizo
   clic dentro de la app.
 
+
+--------------------------------------------------------------------------------
+ 10. PUNTO 3 — EDITOR DE ALLOCATION Y PANEL LATERAL — casos probados
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 13 nuevos; 51 en total, todos pasan):
+  X-01 Filas del editor: una por fuente; tope = libre + lo que la línea ya tenía ............. PASA
+  X-02 Detalle por fuente (warehouse, contenedor con "<n> from <Reference>", PO) ............... PASA
+  X-03 "<n> already in other orders" cuando otras órdenes usan la fuente ...................... PASA
+  X-04 Abre con lo confirmado + draft y el aviso DRAFT ......................................... PASA
+  X-05 Suggest a split con la regla del 50 % y por ETA ......................................... PASA
+  X-06 Campo con tope; total > To ship bloquea con el máximo ................................... PASA
+  X-07 JSON §14.1 y registro del Ledger (status por fuentes, refs, totales, ETA) .............. PASA
+  X-08 Todo en 0 → Released (sin conexiones, JSON vacío); volver a asignar → Active ............ PASA
+  X-09 Línea sin item del Ledger → se crea en Active y se conecta desde Wholesale ............. PASA
+  X-10 Concurrencia: otro usuario tomó unidades → no escribe nada y avisa ...................... PASA
+  X-11 Escrituras limitadas a sus tableros, grupos (no Fulfilled) y columnas ................... PASA
+  X-12 Panel: cada unidad una sola vez; contenedor dividido por subitem de PO ................. PASA
+Chequeo visual (npm run ui-check, 80 chequeos, nunca hace Allocate): la píldora abre el editor
+debajo de su fila con el foco en un campo; un segundo clic lo cierra; una celda asignada o draft
+lo abre; Esc cierra sin guardar; la etiqueta de la orden abre el panel con sus recorridos; Esc lo
+cierra.
+Prueba real en monday: EC0275 / EIVR114 guardada sin cambios desde la UI → solo cambiaron la
+ETA (actualizada a la del contenedor), "Updated" y el id del subitem. Snapshot del Ledger antes y
+después comparado item por item: ningún otro item cambió.

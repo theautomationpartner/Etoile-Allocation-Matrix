@@ -2,8 +2,8 @@
  PROMPT PARA MONDAY VIBE — ETOILE FLOW · ALLOCATION MATRIX
 ================================================================================
 Estado del documento: PUNTO 1 (Métricas + Filtros + Búsqueda), PUNTO 2 (Ventas /
-Sources: la matriz por Wholesale order) y PUNTO 4 (Shipments) — validados en React local.
-PUNTO 3 (editor de Allocation) pendiente.
+Sources: la matriz por Wholesale order), PUNTO 3 (editor de Allocation + panel lateral) y
+PUNTO 4 (Shipments) — validados en React local.
 Última actualización: 2026-09-30
 Referencia probada: repo theautomationpartner/Etoile-Allocation-Matrix, rama dev
 
@@ -366,7 +366,7 @@ sticky: .s1 300px + .s2 290px).
     · El SKU no está en la fuente: celda vacía.
     Tooltip: "<SKU> in <fuente> — <n> allocated of <Y> on board · <libres> still free there".
   td.end: faltante de la fila en rojo o "—".
-  En el PUNTO 2 las celdas y la píldora son de solo lectura (el editor es el PUNTO 3).
+  Celdas y píldora abren el editor de allocation (PUNTO 3, sección 13).
 
 6.5 Filtros: se aplican a las filas; un grupo sin filas visibles se oculta. Vacío:
   "Nothing to show here." / "No row matches this filter — switch back to Everything."
@@ -659,6 +659,87 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
   - Solo pregunta si el usuario hizo clic dentro de la app (siempre ocurre al armar un shipment).
   - El texto del aviso es del navegador; no se puede cambiar.
 
+--------------------------------------------------------------------------------
+ 13. PUNTO 3 — EDITOR DE ALLOCATION + PANEL LATERAL (probado en React local, rama dev)
+--------------------------------------------------------------------------------
+13.1 Dónde vive lo asignado
+  Cada línea de venta (subitem de Wholesale, board 18402982973) apunta a su item del
+  🔗 Allocation Ledger (18430965833) por board_relation_mm7pqf7j. El item tiene un subitem por
+  fuente (Warehouse Stock / In-Transit / Purchase Order). La matriz lee el grupo Active; al abrir
+  una línea el editor viene cargado con esas cantidades, así se pueden cambiar o cancelar.
+  Columnas Allocated Status / Allocated % de Wholesale: NO se tocan (decisión del cliente).
+
+13.2 Cómo se abre (§8, §15.3)
+  - Clic en la píldora Left o en una celda con número, draft o libres → editor justo debajo de la
+    fila (tr.ed > .ap), la fila queda .editing. El foco va al campo de la fuente clickeada.
+  - Clic otra vez en la misma línea → se cierra. Solo un editor abierto a la vez.
+  - Esc → cierra el editor (y si no hay editor, el panel lateral). Enter en un campo → Allocate.
+  - Una línea con ✓ se cambia o se cancela desde cualquiera de sus celdas asignadas.
+
+13.3 Contenido (mismo markup del mockup)
+  Título "Allocate <SKU> - <nombre> · <EIVR> / <RETAILER>"; subtítulo "<SO> · cancel date
+  <fecha> · <n> days left". Aviso DRAFT si la línea tiene propuesta. Una fila por fuente:
+    Warehouse: "physical stock at Red Stag + Boxzooka · ready to ship today"
+    Contenedor: "arrives <ETA> · packing list <estado>" + una línea por subitem de PO a bordo
+      "<n> from <Reference del proveedor>"
+    PO: "<Reference> · <proveedor> · ETA <fecha> · supplier has not shipped it yet"
+    + " · <n> already in other orders" si otras órdenes tienen unidades ahí.
+    "<n> available" = libre de la fuente + lo que esta línea ya tenía ahí (tope del campo).
+    Fuentes con 0 disponible y nada asignado: grises y deshabilitadas.
+    Un contenedor ya "Done" que todavía guarda unidades de la línea aparece con tope = lo que
+    tiene (se puede bajar, no subir).
+  Valores iniciales = lo confirmado + el draft. Botones: Suggest a split (regla del 50 %:
+  warehouse si cubre al menos la mitad, después contenedores por ETA, después POs), Clear (todo
+  en 0, no borra nada hasta Allocate), Cancel, Allocate.
+  Pie: "<usado> of <To ship> units to cover assigned · <resto> left"; si se escribe más que el
+  tope, el campo vuelve al máximo y el pie dice "<fuente> capped at <n>, what it has available".
+  Nota: "Warehouse stock is only suggested when it covers at least half of the line. After that
+  the container arriving soonest is used, and a purchase order last. Change any of it by hand."
+  Total > To ship → no guarda: "This line has <n> units to ship: the total can be <n> at most".
+
+13.4 Allocate (escritura en el Ledger, mismo formato que la migración)
+  1. Concurrencia: se vuelve a leer el Ledger y se revalidan los topes. Si otro usuario tomó
+     unidades: "Not allocated: Only <n> units of <SKU> are available in <fuente> now…" y el
+     editor muestra las cifras nuevas.
+  2. Item de la línea: el que apunta board_relation_mm7pqf7j o, si no, el que tiene Allocation
+     Key = id del subitem (en Active o Released). Se borran sus subitems, se crean los nuevos y se
+     actualizan las columnas (JSON al final). Sin item → create_item en Active + subitems + link
+     desde el subitem de Wholesale.
+  3. Todo en 0 → sin subitems, Allocated 0, Status "Released", conexiones vacías, JSON vacío,
+     se mueve al grupo Released. Si se vuelve a asignar, vuelve a Active.
+  4. Se recalcula la matriz sin recargar todo (los shipments sin guardar se mantienen). Toast:
+     "Allocated · <SKU> for <EIVR>: <n> of <To ship> units. <n> still unallocated." o
+     "… This line is fully covered."
+  5. §16.4: si los shipments de la orden quedan por encima de lo asignado, se descuentan desde
+     el último shipment y el toast empieza con "<n> units of <SKU> came out of <EIVR>'s
+     shipments: save them to keep the change." (quedan sin guardar, como al cargar).
+  6. Error de monday → el editor queda abierto con el error debajo de los botones.
+  Escrituras permitidas (lista blanca en mondayWrites.js, revisadas en el servidor):
+    createLedgerItem · updateLedgerItem · moveLedgerItem (solo Active/Released) ·
+    createLedgerSubitems · deleteLedgerSubitems · linkLines target "ledgerLine"
+    (solo board_relation_mm7pqf7j). Nunca se escribe Fulfilled ni columnas fórmula/mirror.
+
+13.5 Panel lateral (§8.3, rail del mockup)
+  Se abre desde: la etiqueta de una orden, el nombre del SKU de una fila, el encabezado de un
+  contenedor o PO (Warehouse no abre nada), y el punto tenue "·" de una celda. Dentro del panel
+  cada SKU, contenedor, PO u orden abre el siguiente; arriba queda el recorrido para volver.
+  Orden: estado, % (fórmula §14.2, solo se muestra), Ordered/Fulfilled/Outstanding/
+    Unallocated, avisos (no se puede cubrir, perdió su fuente, llega después de la cancel
+    date), Outbound shipments (abre la pestaña Shipments), tabla "Where every unit comes from",
+    contenedores y POs que la alimentan.
+  Contenedor: packing list, POs que trae, On board / Committed / Free, SKUs a bordo con su
+    división por subitem de PO, "Who gets what".
+  PO: Ordered / Arrived / Shipped / Still to ship, líneas, contenedores que la llevan, a dónde va.
+  SKU: stock por etapa, libre por etapa, Short by, "Where every unit goes" + totales por eje.
+  No se muestran (no hay datos o fuera de alcance): fecha de salida del contenedor, Importer,
+  borrar un shipment desde el panel, registros "Incoming" de Master SKU.
+  La división de un contenedor por PO es contable (en tránsito la mercadería está mezclada).
+
+13.6 Prueba real (2026-10-02): EC0275 de EIVR114 (32 de FLEX-4132795) se volvió a guardar sin
+  cambiar cantidades desde la UI. En el Ledger solo cambiaron: la ETA (tomó la ETA actual del
+  contenedor, 13 Oct), "Updated" y el id del subitem recreado. Status, cantidades y conexiones
+  iguales.
+
 
 --------------------------------------------------------------------------------
  HISTORIAL
@@ -690,3 +771,6 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
             página ya no se ensancha (menú y barra superior). Prueba de beforeunload en iframe.
 2026-10-01  UX: controles del shipment junto al estado, iconos SVG, menú en portal, fecha en inglés,
             selección al editar, leyenda más marcada, aviso al cerrar con cambios; npm run ui-check.
+2026-10-02  PUNTO 3 — Editor de allocation debajo de la fila (abre/cierra con clic, carga lo del
+            Ledger, Suggest/Clear/Cancel/Allocate, topes y concurrencia), escritura en el Ledger
+            (actualizar, crear + link, Released en 0), recorte de shipments §16.4, panel lateral.

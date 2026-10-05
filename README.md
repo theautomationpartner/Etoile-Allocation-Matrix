@@ -23,6 +23,9 @@ npm run ui-check             # visual/usability regression checks (needs npm run
 | `src/` | React app (Vite). `features/allocation-matrix/` holds the screen |
 | `src/lib/engine.js` | Calculation rules (pure functions, covered by `tests/`) |
 | `src/lib/monday.js` | Reads the monday.com boards; transport-agnostic (proxy locally, `monday.api` in Vibe) |
+| `src/lib/allocation.js` | Allocation editor of a sale line: rows per source, caps, Suggest a split, Ledger record |
+| `src/lib/allocationSync.js` | Allocate: re-reads the Ledger, re-checks the caps, writes the Allocation Ledger |
+| `src/lib/paths.js` | Side panel: every unit as one path (source → PO → order) |
 | `api/monday.js` | Server-side read proxy; the monday token never reaches the browser |
 | `api/monday-write.js` | Server-side writes, limited to the operations in `src/lib/mondayWrites.js` |
 | `api/users.js` | Users & access (admins only): add / invite users, Role and App access in the Access List board; rules in `src/lib/userAdmin.js` |

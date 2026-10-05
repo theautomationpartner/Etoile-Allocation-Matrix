@@ -1,6 +1,7 @@
 // UI regression check — drives the running app (npm run dev) in a real browser and fails if any of
 // the layout problems found in QA comes back. Nothing is saved to monday (it only creates a local,
-// unsaved shipment and never clicks Save; on Users & access it opens dialogs and always cancels).
+// unsaved shipment and never clicks Save; it opens the allocation editor and never clicks Allocate;
+// on Users & access it opens dialogs and always cancels).
 //
 //   npm run dev            (in another terminal)
 //   npm run ui-check       (EDGE_PATH / APP_URL can override the defaults)
@@ -87,6 +88,29 @@ async function run() {
     check(`source column headers not cut ${tag}`, await ev(`return [...document.querySelectorAll("th.hsrc .t, th.hsrc .m")].every(x => x.scrollWidth <= x.clientWidth + 1)`));
     const legendWeight = await ev(`return Math.min(...[...document.querySelectorAll(".mx-hint .sw")].map(s => +getComputedStyle(s).fontWeight))`);
     check(`legend numbers bold (≥ 700) ${tag}`, legendWeight >= 700, `weight ${legendWeight}`);
+
+    // Step 3 — allocation editor (opened and closed, never Allocate) and side panel.
+    const ed = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const p=document.querySelector("tr.rw .pill"); if(!p) return JSON.stringify({pill:false});
+      p.click(); await wait(250); const e=document.querySelector("tr.ed .ap");
+      const res={ pill:true, open: !!e && p.closest("tr").classList.contains("editing") && e.closest("tr").previousElementSibling===p.closest("tr"),
+        parts: !!e && [".ap-t b",".ap-t i",".ap-rows .apr input",".ap-sum",".ap-note"].every(s=>e.querySelector(s)), focused: document.activeElement?.matches?.(".apr input") };
+      p.click(); await wait(250); res.toggles = !document.querySelector("tr.ed");
+      const c=document.querySelector("tr.rw td.cl.a button, tr.rw td.cl.dr button"); if(c){ c.click(); await wait(250); res.cell = !!document.querySelector("tr.ed"); }
+      return JSON.stringify(res)`));
+    check(`a Left pill opens the editor right below its row ${tag}`, ed.pill && ed.open && ed.parts, JSON.stringify(ed));
+    check(`the clicked line's editor gets the focus; a second click closes it ${tag}`, ed.focused && ed.toggles, JSON.stringify(ed));
+    check(`clicking an allocated or draft cell opens the editor ${tag}`, ed.cell !== false, JSON.stringify(ed));
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await sleep(200);
+    check(`Esc closes the editor without saving ${tag}`, await ev(`return !document.querySelector("tr.ed")`));
+    await ev(`document.querySelector("tr.g .tx").click()`);
+    await sleep(350);
+    const rail = JSON.parse(await ev(`const r=document.querySelector(".rail.on"); if(!r) return JSON.stringify({open:false}); const b=r.getBoundingClientRect();
+      return JSON.stringify({ open:true, inView: b.right<=innerWidth+1 && b.left>=0, table: !!r.querySelector(".pt"), title: r.querySelector(".rail-h h3")?.textContent || "" })`));
+    check(`an order's label opens its side panel with its allocation paths ${tag}`, rail.open && rail.inView && rail.table, JSON.stringify(rail));
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await sleep(300);
+    check(`Esc closes the side panel ${tag}`, await ev(`return !document.querySelector(".rail.on")`));
 
     // Open the first order that still has units to put in a shipment and create a LOCAL shipment.
     const opened = await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const n=document.querySelectorAll("tr.g").length;

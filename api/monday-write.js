@@ -59,7 +59,7 @@ export const POST = guarded(async (request, { user }) => {
     for (const c of checks) {
       const it = found.get(c.id);
       const gone = !it || it.state === "deleted";
-      if (gone && op === "deleteShipmentItems") continue; // already deleted by someone else: nothing to do
+      if (gone && def.skipGone) continue; // already deleted by someone else: nothing to do
       if (gone) return json(409, { error: `Item ${c.id} no longer exists in Monday. Refresh and try again.` });
       if (!c.boards.includes(String(it.board?.id))) return json(403, { error: `Item ${c.id} is not on an allowed board for ${op}.` });
     }
@@ -70,7 +70,7 @@ export const POST = guarded(async (request, { user }) => {
   if (op === "createShipmentLines") entries = entries.map((e) => ({ ...e, v: addColumn(e.v, NS.subOwner, peopleWith(null, user.userId)) }));
   if (op === "updateShipmentLines") entries = entries.map((e) => ({ ...e, v: addColumn(e.v, NS.subOwner, peopleWith(valueOf(e.i, NS.subOwner), user.userId)) }));
   if (op === "linkLines") entries = entries.map((e) => (e.target === "line" ? { ...e, v: addColumn(e.v, LINE_PEOPLE_COLUMN, peopleWith(valueOf(e.i, LINE_PEOPLE_COLUMN), user.userId)) } : e));
-  if (op === "deleteShipmentItems") {
+  if (def.skipGone) {
     entries = entries.filter((e) => found.get(String(e.i)) && found.get(String(e.i)).state !== "deleted");
     if (!entries.length) return json(200, { data: {} });
   }

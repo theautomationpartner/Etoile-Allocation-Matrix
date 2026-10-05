@@ -220,6 +220,14 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     }])),
   };
 
+  // Free units of one source for a SKU (editor caps, side panel).
+  function freeOf(source, sourceId, sku) {
+    if (source === SOURCE.WAREHOUSE) return whFree(sku);
+    if (source === SOURCE.IN_TRANSIT) { const c = containerById.get(String(sourceId)); return c ? containerFree(c, sku) : 0; }
+    const p = poById.get(String(sourceId));
+    return p ? poFree(p, sku) : 0;
+  }
+
   return {
     orders,
     lines,
@@ -235,6 +243,10 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     sourceTotals,
     containerTotal,
     poTotal,
+    poShipped,
+    whTotal,
+    freeOf,
+    usedOf,
     counts: { orders: new Set(lines.map((l) => l.orderId)).size, rows: lines.length },
   };
 }

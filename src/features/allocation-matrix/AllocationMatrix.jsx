@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { clock } from "../../lib/format.js";
+import { clock, fmt } from "../../lib/format.js";
 import { buildOrderMatrix } from "../../lib/matrix.js";
+import { allocatedMessage, clampValue, editorFor, suggestSplit, validate } from "../../lib/allocation.js";
+import { saveAllocation } from "../../lib/allocationSync.js";
+import { mondayApi } from "../../config.js";
+import { AllocationEditor } from "./AllocationEditor.jsx";
+import { SidePanel } from "./SidePanel.jsx";
 import { rowMatchesSearch } from "../../lib/search.js";
 import { MetricCards } from "./MetricCards.jsx";
 import { ControlsBar } from "./ControlsBar.jsx";
@@ -11,7 +16,8 @@ import { useShipments } from "../../hooks/useShipments.js";
 import { fetchWrite } from "../../lib/mondayWrites.js";
 
 // Allocation matrix screen (§3). Step 1: metrics + Show filters + search. Step 2: the matrix in the
-// Wholesale order view. Step 4: shipments (Shipments tab of each order). Step 3 (allocation editor) is pending.
+// Wholesale order view. Step 3: the allocation editor below a row (writes the Allocation Ledger) and the
+// side panel of an order, SKU or source. Step 4: shipments (Shipments tab of each order).
 export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData }) {
   const shipments = useShipments({ data, model, write: fetchWrite, toast, patchData });
 
@@ -42,6 +48,84 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
   const toggleFilter = (key) => setFilter((cur) => (cur === key ? "all" : key));
 
   const matrix = useMemo(() => (model ? buildOrderMatrix(model, data, { filter, search }) : null), [model, data, filter, search]);
+
+  // ── Step 3: allocation editor (one line at a time; clicking the same line again closes it) ──
+  const [edit, setEdit] = useState(null); // { lineId, focus, values, notice, error, saving }
+  const ed = useMemo(() => (edit && model ? editorFor(model, data, edit.lineId) : null), [edit?.lineId, model, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openEditor = (lineId, focus) => setEdit((cur) => {
+    if (cur?.saving) return cur;
+    if (cur && String(cur.lineId) === String(lineId)) return null;
+    const e = editorFor(model, data, lineId);
+    return e ? { lineId, focus: focus || null, values: e.values, notice: "", error: "", saving: false } : cur;
+  });
+  const patchEdit = (patch) => setEdit((cur) => (cur ? { ...cur, ...patch } : cur));
+  const closeEditor = () => setEdit((cur) => (cur?.saving ? cur : null));
+  // The line left the matrix (e.g. fully shipped after a refresh) or its order switched to Shipments: close.
+  const editOrder = ed ? String(ed.line.orderId) : null;
+  useEffect(() => {
+    if (edit && !edit.saving && (!ed || shipments.ui.tab[editOrder] === "ships")) setEdit(null);
+  }, [edit, ed, editOrder, shipments.ui.tab]);
+
+  const editorActions = {
+    onChange(row, raw) {
+      const { value, capped } = clampValue(row, raw);
+      setEdit((cur) => {
+        const values = { ...cur.values };
+        if (value > 0) values[row.id] = value;
+        else delete values[row.id];
+        return { ...cur, values, error: "", notice: capped ? `${row.title} capped at ${fmt(row.max)}, what it has available` : "" };
+      });
+    },
+    onSuggest: () => patchEdit({ values: suggestSplit(ed), notice: "", error: "" }),
+    onClear: () => patchEdit({ values: {}, notice: "", error: "" }),
+    onCancel: closeEditor,
+    async onSave() {
+      if (!edit || edit.saving) return;
+      const problem = validate(ed, edit.values);
+      if (problem) return patchEdit({ error: problem });
+      patchEdit({ saving: true, error: "" });
+      const { sku, number, goal } = ed;
+      const orderId = String(ed.line.orderId);
+      try {
+        const res = await saveAllocation(fetchWrite, mondayApi, { data, lineId: edit.lineId, values: edit.values });
+        // Keep loadedAt: the matrix is recalculated, unsaved shipments stay as they are.
+        patchData((cur) => ({ ...res.data, loadedAt: cur.loadedAt }));
+        const cut = shipments.actions.fitAllocation(orderId, sku, res.allocated);
+        setEdit(null);
+        toast(`${cut ? `${fmt(cut)} units of ${sku} came out of ${number}'s shipments: save them to keep the change. ` : ""}${allocatedMessage({ sku, number, allocated: res.allocated, toShip: goal })}`);
+      } catch (e) {
+        // A conflict brings the figures read just now: the editor shows them.
+        if (e.fresh) patchData((cur) => ({ ...e.fresh, loadedAt: cur.loadedAt }));
+        setEdit((cur) => (cur ? { ...cur, saving: false, error: `Not allocated: ${e.message}` } : cur));
+      }
+    },
+  };
+
+  // ── Side panel (§8.3): a trail of records; a click in the matrix starts a new trail ──
+  const [rail, setRail] = useState([]);
+  const panel = {
+    onPanel: (type, id) => setRail([{ type, id: String(id) }]),
+    onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),
+    onTrail: (i) => setRail((cur) => cur.slice(0, i + 1)),
+    onClose: () => setRail([]),
+    onGoShipments(orderId) {
+      setRail([]);
+      setOpen((cur) => ({ ...cur, [orderId]: true }));
+      shipments.actions.setTab(orderId, "ships");
+    },
+  };
+
+  // Esc closes the editor first, then the side panel (as in the mockup).
+  const escRef = useRef(null);
+  escRef.current = () => {
+    if (edit && !edit.saving) setEdit(null);
+    else if (rail.length) setRail([]);
+  };
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && escRef.current();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const matched = useMemo(() => (model ? model.lines.filter((r) => rowMatchesSearch(r, search, data.warehouse)).length : 0), [model, data, search]);
 
   // By default only groups with something left to allocate are open; with a filter or a search, all are.
@@ -84,7 +168,10 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />
       <Legend totals={matrix?.legend} />
-      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} shipments={shipments} />
+      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} shipments={shipments}
+        editingLine={ed ? edit.lineId : null} onEdit={openEditor} onPanel={panel.onPanel}
+        renderEditor={(nCol) => ed && <AllocationEditor ed={ed} state={edit} nCol={nCol} {...editorActions} />} />
+      <SidePanel stack={rail} model={model} data={data} shipments={shipments} {...panel} />
     </>
   );
 }

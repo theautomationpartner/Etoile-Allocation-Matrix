@@ -31,6 +31,7 @@ export const COL = {
 
 export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active (Fulfilled / Released hold no units)
+export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero
 export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer (only its item count, for the side nav)
 const LEDGER_SOURCE_TYPE = { "Warehouse Stock": "warehouse", "In-Transit": "intransit", "Purchase Order": "po" };
 
@@ -82,6 +83,20 @@ export function parseAllocationJson(text) {
   } catch {
     return [];
   }
+}
+
+// Confirmed entries of every sale line from the Ledger (group Active). A line keeps the raw link of its
+// Wholesale subitem (ledgerLinkId) and the Ledger item that holds its units now (ledgerItemId).
+export function withLedger(data, ledger) {
+  const orders = data.orders.map((o) => ({
+    ...o,
+    lines: o.lines.map((l) => {
+      const linkId = l.ledgerLinkId !== undefined ? l.ledgerLinkId : l.ledgerItemId;
+      const rec = (linkId && ledger.byId.get(String(linkId))) || ledger.byKey.get(String(l.id));
+      return { ...l, entries: rec?.entries || [], ledgerLinkId: linkId || null, ledgerItemId: rec?.itemId || null };
+    }),
+  }));
+  return { ...data, orders };
 }
 
 export function createMondayApi(transport = fetchTransport) {
@@ -264,23 +279,31 @@ export function createMondayApi(transport = fetchTransport) {
     if (missing.length) throw new Error(`Monday is missing ${missing.join(", ")}. The figures can't be calculated safely — ask your administrator to restore it.`);
   }
 
+  // Step 3 — the Ledger item of one sale line, in any group (a Released one is reused when the line is
+  // allocated again): the one the Wholesale subitem links to, else the one whose Allocation Key is the line.
+  async function findLedgerItem(lineId, linkId) {
+    const f = `id state group { id } board { id } subitems { id }`;
+    const [linked, byKey] = await Promise.all([
+      linkId ? transport(`query($i:[ID!]){ items(ids:$i){ ${f} } }`, { i: [String(linkId)] }) : null,
+      transport(`query($b:ID!,$v:[String]!){ items_page_by_column_values(board_id:$b, limit:10, columns:[{column_id:"${COL.ledger.key}", column_values:$v}]){ items { ${f} } } }`,
+        { b: BOARDS.ledger, v: [String(lineId)] }),
+    ]);
+    const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger;
+    const rank = (it) => (it.group?.id === LEDGER_ACTIVE_GROUP ? 0 : it.group?.id === LEDGER_RELEASED_GROUP ? 1 : 2);
+    const candidates = [...(linked?.items || []), ...((byKey?.items_page_by_column_values?.items || []).sort((a, b) => rank(a) - rank(b)))].filter(live);
+    const it = candidates[0];
+    return it ? { id: String(it.id), group: it.group?.id || "", subitemIds: (it.subitems || []).map((s) => String(s.id)) } : null;
+  }
+
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     await checkSchema();
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
     const [orders, warehouse, containers, pos, ledger, boardCounts, shipments] = await Promise.all([
       loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
     ]);
-    if (useLedger) {
-      for (const o of orders) {
-        for (const l of o.lines) {
-          const rec = (l.ledgerItemId && ledger.byId.get(String(l.ledgerItemId))) || ledger.byKey.get(String(l.id));
-          l.entries = rec?.entries || [];
-          l.ledgerItemId = rec?.itemId || null;
-        }
-      }
-    }
-    return { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
+    const data = { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
+    return useLedger ? withLedger(data, ledger) : data;
   }
 
-  return { loadMatrixData, loadLedger, loadShipments };
+  return { loadMatrixData, loadLedger, loadShipments, findLedgerItem };
 }

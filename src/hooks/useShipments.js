@@ -150,6 +150,14 @@ export function useShipments({ data, model, write, toast, patchData }) {
       toast(`${sh.name} ships ${dayMonthYear(v)}.`);
     },
 
+    // §16.4 — after the allocation of a line goes down: what no longer fits comes out of the order's
+    // shipments, last shipment first. Those shipments are left unsaved. Returns the units taken out.
+    fitAllocation(orderId, sku, allocated) {
+      const { ships, cut } = trimShips(shipsOf(orderId), sku, allocated);
+      if (cut) update(orderId, () => ships);
+      return cut;
+    },
+
     startRename: (shipId) => setUi((u) => ({ ...u, rename: shipId, menu: null })),
     finishRename(orderId, shipId, value, cancel) {
       const v = String(value || "").trim();

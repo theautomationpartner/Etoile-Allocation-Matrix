@@ -93,7 +93,7 @@ export function mockupData() {
     warehouse: Object.fromEntries(Object.entries(SKUS).map(([sku, s]) => [sku, { itemId: `wh-${sku}`, name: s.n, usQty: s.us }])),
     pos: POS.map((p) => ({
       id: p.id, name: p.id, reference: p.ref, region: p.region, eta: p.eta,
-      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({ id: `${p.id}-${sku}`, sku, qtyOutstanding: ord - arr })),
+      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({ id: `${p.id}-${sku}`, sku, qtyOrdered: ord, qtyOutstanding: ord - arr })),
     })),
     containers: SHIPS.map((s) => ({
       id: s.id, name: s.id, group: "topics", location: "US", eta: s.eta, packingList: s.packing,

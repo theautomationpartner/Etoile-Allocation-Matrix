@@ -7,16 +7,18 @@ import { useColumnWidths } from "../../hooks/useColumnWidths.js";
 const RULE = "Suggested order: warehouse first when it covers at least half of the line — then the container arriving soonest, then a purchase order.";
 
 // §7.2 / §8 — one matrix cell. Container columns read "X/Y": X allocated here, Y = units of the SKU on board.
-// Read-only in step 2: clicking a cell opens the allocation editor in step 3.
-function Cell({ c, needs }) {
+// §15.3 — a number, a draft or free units open the allocation editor with the focus on that source;
+// a faint dot opens the side panel of the source (nothing to allocate from there).
+function Cell({ c, needs, onEdit, onPanel }) {
   const XY = c.k === "it" && c.tot > 0;
   const of = XY ? <span className="of">/{fmt(c.tot)}</span> : null;
   const free = c.av > 0 ? ` · ${fmt(c.av)} still free there` : "";
+  const edit = () => onEdit(c.id);
   if (c.a > 0) {
     const multi = c.split.includes("+");
     return (
       <td className={`cl a ${c.k}`}>
-        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.a)} allocated${XY ? ` of ${fmt(c.tot)} on board` : ""}${c.split ? ` (${c.split})` : ""}${free}`}>
+        <button type="button" onClick={edit} data-tip={`${c.lbl} — ${fmt(c.a)} allocated${XY ? ` of ${fmt(c.tot)} on board` : ""}${c.split ? ` (${c.split})` : ""}${free}. Click to change it.`}>
           {fmt(c.a)}{of}
           {multi && <sup className="mpo">{c.split.split("+").length} POs</sup>}
           {c.dr > 0 && <sup className="mpo">+{fmt(c.dr)} draft</sup>}
@@ -27,43 +29,48 @@ function Cell({ c, needs }) {
   if (c.dr > 0) {
     return (
       <td className={`cl dr ${c.k}`}>
-        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.dr)} proposed${XY ? ` of ${fmt(c.tot)} on board` : ""}. Draft: not allocated until you open it and click Allocate.`}>
+        <button type="button" onClick={edit} data-tip={`${c.lbl} — ${fmt(c.dr)} proposed${XY ? ` of ${fmt(c.tot)} on board` : ""}. Draft: not allocated until you open it and click Allocate.`}>
           {fmt(c.dr)}{of}<sup className="mpo">draft</sup>
         </button>
       </td>
     );
   }
   if (XY) {
+    const canUse = needs && c.av > 0;
+    const tip = `${c.lbl} — nothing allocated to this order yet · ${fmt(c.tot)} on board, ${fmt(c.av)} still free${canUse ? ". Click to allocate from here." : ""}`;
     return (
       <td className="cl xy">
-        <span data-tip={`${c.lbl} — nothing allocated to this order yet · ${fmt(c.tot)} on board, ${fmt(c.av)} still free`}>{fmt(c.tot)}</span>
+        {canUse ? <button type="button" onClick={edit} data-tip={tip}>{fmt(c.tot)}</button> : <span data-tip={tip}>{fmt(c.tot)}</span>}
       </td>
     );
   }
   if (c.av > 0 && needs) {
     return (
       <td className="cl av">
-        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — ${fmt(c.av)} free`}>{fmt(c.av)}</button>
+        <button type="button" onClick={edit} data-tip={`${c.lbl} — ${fmt(c.av)} free. Click to allocate from here.`}>{fmt(c.av)}</button>
       </td>
     );
   }
   if (c.cap > 0) {
     return (
       <td className="cl idle">
-        <button type="button" tabIndex={-1} data-tip={`${c.lbl} — nothing allocated from here`}>·</button>
+        <button type="button" onClick={onPanel} data-tip={`${c.lbl} — nothing allocated from here`}>·</button>
       </td>
     );
   }
   return <td className="cl" />;
 }
 
-function Row({ r }) {
+function Row({ r, cols, editing, onEdit, onPanel }) {
   const [toShip, allocated, left] = r.nums;
+  const sku = r.line.sku;
+  // The faint dot of the warehouse opens the SKU; a container or PO opens that source.
+  const panelOf = (i) => () => (cols[i].k === "wh" ? onPanel("sku", sku) : onPanel(cols[i].k === "it" ? "ship" : "po", cols[i].id));
   return (
-    <tr className="rw">
+    <tr className={`rw ${editing ? "editing" : ""}`}>
       <td className="s1">
         <div className="rh">
-          <div className="t"><b>{r.title}</b></div>
+          <div className="t" onClick={() => onPanel("sku", sku)} style={{ cursor: "pointer" }}><b>{r.title}</b></div>
           {r.warnings.map((w) => (
             <div key={w} className="m warn"
               data-tip={w.startsWith("lost") ? "Reserved on a container or PO that no longer exists or no longer carries this SKU. These units are back in Left." : "More units are reserved than are left to ship: part of the reservation was already shipped. Review the line."}>
@@ -78,17 +85,17 @@ function Row({ r }) {
           <span className="n mid">{fmt(allocated)}</span>
           {left ? (
             <span className={`n k ${r.end ? "bad" : ""}`}>
-              <span className={`pill ${r.end ? "bad" : ""} ${r.dr ? "drp" : ""}`}
+              <button type="button" className={`pill ${r.end ? "bad" : ""} ${r.dr ? "drp" : ""}`} onClick={() => onEdit(r.key, null)}
                 data-tip={r.dr ? `${fmt(r.dr)} units proposed as draft — review and click Allocate` : "Allocate these units"}>
                 {fmt(left)}<i>{r.dr ? "Draft" : "Allocate"}</i>
-              </span>
+              </button>
             </span>
           ) : (
             <span className="n k done">✓</span>
           )}
         </div>
       </td>
-      {r.cells.map((c, i) => <Cell key={i} c={c} needs={r.needs} />)}
+      {r.cells.map((c, i) => <Cell key={i} c={c} needs={r.needs} onEdit={(focus) => onEdit(r.key, focus)} onPanel={panelOf(i)} />)}
       <td className={`end ${r.end ? "bad" : "ok"}`}>{r.end ? fmt(r.end) : "—"}</td>
     </tr>
   );
@@ -101,7 +108,7 @@ function rollTip(g, col, total, detail) {
   return `${fmt(total)} units of ${g.number} already allocated from ${src}:\n${lines}`;
 }
 
-export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments }) {
+export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments, editingLine, renderEditor, onEdit, onPanel }) {
   const { tip, handlers } = useTooltip();
   const cw = useColumnWidths();
   const cols = matrix?.cols || [{ k: "wh", id: "warehouse", label: "Warehouse", meta: "on hand" }];
@@ -133,14 +140,17 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
               <th className="s2"><div className="hn"><span>To ship</span><span>Allocated</span><span>Left</span></div><Resizer k="s2" /></th>
               {cols.map((c) => {
                 const w = c.cap?.total ? Math.min(100, Math.round((c.cap.committed / c.cap.total) * 100)) : 0;
+                // §15.3 — a source's label opens its side panel (the warehouse has none, as in the mockup).
+                const Head = c.k === "wh" ? "div" : "button";
+                const headProps = c.k === "wh" ? {} : { type: "button", onClick: () => onPanel(c.k === "it" ? "ship" : "po", c.id) };
                 return (
                   <th key={c.id} className={`hsrc ${c.k}`}>
-                    <div className={`inner ${c.landed ? "landed" : ""}`}>
+                    <Head className={`inner ${c.landed ? "landed" : ""}`} {...headProps}>
                       <div className="rule" />
                       <div className="t">{c.label}</div>
                       <div className="m">{c.meta}</div>
                       <div className="cap" data-tip={c.cap ? `${fmt(c.cap.committed)} of ${fmt(c.cap.total)} already committed` : ""}><i style={{ width: `${w}%` }} /></div>
-                    </div>
+                    </Head>
                     <Resizer k={c.id} />
                   </th>
                 );
@@ -158,7 +168,7 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                     <td className="s1">
                       <div className="gh">
                         <button type="button" className="cv" onClick={() => onToggle(g, !open)} aria-label={open ? "Collapse" : "Expand"} aria-expanded={open}>{open ? "▼" : "▶"}</button>
-                        <span className="tx">
+                        <span className="tx" onClick={() => onPanel("so", String(g.key))} style={{ cursor: "pointer" }}>
                           <span className="t"><b className="eivr">{g.number}</b><span className="slash">/</span><span className="ret">{g.retailer}</span></span>
                           <span className="m">
                             {g.meta}
@@ -205,7 +215,12 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                           </td>
                         </tr>
                         {tab === "alloc"
-                          ? g.rows.map((r) => <Row key={r.key} r={r} />)
+                          ? g.rows.map((r) => (
+                            <Fragment key={r.key}>
+                              <Row r={r} cols={cols} editing={String(editingLine) === String(r.key)} onEdit={onEdit} onPanel={onPanel} />
+                              {String(editingLine) === String(r.key) && renderEditor(nCol)}
+                            </Fragment>
+                          ))
                           : <ShipmentsRows group={g} cols={cols} nCol={nCol} sh={shipments} />}
                       </>
                     );

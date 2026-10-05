@@ -29,10 +29,7 @@
 .spin { animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Matrix: cells and pills are read-only until step 3 (Allocation) wires the editor. */
-.mx tr.rw .cl button, .mx tr.rw .pill { cursor: default; }
 .hsrc .inner.landed .m { color: var(--po); }
-.mx .gh .tx { cursor: default; }
 .otabs button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Legend swatches hold real totals (e.g. 12,610), so they grow with the number. */

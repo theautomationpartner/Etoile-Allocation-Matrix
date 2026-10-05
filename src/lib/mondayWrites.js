@@ -1,4 +1,4 @@
-// Every write the app can make to monday.com (step 4: shipments). Shared by the browser and the
+// Every write the app can make to monday.com (step 3: allocations in the Ledger; step 4: shipments). Shared by the browser and the
 // server: the server (api/monday-write.js) only runs these operations, on these boards and columns.
 // In monday Vibe the same queries go through monday.api(query, { variables }) after checkWrite().
 //
@@ -20,10 +20,28 @@ export const SHIPMENT_LINKS = {
   ledger: { board: "18430965833", col: "board_relation_mm7p81dk" }, // Allocation Ledger item → its shipments
 };
 
+// Step 3 — 🔗 Allocation Ledger - Monday Vibe: one item per sale line, one subitem per source feeding it.
+export const LEDGER = {
+  board: "18430965833",
+  sub: "18430967307",
+  groups: { active: "group_mm76c2zx", released: "group_mm76qvz" }, // the app never writes to Fulfilled
+  col: {
+    key: "text_mm76g12x", sale: "board_relation_mm76cxt5", saleId: "text_mm76t66a", sku: "text_mm76wfw4", master: "board_relation_mm76mpxt",
+    ordered: "numeric_mm766vqv", fulfilled: "numeric_mm76ebf5", outstanding: "numeric_mm76m58e", allocated: "numeric_mm76s5dm", status: "color_mm76q1fj",
+    poRel: "board_relation_mm76vycr", poRefs: "text_mm76yede", poUsed: "text_mm76rwqv", poTotal: "text_mm76he3a", poUsedTotal: "numeric_mm761kw4",
+    itRel: "board_relation_mm76detw", itRefs: "text_mm76fpnf", itUsed: "text_mm76q5gd", itTotal: "text_mm76bnnc", itUsedTotal: "numeric_mm76fpzk",
+    whUsed: "numeric_mm76q8fe", earliestEta: "date_mm7654mr", json: "long_text_mm764vdq", updated: "date_mm766j65",
+  },
+  subCol: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6" },
+  // Wholesale subitem → its Ledger item
+  link: { board: "18402982973", col: "board_relation_mm7pqf7j" },
+};
+
 export const BATCH_SIZE = 50;
 const LINK_TARGET = {
   line: { board: SHIPMENT_LINKS.wholesaleSub.board, columns: [SHIPMENT_LINKS.wholesaleSub.col] },
   ledger: { board: SHIPMENT_LINKS.ledger.board, columns: [SHIPMENT_LINKS.ledger.col] },
+  ledgerLine: { board: LEDGER.link.board, columns: [LEDGER.link.col] }, // Wholesale subitem → Ledger item
 };
 
 // Builds one request with one aliased mutation per entry. Returns { query, variables }.
@@ -67,14 +85,49 @@ export const WRITE_OPS = {
   },
   // Shipment items or SKU lines. Items someone already deleted in monday are skipped by the server.
   deleteShipmentItems: {
-    batch: true, fields: ["i"], itemBoards: () => [NS.board, NS.sub],
+    batch: true, fields: ["i"], itemBoards: () => [NS.board, NS.sub], skipGone: true,
     build: ({ entries }) => aliased(entries, "", {
       decl: (k) => `$i${k}:ID!`,
       body: (k) => `delete_item(item_id:$i${k})`,
       vars: (k, e) => ({ [`i${k}`]: e.i }),
     }),
   },
-  // Connect sale lines (target "line": Wholesale subitem; "ledger": Allocation Ledger item) to their shipments.
+  // ── Step 3: the allocation of a sale line in the Allocation Ledger ──
+  createLedgerItem: {
+    build: (v) => ({ query: `mutation($n:String!,$v:JSON!){ create_item(board_id:${LEDGER.board}, group_id:"${LEDGER.groups.active}", item_name:$n, column_values:$v, create_labels_if_missing:false){ id } }`, variables: v }),
+    vars: ["n", "v"], columns: () => Object.values(LEDGER.col),
+  },
+  updateLedgerItem: {
+    build: (v) => ({ query: `mutation($i:ID!,$v:JSON!){ change_multiple_column_values(board_id:${LEDGER.board}, item_id:$i, column_values:$v, create_labels_if_missing:false){ id } }`, variables: v }),
+    vars: ["i", "v"], columns: () => Object.values(LEDGER.col), itemBoards: () => [LEDGER.board],
+  },
+  // Active ↔ Released only.
+  moveLedgerItem: {
+    build: (v) => ({ query: `mutation($i:ID!,$g:String!){ move_item_to_group(item_id:$i, group_id:$g){ id } }`, variables: v }),
+    vars: ["i", "g"], allowed: { g: Object.values(LEDGER.groups) }, itemBoards: () => [LEDGER.board],
+  },
+  createLedgerSubitems: {
+    batch: true, parentBoards: [LEDGER.board], vars: ["p"], fields: ["n", "v"], columns: () => Object.values(LEDGER.subCol),
+    build: ({ p, entries }) => {
+      const r = aliased(entries, "$p:ID!", {
+        decl: (k) => `$n${k}:String!, $v${k}:JSON!`,
+        body: (k) => `create_subitem(parent_item_id:$p, item_name:$n${k}, column_values:$v${k}, create_labels_if_missing:false)`,
+        vars: (k, e) => ({ [`n${k}`]: e.n, [`v${k}`]: e.v }),
+      });
+      return { query: r.query, variables: { p, ...r.variables } };
+    },
+  },
+  // Subitems someone already deleted in monday are skipped by the server.
+  deleteLedgerSubitems: {
+    batch: true, fields: ["i"], itemBoards: () => [LEDGER.sub], skipGone: true,
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!`,
+      body: (k) => `delete_item(item_id:$i${k})`,
+      vars: (k, e) => ({ [`i${k}`]: e.i }),
+    }),
+  },
+  // Connect sale lines (target "line": Wholesale subitem; "ledger": Allocation Ledger item) to their shipments,
+  // or (target "ledgerLine") a Wholesale subitem to its Allocation Ledger item.
   linkLines: {
     batch: true, fields: ["target", "i", "v"], columns: (e) => LINK_TARGET[e.target]?.columns || [], itemBoards: (e) => [LINK_TARGET[e.target]?.board],
     build: ({ entries }) => aliased(entries, "", {
@@ -93,6 +146,7 @@ export function checkWrite(op, variables = {}) {
   const def = WRITE_OPS[op];
   if (!def) throw new Error(`Unknown write operation "${op}".`);
   for (const k of def.vars || []) if (variables[k] === undefined || variables[k] === null || variables[k] === "") throw new Error(`Missing "${k}" for ${op}.`);
+  for (const [k, ok] of Object.entries(def.allowed || {})) if (!ok.includes(variables[k])) throw new Error(`${op}: "${variables[k]}" is not allowed for "${k}".`);
   if (def.batch) {
     const entries = variables.entries;
     if (!Array.isArray(entries) || !entries.length) throw new Error(`${op} needs at least one entry.`);

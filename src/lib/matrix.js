@@ -79,7 +79,7 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
       const a = line.entries.filter((e) => colMatches(col, e.stage, e.sourceId)).reduce((s, e) => s + e.qty, 0);
       const dr = draft.filter((p) => colMatches(col, p.source, p.sourceId)).reduce((s, p) => s + p.qty, 0);
       // A landed container is not supply any more: its column only shows reservations still held there.
-      if (col.landed && a <= 0) return { k: col.k, a: 0, dr: 0, av: 0, cap: 0, tot: null, split: "", lbl: "" };
+      if (col.landed && a <= 0) return { id: col.id, k: col.k, a: 0, dr: 0, av: 0, cap: 0, tot: null, split: "", lbl: "" };
       const src = srcs.find((s) => colMatches(col, s.source, s.sourceId));
       let tot = null, split = "";
       if (col.k === "it") {
@@ -90,7 +90,7 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
         for (const x of subs) byPo.set(x.poRef, (byPo.get(x.poRef) || 0) + x.qty);
         if (byPo.size > 1) split = [...byPo.entries()].map(([po, q]) => `${q.toLocaleString("en-US")} from ${poRefByName.get(po) || po}`).join(" + ");
       }
-      return { k: col.k, a, dr, av: src?.free || 0, cap: src?.total || (tot || 0), tot, split, lbl: `${line.sku} in ${col.label}` };
+      return { id: col.id, k: col.k, a, dr, av: src?.free || 0, cap: src?.total || (tot || 0), tot, split, lbl: `${line.sku} in ${col.label}` };
     });
   }
 
