@@ -6,7 +6,8 @@
 //      its subitems are replaced and its columns updated. Without one, an item is created in Active and
 //      linked from the Wholesale subitem (board_relation_mm7pqf7j).
 //   3. All zero: the item keeps no subitems, Status "Released", and moves to the Released group.
-//      Allocating that line again moves it back to Active.
+//      Allocating that line again moves it back to Active. An item in any other group (e.g. Fulfilled)
+//      is rewritten where it is and stays linked to its line, as the Allocation Queue does.
 // Order of writes: old subitems out, new subitems in, then the columns (the JSON copy last), so a failure
 // half-way never shows more units than were confirmed.
 import { buildModel } from "./engine.js";
@@ -48,22 +49,19 @@ export async function saveAllocation(write, api, { data, lineId, values }) {
 
   // 2 — the line's Ledger item, in any group.
   const item = await api.findLedgerItem(lineId, ed.raw.ledgerLinkId);
-  if (item && item.group !== LEDGER.groups.active && item.group !== LEDGER.groups.released) {
-    throw new Error("The Ledger item of this line is not in the Active or Released group. Check it in Monday before allocating.");
-  }
   let itemId = item?.id || null;
 
   if (!entries.length) {
     if (itemId) {
       await deleteSubitems(write, item.subitemIds);
       await write("updateLedgerItem", { i: itemId, v: JSON.stringify(rec.itemValues) });
-      if (item.group !== LEDGER.groups.released) await write("moveLedgerItem", { i: itemId, g: LEDGER.groups.released });
+      if (item.group === LEDGER.groups.active) await write("moveLedgerItem", { i: itemId, g: LEDGER.groups.released });
     }
   } else if (itemId) {
     await deleteSubitems(write, item.subitemIds);
     await createSubitems(write, itemId, rec.subitems);
     await write("updateLedgerItem", { i: itemId, v: JSON.stringify(rec.itemValues) });
-    if (item.group !== LEDGER.groups.active) await write("moveLedgerItem", { i: itemId, g: LEDGER.groups.active });
+    if (item.group === LEDGER.groups.released) await write("moveLedgerItem", { i: itemId, g: LEDGER.groups.active });
   } else {
     itemId = String((await write("createLedgerItem", { n: rec.name, v: JSON.stringify(rec.itemValues) })).create_item.id);
     await createSubitems(write, itemId, rec.subitems);

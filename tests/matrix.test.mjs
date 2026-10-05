@@ -63,15 +63,16 @@ test("legend totals add up what the matrix shows", () => {
   assert.equal(m.legend.draft, model.metrics.draftUnits);
 });
 
-test("rows reserved above To ship and rows that lost a source are flagged", () => {
+test("rows show only the product: no red notices for lost sources or over-reservations (client decision)", () => {
   const data = mockupData();
   data.orders[0].lines[0].outstanding = 1000; // EIVR118 EC0433: 1,224 reserved
   data.containers = data.containers.filter((c) => c.id !== "US / FLEX-4151882 / 40HC"); // EIVR121 EC0401 loses 100
   const m = buildOrderMatrix(buildModel(data), data);
   const row = (o, sku) => m.groups.find((g) => g.key === o).rows.find((r) => r.line.sku === sku);
-  assert.deepEqual(row("EIVR118", "EC0433").warnings, ["1,224 reserved for 1,000 to ship · review"]);
-  assert.equal(row("EIVR121", "EC0401").warnings[0], "lost its source · 100 units");
-  assert.equal(m.groups.find((g) => g.key === "EIVR121").review, 1);
+  assert.equal(row("EIVR118", "EC0433").warnings, undefined);
+  assert.equal(row("EIVR121", "EC0401").warnings, undefined);
+  assert.equal(m.groups.find((g) => g.key === "EIVR121").review, undefined);
+  assert.equal(row("EIVR121", "EC0401").line.left, row("EIVR121", "EC0401").line.toShip - row("EIVR121", "EC0401").line.allocated); // the lost units are back in Left
 });
 
 test("a closed order's subtotal knows which SKU lines it is made of", () => {

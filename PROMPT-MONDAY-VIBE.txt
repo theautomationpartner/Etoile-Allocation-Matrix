@@ -120,8 +120,10 @@ Región: solo US. Todas las cantidades son de US.
 2.5 🔗 Allocation Ledger - Monday Vibe — board 18430965833  [ALLOCATIONS]
     Un item por línea de venta (SaleID × SKU), enlazado desde el subitem de Wholesale
     por board_relation_mm7pqf7j. Un SUBITEM POR FUENTE que abastece la línea.
-    Grupos: Active "group_mm76c2zx" (es lo único que se lee) · Fulfilled
-    "group_mm76zg9t" · Released "group_mm76qvz".
+    Grupos: Active "group_mm76c2zx" · Fulfilled "group_mm76zg9t" · Released "group_mm76qvz".
+    Se leen Active y Fulfilled: como en la Allocation Queue, manda el grupo de la ORDEN
+    (Orders + Pending); una línea de una orden abierta conserva su item aunque esté en Fulfilled.
+    Released no guarda unidades.
     Item: text_mm76g12x Allocation Key (= ID del subitem de Wholesale, respaldo del
           enlace) · board_relation_mm76cxt5 Wholesale Sale · text_mm76t66a SaleID
           · text_mm76wfw4 SKU · board_relation_mm76mpxt Master SKU
@@ -344,13 +346,10 @@ sticky: .s1 300px + .s2 290px).
   deshabilitadas hasta el PUNTO 4.
 
 6.4 Filas (tr.rw) = líneas con Outstanding > 0:
-  .s1 .rh .t: <b>"<SKU> - <nombre del producto en Master SKU>"</b>
-      Avisos en rojo debajo (.m.warn), uno por línea:
-        "lost its source · <n> units" — reservas cuya fuente ya no existe o ya no trae el SKU
-          (regla 4; esas unidades vuelven a Left)
-        "<Σ reservado> reserved for <To ship> to ship · review" — reservado más que lo que falta
-          despachar (regla 5; Allocated se limita a To ship)
-      El grupo suma en rojo " · <n> lines to review" en su segunda línea.
+  .s1 .rh .t: <b>"<SKU> - <nombre del producto en Master SKU>"</b> — solo el nombre, sin avisos
+      (decisión del cliente, 2026-10-05). Las reservas cuya fuente ya no está activa no cuentan
+      y vuelven a Left (regla 4); reservado de más se limita a To ship (regla 5). Ni la fila, ni
+      el grupo, ni el pie muestran textos rojos por eso.
   .s2: To ship · Allocated · Left como .pill: número + "Allocate" (sin draft) o "Draft"
       (.drp, borde punteado, si hay propuesta); .pill.bad y número rojo si hay faltante;
       "✓" (.done) si Left = 0.
@@ -702,11 +701,16 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
      unidades: "Not allocated: Only <n> units of <SKU> are available in <fuente> now…" y el
      editor muestra las cifras nuevas.
   2. Item de la línea: el que apunta board_relation_mm7pqf7j o, si no, el que tiene Allocation
-     Key = id del subitem (en Active o Released). Se borran sus subitems, se crean los nuevos y se
-     actualizan las columnas (JSON al final). Sin item → create_item en Active + subitems + link
-     desde el subitem de Wholesale.
+     Key = id del subitem (Active, Fulfilled o Released). Se borran sus subitems, se crean los
+     nuevos y se actualizan las columnas (JSON al final). Sin item → create_item en Active +
+     subitems + link desde el subitem de Wholesale. Se reescribe la línea entera con lo que dejó
+     el usuario (como la Allocation Queue): las reservas cuya fuente ya no está activa (p. ej. una
+     PO que pasó entera a un contenedor) salen del Ledger, junto con su conexión al tablero.
+     Warehouse: ref "Warehouse Stock" (decisión del cliente).
   3. Todo en 0 → sin subitems, Allocated 0, Status "Released", conexiones vacías, JSON vacío,
-     se mueve al grupo Released. Si se vuelve a asignar, vuelve a Active.
+     se mueve al grupo Released. Si se vuelve a asignar, vuelve a Active. Un item en Fulfilled
+     se actualiza donde está y sigue asociado a su línea: la app nunca lo mueve, y no muestra
+     avisos.
   4. Se recalcula la matriz sin recargar todo (los shipments sin guardar se mantienen). Toast:
      "Allocated · <SKU> for <EIVR>: <n> of <To ship> units. <n> still unallocated." o
      "… This line is fully covered."
@@ -717,7 +721,8 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
   Escrituras permitidas (lista blanca en mondayWrites.js, revisadas en el servidor):
     createLedgerItem · updateLedgerItem · moveLedgerItem (solo Active/Released) ·
     createLedgerSubitems · deleteLedgerSubitems · linkLines target "ledgerLine"
-    (solo board_relation_mm7pqf7j). Nunca se escribe Fulfilled ni columnas fórmula/mirror.
+    (solo board_relation_mm7pqf7j). Nunca mueve un item a Fulfilled ni lo saca de ahí; nunca
+    escribe columnas fórmula/mirror.
 
 13.5 Panel lateral (§8.3, rail del mockup)
   Se abre desde: la etiqueta de una orden, el nombre del SKU de una fila, el encabezado de un
@@ -774,3 +779,6 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
 2026-10-02  PUNTO 3 — Editor de allocation debajo de la fila (abre/cierra con clic, carga lo del
             Ledger, Suggest/Clear/Cancel/Allocate, topes y concurrencia), escritura en el Ledger
             (actualizar, crear + link, Released en 0), recorte de shipments §16.4, panel lateral.
+2026-10-05  PUNTO 3 (decisiones) — Fulfilled del Ledger se lee y se actualiza en su lugar (sin moverlo);
+            ref del warehouse "Warehouse Stock"; las reservas sin fuente activa salen al guardar;
+            se quitan los avisos rojos de filas, grupos y pie (solo el nombre).

@@ -10,13 +10,14 @@ Cuando se resuelva una, anotar la decisión debajo y pasarla a PROMPT-MONDAY-VIB
      Status "Released" y sin subitems; si se vuelve a asignar vuelve a Active. Si se baja lo
      asignado y los shipments quedan por encima, se descuenta desde el último shipment (§16.4).
      Allocated Status / Allocated % de Wholesale no se tocan. Se hizo también el panel lateral.
-   Queda por confirmar:
-   a) Si el item del Ledger de una línea está en el grupo Fulfilled, la app no lo toca y avisa
-      ("not in the Active or Released group"). ¿Está bien así?
-   b) Una línea nueva toma como "ref" del warehouse "Main Warehouse" (lo que ya usa el
-      Ledger); el documento dice "Warehouse Stock". ¿Cuál prefieren?
-   c) Al guardar, las reservas que "perdieron su fuente" (lost its source) de esa línea se
-      quitan del Ledger. ¿OK?
+   Resuelto 2026-10-05:
+   a) Item del Ledger en Fulfilled → queda como estaba, asociado a su línea (como la monday
+      Vibe): se lee y se actualiza en su lugar; la app no lo mueve y no muestra avisos.
+   b) ref del warehouse = "Warehouse Stock".
+   c) Sí: al guardar, las reservas sin fuente activa salen del Ledger (igual que la Vibe, p. ej.
+      una PO que pasó entera a In-Transit). Además se quitan los textos rojos de la venta
+      ("lost its source", "reserved for … to ship · review", "lines to review", pie): solo el
+      nombre.
 
 
 2. ESTADOS DEL SHIPMENT Y FULFILLMENT DE CIN7 (TBD-20 y TBD-21)

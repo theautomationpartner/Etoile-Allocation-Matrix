@@ -30,8 +30,9 @@ export const COL = {
 };
 
 export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
-export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active (Fulfilled / Released hold no units)
-export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero
+export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active
+export const LEDGER_FULFILLED_GROUP = "group_mm76zg9t"; // Ledger: Fulfilled — still the line's record while its order is open
+export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero (holds no units)
 export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer (only its item count, for the side nav)
 const LEDGER_SOURCE_TYPE = { "Warehouse Stock": "warehouse", "In-Transit": "intransit", "Purchase Order": "po" };
 
@@ -155,14 +156,16 @@ export function createMondayApi(transport = fetchTransport) {
     }));
   }
 
-  // One Ledger item per sale line (group Active), one subitem per source feeding it.
+  // One Ledger item per sale line (groups Active and Fulfilled), one subitem per source feeding it.
+  // As in the Allocation Queue, what decides is the ORDER's group (Orders + Pending): a line of an open
+  // order keeps the units of its Ledger item even if that item sits in Fulfilled. Released holds none.
   // byId → the Ledger item a Wholesale subitem links to (board_relation_mm7pqf7j);
   // byKey → fallback by Allocation Key (= Wholesale subitem id).
   async function loadLedger() {
     const l = COL.ledger, ls = COL.ledgerSub;
     const fields = `id name column_values(ids:[${gqlList([l.key, l.sku, l.json])}]) { id text }
       subitems { id name column_values(ids:[${gqlList(Object.values(ls))}]) { id text } }`;
-    const items = await allItems(BOARDS.ledger, fields, { groups: [LEDGER_ACTIVE_GROUP] });
+    const items = await allItems(BOARDS.ledger, fields, { groups: [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP] });
     const byId = new Map(), byKey = new Map();
     for (const it of items) {
       const fromSubitems = (it.subitems || [])
@@ -289,7 +292,7 @@ export function createMondayApi(transport = fetchTransport) {
         { b: BOARDS.ledger, v: [String(lineId)] }),
     ]);
     const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger;
-    const rank = (it) => (it.group?.id === LEDGER_ACTIVE_GROUP ? 0 : it.group?.id === LEDGER_RELEASED_GROUP ? 1 : 2);
+    const rank = (it) => ({ [LEDGER_ACTIVE_GROUP]: 0, [LEDGER_FULFILLED_GROUP]: 1, [LEDGER_RELEASED_GROUP]: 2 }[it.group?.id] ?? 3);
     const candidates = [...(linked?.items || []), ...((byKey?.items_page_by_column_values?.items || []).sort((a, b) => rank(a) - rank(b)))].filter(live);
     const it = candidates[0];
     return it ? { id: String(it.id), group: it.group?.id || "", subitemIds: (it.subitems || []).map((s) => String(s.id)) } : null;

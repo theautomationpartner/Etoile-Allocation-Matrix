@@ -89,6 +89,7 @@ async function run() {
     const legendWeight = await ev(`return Math.min(...[...document.querySelectorAll(".mx-hint .sw")].map(s => +getComputedStyle(s).fontWeight))`);
     check(`legend numbers bold (≥ 700) ${tag}`, legendWeight >= 700, `weight ${legendWeight}`);
 
+    check(`rows show only the product name, no red notices ${tag}`, await ev(`return !document.querySelector("tr.rw .rh .m.warn, tr.g .gh .m .warn") && ![...document.querySelectorAll(".mx-foot span")].some(s => /no longer active/.test(s.textContent))`));
     // Step 3 — allocation editor (opened and closed, never Allocate) and side panel.
     const ed = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const p=document.querySelector("tr.rw .pill"); if(!p) return JSON.stringify({pill:false});
       p.click(); await wait(250); const e=document.querySelector("tr.ed .ap");

@@ -17,6 +17,7 @@ const rowIdOfDraft = (p) => (p.source === SOURCE.WAREHOUSE ? "warehouse" : Strin
 const sum = (arr, f = (x) => x) => arr.reduce((a, x) => a + (f(x) || 0), 0);
 const daysBetween = (from, to) => Math.round((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 864e5);
 
+export const WAREHOUSE_REF = "Warehouse Stock"; // ref of a warehouse entry (client decision, 2026-10-05)
 export const WAREHOUSE_DETAIL = "physical stock at Red Stag + Boxzooka · ready to ship today";
 export const RULE_NOTE = "Warehouse stock is only suggested when it covers at least half of the line. After that the container arriving soonest is used, and a purchase order last. Change any of it by hand.";
 
@@ -165,7 +166,7 @@ export function entriesFrom(ed, values, data) {
       }
       if (q > 0) {
         const prev = ed.line.entries.find((x) => x.source === SOURCE.WAREHOUSE);
-        out.push({ source: SOURCE.WAREHOUSE, sourceId: String(data.warehouse?.[ed.sku]?.itemId || prev?.sourceId || ""), ref: prev?.ref || "Main Warehouse", qty: q });
+        out.push({ source: SOURCE.WAREHOUSE, sourceId: String(data.warehouse?.[ed.sku]?.itemId || prev?.sourceId || ""), ref: WAREHOUSE_REF, qty: q });
       }
     } else if (r.source === SOURCE.IN_TRANSIT) {
       out.push(transit(containerById.get(r.id), q, ed.line.entries.find((x) => String(x.sourceId) === r.id)));

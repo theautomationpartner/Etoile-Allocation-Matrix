@@ -100,7 +100,6 @@ function PathTable({ type, id, ctx, onOpen, hl, rollup }) {
         const c = containerById.get(p.ship);
         return <><button type="button" className="chip it" onClick={() => onOpen("ship", p.ship)}><span className="sq" />{containerCode(c?.name || p.ship)}</button><i className="pt-i">lands {dayMonth(c?.eta) || "—"}</i></>;
       }
-      if (p.k === "gap") return <><span className="chip gap"><span className="sq" />Lost its source</span><i className="pt-i">no longer active</i></>;
       if (p.k === "po") return <span className="pt-i" style={{ margin: 0 }}>still at supplier</span>;
       return <span className="chip gap"><span className="sq" />No source</span>;
     },
@@ -120,10 +119,9 @@ function PathTable({ type, id, ctx, onOpen, hl, rollup }) {
       : <span className="pt-i" style={{ margin: 0 }}>free · not promised</span>),
   });
   const rows = sortPaths(ps, type !== "sku", stageDate);
-  const promised = sumQ(ps.filter((p) => p.order && p.k !== "need" && p.k !== "gap"));
+  const promised = sumQ(ps.filter((p) => p.order && p.k !== "need"));
   const free = sumQ(ps.filter((p) => p.free));
   const need = sumQ(ps.filter((p) => p.k === "need"));
-  const lost = sumQ(ps.filter((p) => p.k === "gap"));
   let prevRow = null;
   return (
     <>
@@ -137,7 +135,7 @@ function PathTable({ type, id, ctx, onOpen, hl, rollup }) {
                 same = same && c.key(p) === c.key(prevRow);
                 return same ? <td key={c.h} className="rep" /> : <td key={c.h}>{c.cell(p)}</td>;
               });
-              const cls = [p.free ? "free" : "", p.k === "need" || p.k === "gap" ? "need" : "",
+              const cls = [p.free ? "free" : "", p.k === "need" ? "need" : "",
                 prevRow && cols.length && cols[0].key(p) !== cols[0].key(prevRow) ? "brk" : "",
                 hl && pathMatch(p, hl.type, hl.id) ? "hl" : ""].filter(Boolean).join(" ");
               prevRow = p;
@@ -150,9 +148,8 @@ function PathTable({ type, id, ctx, onOpen, hl, rollup }) {
         <span><b>{fmt(promised)}</b> promised</span>
         {free > 0 && <span><b>{fmt(free)}</b> free</span>}
         {need > 0 && <span className="bad"><b>{fmt(need)}</b> sold with no source</span>}
-        {lost > 0 && <span className="bad"><b>{fmt(lost)}</b> lost their source</span>}
       </div>
-      {rollup && <Rollup ps={sortPaths(ps.filter((p) => p.k !== "need" && p.k !== "gap"), false, stageDate)} type={type} ctx={ctx} />}
+      {rollup && <Rollup ps={sortPaths(ps.filter((p) => p.k !== "need"), false, stageDate)} type={type} ctx={ctx} />}
     </>
   );
 }
@@ -190,7 +187,7 @@ function ContextStrip({ prev, cur, ctx }) {
   if (!both.length) return <div className="ctx"><b>{ctx.name(prev)}</b> has no units linked to <b>{ctx.name(cur)}</b>.</div>;
   const parts = sortPaths(both, false, ctx.stageDate).map((p, i) => {
     const src = p.k === "wh" ? "warehouse" : p.k === "it" ? `${containerCode(ctx.containerById.get(p.ship)?.name || p.ship)}${ctx.poLabel(p) ? ` ← ${ctx.poLabel(p)}` : ""}`
-      : p.k === "po" ? `${ctx.poLabel(p)} (not shipped)` : p.k === "gap" ? "lost its source" : "no source";
+      : p.k === "po" ? `${ctx.poLabel(p)} (not shipped)` : "no source";
     const dst = p.order ? ctx.orderLabel(p.order).retailer : "free";
     return <li key={i}><span>{p.sku} · {src} → {dst}</span><b>{fmt(p.q)}</b></li>;
   });
@@ -213,7 +210,7 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
   const raw = o.lines || [];
   const m = {
     ord: sumBy(raw, (l) => l.ordered), ful: sumBy(raw, (l) => l.fulfilled), outstanding: sumBy(lines, (l) => l.toShip),
-    al: sumBy(lines, (l) => l.allocated), rem: sumBy(lines, (l) => l.left), gap: sumBy(lines, (l) => l.impossible), orph: sumBy(lines, (l) => l.orphan),
+    al: sumBy(lines, (l) => l.allocated), rem: sumBy(lines, (l) => l.left), gap: sumBy(lines, (l) => l.impossible),
   };
   // §14.2 formula: (fulfilled + allocated) ÷ ordered, rounded down; 100 only when nothing is missing.
   const pct = m.ord ? (m.rem === 0 ? 100 : Math.min(99, Math.floor(((m.ful + m.al) / m.ord) * 100))) : 0;
@@ -225,7 +222,7 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
   const lateSrc = [...new Set(late.map((p) => (p.k === "it" ? containerCode(ctx.containerById.get(p.ship)?.name || p.ship) : ctx.poLabel(p))))];
   const byShip = new Map(), byPO = new Map();
   ps.forEach((p) => {
-    if (!p.order || p.k === "need" || p.k === "gap") return;
+    if (!p.order || p.k === "need") return;
     if (p.ship) byShip.set(p.ship, (byShip.get(p.ship) || 0) + p.q);
     const key = p.po || p.poRef;
     if (key) {
@@ -252,7 +249,6 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
       </div>
       <ContextStrip prev={prev} cur={{ type: "so", id: String(id) }} ctx={ctx} />
       {m.gap > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.gap)} units cannot be covered.</b> Not enough stock in the warehouse, in transit, or on order. This part of the sale needs a purchase decision.</div>}
-      {m.orph > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.orph)} units lost their source.</b> They were reserved on a container or PO that no longer exists or no longer carries this SKU, and need to be reallocated.</div>}
       {late.length > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(sumQ(late))} units land after the {dayMonthYear(o.cancelDate)} cancel date.</b> They come from {lateSrc.join(", ")}. Move them to an earlier source or ask the retailer to extend the date.</div>}
 
       <div className="sec">

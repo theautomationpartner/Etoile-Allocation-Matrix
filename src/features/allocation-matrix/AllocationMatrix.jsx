@@ -168,7 +168,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />
       <Legend totals={matrix?.legend} />
-      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} orphanUnits={model?.orphanUnits || 0} shipments={shipments}
+      <MatrixTable matrix={matrix} status={status} isOpen={isOpen} onToggle={toggle} shipments={shipments}
         editingLine={ed ? edit.lineId : null} onEdit={openEditor} onPanel={panel.onPanel}
         renderEditor={(nCol) => ed && <AllocationEditor ed={ed} state={edit} nCol={nCol} {...editorActions} />} />
       <SidePanel stack={rail} model={model} data={data} shipments={shipments} {...panel} />

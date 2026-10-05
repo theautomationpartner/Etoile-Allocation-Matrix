@@ -24,7 +24,7 @@ export const SHIPMENT_LINKS = {
 export const LEDGER = {
   board: "18430965833",
   sub: "18430967307",
-  groups: { active: "group_mm76c2zx", released: "group_mm76qvz" }, // the app never writes to Fulfilled
+  groups: { active: "group_mm76c2zx", released: "group_mm76qvz" }, // the app never moves an item into or out of Fulfilled
   col: {
     key: "text_mm76g12x", sale: "board_relation_mm76cxt5", saleId: "text_mm76t66a", sku: "text_mm76wfw4", master: "board_relation_mm76mpxt",
     ordered: "numeric_mm766vqv", fulfilled: "numeric_mm76ebf5", outstanding: "numeric_mm76m58e", allocated: "numeric_mm76s5dm", status: "color_mm76q1fj",

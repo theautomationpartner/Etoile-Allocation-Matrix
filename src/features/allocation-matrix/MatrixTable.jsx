@@ -71,12 +71,6 @@ function Row({ r, cols, editing, onEdit, onPanel }) {
       <td className="s1">
         <div className="rh">
           <div className="t" onClick={() => onPanel("sku", sku)} style={{ cursor: "pointer" }}><b>{r.title}</b></div>
-          {r.warnings.map((w) => (
-            <div key={w} className="m warn"
-              data-tip={w.startsWith("lost") ? "Reserved on a container or PO that no longer exists or no longer carries this SKU. These units are back in Left." : "More units are reserved than are left to ship: part of the reservation was already shipped. Review the line."}>
-              {w}
-            </div>
-          ))}
         </div>
       </td>
       <td className="s2">
@@ -108,7 +102,7 @@ function rollTip(g, col, total, detail) {
   return `${fmt(total)} units of ${g.number} already allocated from ${src}:\n${lines}`;
 }
 
-export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shipments, editingLine, renderEditor, onEdit, onPanel }) {
+export function MatrixTable({ matrix, status, isOpen, onToggle, shipments, editingLine, renderEditor, onEdit, onPanel }) {
   const { tip, handlers } = useTooltip();
   const cw = useColumnWidths();
   const cols = matrix?.cols || [{ k: "wh", id: "warehouse", label: "Warehouse", meta: "on hand" }];
@@ -173,7 +167,6 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
                           <span className="m">
                             {g.meta}
                             {shipments.shipsOf(String(g.key)).length > 0 && <span className="ships"> · {plural(shipments.shipsOf(String(g.key)).length, "shipment", "shipments")}</span>}
-                            {g.review > 0 && <span className="warn"> · {plural(g.review, "line", "lines")} to review</span>}
                           </span>
                         </span>
                       </div>
@@ -234,7 +227,6 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, orphanUnits, shi
       <div className="mx-foot">
         {matrix && <span>{plural(matrix.groups.length, "order", "orders")} · {plural(matrix.rowCount, "row", "rows")}</span>}
         <span>{RULE}</span>
-        {orphanUnits > 0 && <span style={{ color: "var(--gap)" }}>{fmt(orphanUnits)} units point to a source that is no longer active</span>}
       </div>
     </div>
   );

@@ -3,7 +3,8 @@
 // Every total of the panel is a sum of paths, so the same units can be rolled up by PO, container or customer
 // without being counted twice.
 //
-// path: { sku, k: "wh"|"it"|"po"|"need"|"gap", ship, po, poRef, order, q, free }
+// path: { sku, k: "wh"|"it"|"po"|"need", ship, po, poRef, order, q, free }
+// Reservations whose source is no longer active are not paths: their units are back in Left (need).
 //   ship = container id · po = PO item id (null when only its name is known) · order = wholesale order id
 import { SOURCE } from "./engine.js";
 
@@ -50,7 +51,6 @@ export function unitPaths(model, data) {
         for (const p of pieces(c, l.sku, e.qty)) out.push({ sku: l.sku, k: "it", ship: String(e.sourceId), po: poIdOf(p.poRef), poRef: p.poRef, order, q: p.q });
       } else out.push({ sku: l.sku, k: "po", ship: null, po: String(e.sourceId), poRef: "", order, q: e.qty });
     }
-    if (l.orphan > 0) out.push({ sku: l.sku, k: "gap", ship: null, po: null, poRef: "", order, q: l.orphan });
     if (l.left > 0) out.push({ sku: l.sku, k: "need", ship: null, po: null, poRef: "", order, q: l.left });
   }
 

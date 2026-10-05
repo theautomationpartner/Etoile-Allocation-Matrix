@@ -12,6 +12,8 @@ revisión · ABIERTO = necesita una decisión (ver PREGUNTAS-PENDIENTES.txt)
 --------------------------------------------------------------------------------
  1. POR QUÉ HAY VENTAS EN ROJO
 --------------------------------------------------------------------------------
+(2026-10-05: por decisión del cliente estos avisos rojos ya no se muestran; la explicación queda
+como referencia de por qué esas líneas tienen Left.)
 Hoy "Impossible to cover" = 0: ninguna venta está en rojo por falta de mercadería. Todo el
 rojo que se ve es de la orden EIVR114 (SO-200279) — "29 lines to review" — y de las 2,413
 unidades del pie. Son DOS problemas de datos de las reservas, no de cálculo:
@@ -98,8 +100,8 @@ S-22 Alguien borra o cambia una columna en monday (caso date4) → Save falla co
 --------------------------------------------------------------------------------
  4. CASOS DE USO — MATRIZ Y MÉTRICAS
 --------------------------------------------------------------------------------
-M-01 Reservas por encima de lo que falta despachar → aviso rojo en la fila ........ PASA [T]
-M-02 Reservas sin fuente → "lost its source", vuelven a Left ....................... PASA [T]
+M-01 Reservas por encima de lo que falta despachar → Allocated = To ship, sin aviso . PASA [T]
+M-02 Reservas sin fuente → no cuentan, vuelven a Left, sin aviso (2026-10-05) ...... PASA [T]
 M-03 Contenedor llegado (Done) con warehouse < 50 % de la línea → sigue In-Transit .. PASA [T]
 M-04 Unidades de una PO ya en un contenedor no se cuentan dos veces (84 casos reales) PASA [API]
 M-05 Filtros, búsqueda y grupos vacíos ocultos ..................................... PASA [T]
@@ -264,6 +266,8 @@ Tests automáticos (npm test, 13 nuevos; 51 en total, todos pasan):
   X-09 Línea sin item del Ledger → se crea en Active y se conecta desde Wholesale ............. PASA
   X-10 Concurrencia: otro usuario tomó unidades → no escribe nada y avisa ...................... PASA
   X-11 Escrituras limitadas a sus tableros, grupos (no Fulfilled) y columnas ................... PASA
+  X-13 Item del Ledger en Fulfilled: se reescribe en su lugar, nunca se mueve .................. PASA
+  X-14 Filas, grupos y pie sin textos rojos de reservas (ui-check) ............................. PASA
   X-12 Panel: cada unidad una sola vez; contenedor dividido por subitem de PO ................. PASA
 Chequeo visual (npm run ui-check, 80 chequeos, nunca hace Allocate): la píldora abre el editor
 debajo de su fila con el foco en un campo; un segundo clic lo cierra; una celda asignada o draft

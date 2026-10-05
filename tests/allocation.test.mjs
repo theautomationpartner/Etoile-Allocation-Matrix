@@ -73,7 +73,7 @@ test("entries follow the §14.1 JSON contract and the Ledger record the migratio
   const ed = editorFor(model, data, "EIVR132-EC0452");
   const entries = entriesFrom(ed, { warehouse: 45, [F70]: 180, "PO-00450": 20 }, data);
   assert.deepEqual(entries, [
-    { source: "warehouse", sourceId: "wh-EC0452", ref: "Main Warehouse", qty: 45 },
+    { source: "warehouse", sourceId: "wh-EC0452", ref: "Warehouse Stock", qty: 45 },
     { source: "intransit", sourceId: F70, ref: F70, qty: 180, eta: "2026-10-06", packingDone: false },
     { source: "po", sourceId: "PO-00450", ref: "PO-00450", qty: 20, eta: "2026-10-02" },
   ]);
@@ -105,7 +105,7 @@ test("lowering the warehouse row keeps a landed container's record first", () =>
   const ed = editorFor(model, data, "EIVR132-EC0452");
   ed.line.entries = [
     { source: "intransit", sourceId: "C-LANDED", ref: "US / FLEX-1 / 40HC", qty: 30, stage: "warehouse", landed: true },
-    { source: "warehouse", sourceId: "wh-EC0452", ref: "Main Warehouse", qty: 15, stage: "warehouse" },
+    { source: "warehouse", sourceId: "wh-EC0452", ref: "Warehouse Stock", qty: 15, stage: "warehouse" },
   ];
   const out = entriesFrom(ed, { warehouse: 40 }, data);
   assert.deepEqual(out.map((e) => [e.source, e.qty]), [["intransit", 30], ["warehouse", 10]]);
@@ -164,6 +164,16 @@ test("all zero releases the Ledger item; allocating again brings it back to Acti
   assert.equal(back.calls[2][1].g, LEDGER.groups.active);
 });
 
+test("a Ledger item in Fulfilled stays where it is, linked to its line, and is rewritten in place", async () => {
+  const { data } = setup();
+  const f = fakeMonday(data, { item: { id: "900", group: "group_mm76zg9t", subitemIds: ["a"] } });
+  await saveAllocation(f.write, f.api, { data, lineId: "EIVR132-EC0452", values: { warehouse: 45, [F70]: 180 } });
+  assert.deepEqual(f.calls.map((c) => c[0]), ["deleteLedgerSubitems", "createLedgerSubitems", "updateLedgerItem", "linkLines"]);
+  const z = fakeMonday(data, { item: { id: "900", group: "group_mm76zg9t", subitemIds: ["a"] } });
+  await saveAllocation(z.write, z.api, { data, lineId: "EIVR132-EC0452", values: {} });
+  assert.ok(!z.calls.some((c) => c[0] === "moveLedgerItem"));
+});
+
 test("a line with no Ledger item gets one in Active, linked from its Wholesale subitem", async () => {
   const { data } = setup();
   const { write, api, calls } = fakeMonday(data, { item: null });
@@ -200,7 +210,7 @@ test("side panel paths: every unit counted once, containers split by PO subitem 
     const onBoard = c.lines.reduce((a, l) => a + l.qty, 0);
     assert.equal(sumQ(pathsFor(paths, "ship", String(c.id)).filter((p) => p.k === "it")), Math.max(onBoard, sumQ(pathsFor(paths, "ship", String(c.id)).filter((p) => p.order))), String(c.id));
   }
-  // An order's paths add up to its To ship (allocated + left), lost units aside.
+  // An order's paths add up to its To ship (allocated + left).
   const lines = model.lines.filter((l) => l.orderId === "EIVR121");
-  assert.equal(sumQ(pathsFor(paths, "so", "EIVR121").filter((p) => p.k !== "gap")), lines.reduce((a, l) => a + Math.max(l.toShip, l.entries.reduce((s, e) => s + e.qty, 0)), 0));
+  assert.equal(sumQ(pathsFor(paths, "so", "EIVR121")), lines.reduce((a, l) => a + Math.max(l.toShip, l.entries.reduce((s, e) => s + e.qty, 0)), 0));
 });
