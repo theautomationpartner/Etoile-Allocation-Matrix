@@ -210,6 +210,13 @@ Todo se calcula en la app a partir de los datos crudos. Nada derivado se guarda.
   No se recortan reservas por lo ya despachado (decisión del cliente: lo corrige el
   usuario al entrar a la línea).
 
+4.3b Tope por fuente (regla del cliente, 2026-10-06): una fuente nunca da más unidades de un SKU
+  de las que tiene — Warehouse: US qty; contenedor: unidades de ese SKU a bordo; PO: su Total
+  (4.2, sin lo que ya va en un contenedor). Las líneas se recorren por cancel date (la más
+  próxima primero) y cada una toma hasta lo que quede; lo que excede NO cuenta como asignado y
+  vuelve a Left (y recibe draft). En la matriz nunca puede verse X/Y con X > Y (ej. 1,100/600 →
+  600/600). Al abrir la línea el editor trae la cantidad ya ajustada y Allocate corrige el Ledger.
+
 4.4 Por línea
   To ship = US Qty Outstanding · Allocated = min(Σ entradas no huérfanas, To ship)
   Left = max(0, To ship − Allocated)
@@ -310,7 +317,10 @@ sticky: .s1 300px + .s2 290px).
 
 6.1 Encabezado
   .s1: "Wholesale order" / "order · allocation · shipments"
-  .s2: "To ship" · "Allocated" · "Left"
+  .s2: "Ordered" (US Quantity Ordered, numeric_mm17ttsn) · "Fulfilled" (US Qty Fulfilled,
+       numeric_mm19rrnv) · "To ship" (US Qty Outstanding) · "Allocated" · "Left". Tooltip con el
+       nombre de la columna de monday. En la fila de la orden, Ordered y Fulfilled suman todos sus
+       subitems (también los ya despachados). Ancho por defecto 420 px (mínimo 340).
   Una th.hsrc.<wh|it|po> por fuente, en este orden:
     Warehouse ("Warehouse" / "on hand")
     Contenedores por ETA: código tomado del nombre ("US / FLEX-4119719 / 40HC" →
@@ -794,3 +804,4 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
 2026-10-05  PUNTO 3 (UX) — Acciones del editor juntas a la derecha (arriba Suggest · Clear, abajo
             Cancel · Allocate), editor siempre visible con scroll horizontal, Allocate fijo en
             editores altos, barra fija en celular; etiquetas del panel en negrita con más contraste.
+2026-10-06  Tope por fuente (nunca X > Y; lo que excede vuelve a Left) y columnas Ordered · Fulfilled.

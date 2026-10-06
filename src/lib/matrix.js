@@ -114,6 +114,7 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
         line: l,
         title: `${l.sku} - ${warehouse[l.sku]?.name || l.sku}`,
         nums: [l.toShip, l.allocated, l.left],
+        qty: [l.ordered, l.fulfilled], // US Quantity Ordered · US Qty Fulfilled of the subitem (client request)
         end: l.impossible,
         needs: l.left > 0,
         dr: (model.drafts.byLine.get(l.lineId) || []).reduce((s, p) => s + p.qty, 0),
@@ -130,6 +131,8 @@ export function buildOrderMatrix(model, data, { filter = "all", search = "" } = 
       retailer: retailerShort(o.retailer),
       meta: [so, o.saleStatus ? o.saleStatus.toLowerCase() : "", o.cancelDate ? `cancel date ${dayMonthYear(o.cancelDate)}` : "no cancel date"].filter(Boolean).join(" · "),
       nums: [sum((l) => l.toShip), sum((l) => l.allocated), left],
+      // Whole order, every subitem (fully shipped lines included), as the board's subitem totals.
+      qty: [(o.lines || []).reduce((s, l) => s + (Number(l.ordered) || 0), 0), (o.lines || []).reduce((s, l) => s + (Number(l.fulfilled) || 0), 0)],
       end: sum((l) => l.impossible),
       defOpen: left > 0,
       rows,

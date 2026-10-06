@@ -89,6 +89,8 @@ async function run() {
     const legendWeight = await ev(`return Math.min(...[...document.querySelectorAll(".mx-hint .sw")].map(s => +getComputedStyle(s).fontWeight))`);
     check(`legend numbers bold (≥ 700) ${tag}`, legendWeight >= 700, `weight ${legendWeight}`);
 
+    check(`no cell shows more than its source has (X ≤ Y in X/Y) ${tag}`, await ev(`return [...document.querySelectorAll("tr.rw td.cl.a.it button")].every(b => { const p=b.textContent.split(",").join("").split(String.fromCharCode(47)); return p.length < 2 || parseInt(p[0],10) <= parseInt(p[1],10); })`));
+    check(`Ordered · Fulfilled · To ship · Allocated · Left, readable ${tag}`, await ev(`const h=[...document.querySelectorAll("th.s2 .hn span")]; return h.map(s=>s.textContent).join("|")==="Ordered|Fulfilled|To ship|Allocated|Left" && h.every(s=>s.scrollWidth<=s.clientWidth+1) && [...document.querySelectorAll("tr.rw .s2 .nn")].every(n=>n.children.length===5)`));
     check(`rows show only the product name, no red notices ${tag}`, await ev(`return !document.querySelector("tr.rw .rh .m.warn, tr.g .gh .m .warn") && ![...document.querySelectorAll(".mx-foot span")].some(s => /no longer active/.test(s.textContent))`));
     // Step 3 — allocation editor (opened and closed, never Allocate) and side panel.
     const ed = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const p=document.querySelector("tr.rw .pill"); if(!p) return JSON.stringify({pill:false});

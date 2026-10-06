@@ -275,6 +275,11 @@ Tests automáticos (npm test, 13 nuevos; 51 en total, todos pasan):
   X-18 Total mayor que To ship → error debajo de Allocate, no escribe nada .................... PASA
   X-19 Celular 390 px: acciones en barra fija abajo, la página no se ensancha .................. PASA
   X-20 Etiquetas del panel: negrita, oscuro suave en claro / blanco suave en oscuro ............ PASA
+  X-21 Una fuente nunca da más que lo que tiene (EIVR114 EC0394: 1,100/600 → 600/600, Left 86) . PASA
+       Datos reales 2026-10-06: 21 líneas ajustadas (20 de EIVR114, 1 de EIVR117). Units to
+       allocate pasó de 2,552 a 5,473; Impossible sigue en 0 (hay stock para cubrirlo).
+  X-22 PO con sus unidades ya en un contenedor → la reserva en la PO no cuenta .................. PASA
+  X-23 Columnas Ordered · Fulfilled · To ship · Allocated · Left, legibles (ui-check, 92) ...... PASA
   X-12 Panel: cada unidad una sola vez; contenedor dividido por subitem de PO ................. PASA
 Chequeo visual (npm run ui-check, 80 chequeos, nunca hace Allocate): la píldora abre el editor
 debajo de su fila con el foco en un campo; un segundo clic lo cierra; una celda asignada o draft

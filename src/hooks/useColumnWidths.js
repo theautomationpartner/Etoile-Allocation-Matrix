@@ -3,15 +3,17 @@ import { useStoredState } from "./useStoredState.js";
 
 // Resizable matrix columns, like monday: drag the right edge of a header to widen or narrow it,
 // double-click the edge to go back to the default. Widths are remembered by the browser (per viewer).
-export const DEFAULT_WIDTHS = { s1: 300, s2: 290, src: 120, end: 128 };
-const MIN = { s1: 180, s2: 220, src: 72, end: 108 };
+// s2 holds Ordered · Fulfilled · To ship · Allocated · Left.
+export const DEFAULT_WIDTHS = { s1: 300, s2: 420, src: 120, end: 128 };
+const MIN = { s1: 180, s2: 340, src: 72, end: 108 };
 
 export function useColumnWidths() {
   const [widths, setWidths] = useStoredState("etoile-col-widths", {});
   const drag = useRef(null);
 
   const kind = (key) => (key === "s1" || key === "s2" || key === "end" ? key : "src");
-  const widthOf = useCallback((key) => widths[key] || DEFAULT_WIDTHS[kind(key)], [widths]);
+  // A width saved before a column was added (e.g. s2 at 290) never makes it narrower than its minimum.
+  const widthOf = useCallback((key) => Math.max(MIN[kind(key)], widths[key] || DEFAULT_WIDTHS[kind(key)]), [widths]);
 
   // invert: the handle is on the left edge (the Impossible column, fixed to the right).
   const startResize = useCallback((key, e, invert = false) => {

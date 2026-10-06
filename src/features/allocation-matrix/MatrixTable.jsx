@@ -75,6 +75,8 @@ function Row({ r, cols, editing, onEdit, onPanel }) {
       </td>
       <td className="s2">
         <div className="nn">
+          <span className="n mid">{fmt(r.qty[0])}</span>
+          <span className="n mid">{fmt(r.qty[1])}</span>
           <span className="n">{fmt(toShip)}</span>
           <span className="n mid">{fmt(allocated)}</span>
           {left ? (
@@ -131,7 +133,12 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, shipments, editi
           <thead>
             <tr>
               <th className="s1"><div className="hx"><div className="t">Wholesale order</div><div className="m">order · allocation · shipments</div></div><Resizer k="s1" /></th>
-              <th className="s2"><div className="hn"><span>To ship</span><span>Allocated</span><span>Left</span></div><Resizer k="s2" /></th>
+              <th className="s2"><div className="hn n5">
+                <span data-tip="US Quantity Ordered">Ordered</span>
+                <span data-tip="US Qty Fulfilled">Fulfilled</span>
+                <span data-tip="US Qty Outstanding — what is still to ship">To ship</span>
+                <span>Allocated</span><span>Left</span>
+              </div><Resizer k="s2" /></th>
               {cols.map((c) => {
                 const w = c.cap?.total ? Math.min(100, Math.round((c.cap.committed / c.cap.total) * 100)) : 0;
                 // §15.3 — a source's label opens its side panel (the warehouse has none, as in the mockup).
@@ -173,6 +180,8 @@ export function MatrixTable({ matrix, status, isOpen, onToggle, shipments, editi
                     </td>
                     <td className="s2">
                       <div className="nn">
+                        <span className="n">{fmt(g.qty[0])}</span>
+                        <span className="n">{fmt(g.qty[1])}</span>
                         <span className="n">{fmt(g.nums[0])}</span>
                         <span className="n">{fmt(g.nums[1])}</span>
                         <span className={`n k ${g.nums[2] && g.end ? "bad" : ""}`}>{fmt(g.nums[2])}</span>

@@ -93,3 +93,32 @@ test("a landed (Done) container's reservation becomes warehouse stock when the w
   const wh = m.sourcesFor("EC0395").find((s) => s.source === SOURCE.WAREHOUSE);
   assert.equal(wh.free, 100); // 900 on hand − 800 reserved
 });
+
+// Client rule (2026-10-06): a cell can never show more than its source has of that SKU (e.g. 1,100/600).
+test("a source never gives more units of a SKU than it has; earliest cancel date keeps them", () => {
+  const data = mockupData();
+  const f70 = "US / FLEX-4170234 / 40HC"; // EC0451: 400 on board, all of it EIVR132's (cancel 20 Nov)
+  // EIVR129 (cancel 5 Dec) also claims 300 of EC0451 on that container: only 0 are left for it.
+  data.orders.find((o) => o.id === "EIVR129").lines.push({ id: "EIVR129-EC0451", sku: "EC0451", outstanding: 300, entries: [{ source: "intransit", sourceId: f70, qty: 300 }] });
+  // EIVR132 EC0452 claims 500 from the warehouse, which has 45 of it.
+  data.orders.find((o) => o.id === "EIVR132").lines.find((l) => l.sku === "EC0452").entries[0].qty = 500;
+  const m = buildModel(data);
+  const line = (o, sku) => m.lines.find((l) => l.orderId === o && l.sku === sku);
+  assert.equal(line("EIVR132", "EC0451").allocated, 400);
+  assert.equal(line("EIVR129", "EC0451").allocated, 0);
+  assert.equal(line("EIVR129", "EC0451").left, 300);
+  assert.equal(line("EIVR129", "EC0451").overSource, 300);
+  const wh = line("EIVR132", "EC0452").entries.find((e) => e.stage === "warehouse");
+  assert.deepEqual([wh.qty, wh.reserved], [45, 500]);
+  assert.equal(m.freeOf("warehouse", null, "EC0452"), 0);
+  assert.equal(m.freeOf("intransit", f70, "EC0451"), 0);
+});
+
+test("units of a PO already shipped on a container cannot stay reserved on the PO", () => {
+  const data = mockupData();
+  // PO-00450 EC0451: 400 ordered, all 400 already on FLEX-4170234 → the PO itself has 0 left.
+  data.orders.find((o) => o.id === "EIVR127").lines.find((l) => l.sku === "EC0451").entries = [{ source: "po", sourceId: "PO-00450", qty: 150 }];
+  const l = buildModel(data).lines.find((x) => x.orderId === "EIVR127" && x.sku === "EC0451");
+  assert.equal(l.allocated, 0);
+  assert.equal(l.left, 150);
+});

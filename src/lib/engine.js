@@ -104,6 +104,34 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   }
   for (const x of allLines) for (const e of x.entries) if (!e.stage) e.stage = e.kind;
 
+  // ── Pass 3 — client rule (2026-10-06): a source never gives more units of a SKU than it has ──
+  // (warehouse: US qty; container: units of the SKU on board; PO: Total of §6.3). Earliest cancel
+  // date keeps its units first; what goes over is not allocated and goes back to Left.
+  const capOf = (stage, sourceId, sku) => {
+    if (stage === SOURCE.WAREHOUSE) return whTotal(sku);
+    if (stage === SOURCE.IN_TRANSIT) {
+      const c = containerById.get(String(sourceId)) || doneContainerById.get(String(sourceId));
+      return c ? containerTotal(c, sku) : 0;
+    }
+    const p = poById.get(String(sourceId));
+    return p ? poTotal(p, sku) : 0;
+  };
+  const capKey = (stage, sourceId, sku) => (stage === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${stage}|${sourceId}|${sku}`);
+  const given = new Map();
+  for (const x of [...allLines].sort(byCancel)) {
+    const kept = [];
+    for (const e of x.entries) {
+      const k = capKey(e.stage, e.sourceId, x.sku);
+      const q = Math.min(e.qty, Math.max(0, capOf(e.stage, e.sourceId, x.sku) - (given.get(k) || 0)));
+      if (q < e.qty) x.overSource = (x.overSource || 0) + (e.qty - q);
+      if (q > 0) {
+        kept.push(q === e.qty ? e : { ...e, qty: q, reserved: e.qty });
+        given.set(k, (given.get(k) || 0) + q);
+      }
+    }
+    x.entries = kept;
+  }
+
   // ── Confirmed usage per source (rule 1: all open orders) ──
   const sourceKey = (stage, sourceId, sku) => (stage === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${stage}|${sourceId}|${sku}`);
   const used = new Map();
@@ -134,6 +162,9 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
       overAllocated: confirmed > x.toShip, // rule 5 — flag for review
       lostSource: x.orphan > 0,
       orphan: x.orphan,
+      overSource: x.overSource || 0, // reserved above what its source has (pass 3): not allocated
+      ordered: n(x.line.ordered),
+      fulfilled: n(x.line.fulfilled),
       entries: x.entries,
     });
   }
