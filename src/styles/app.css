@@ -231,3 +231,22 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --label: #E4E7EC; } }
 :root[data-theme="dark"] { --label: #E4E7EC; }
 .fact .l, .flow .fl, .ru-h { color: var(--label); font-weight: 600; }
+
+/* Review (2026-10-07): what needs a decision, above the matrix. Closed by default. */
+.rv { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; }
+.rv-h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: none; border: 0; cursor: pointer; text-align: left; color: var(--ink); font: inherit; }
+.rv-t { font-weight: 600; font-size: 13px; }
+.rv-n { min-width: 20px; padding: 1px 7px; border-radius: 10px; background: var(--gap-t); color: var(--gap); border: 1px solid var(--gap-b); font-size: 11.5px; font-weight: 600; text-align: center; }
+.rv-n.zero { background: var(--surface-2); color: var(--ink-3); border-color: var(--line); }
+.rv-s { flex: 1; min-width: 0; color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-c { color: var(--ink-3); font-size: 11px; }
+.rv-b { border-top: 1px solid var(--line-2); padding: 4px 14px 10px; max-height: 360px; overflow: auto; }
+.rv-g + .rv-g { margin-top: 6px; }
+.rv-gl { font-size: 11px; font-weight: 600; color: var(--label, var(--ink-2)); text-transform: uppercase; letter-spacing: .04em; padding: 8px 0 4px; }
+.rv-i { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line-2); font-size: 12.5px; }
+.rv-g .rv-i:first-of-type { border-top: 0; }
+.rv-x { flex: 1; min-width: 0; color: var(--ink-2); }
+.rv-x b { color: var(--ink); margin-right: 4px; }
+.rv-x i { display: block; font-style: normal; color: var(--ink-3); font-size: 11.5px; margin-top: 2px; }
+.rv-i .btn { flex: none; }
+@media (max-width: 720px) { .rv-s { display: none; } .rv-i { flex-wrap: wrap; } }

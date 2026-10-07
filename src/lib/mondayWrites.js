@@ -32,16 +32,21 @@ export const LEDGER = {
     itRel: "board_relation_mm76detw", itRefs: "text_mm76fpnf", itUsed: "text_mm76q5gd", itTotal: "text_mm76bnnc", itUsedTotal: "numeric_mm76fpzk",
     whUsed: "numeric_mm76q8fe", earliestEta: "date_mm7654mr", json: "long_text_mm764vdq", updated: "date_mm766j65",
   },
-  subCol: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6" },
+  subCol: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6", arrival: "color_mm7xe2mp" },
   // Wholesale subitem → its Ledger item
   link: { board: "18402982973", col: "board_relation_mm7pqf7j" },
 };
+// Review (2026-10-07): the US Qty Fulfilled already reviewed, on the Wholesale subitem ("Last Fulfilled Processed").
+export const BASELINE = { board: "18402982973", col: "numeric_mm7x8pp1" };
+// In-Transit subitem Status of the container lines used by a sale: Arrived – Pending Receiving / Received.
+export const TRANSIT_LINES = { board: "18402783956", col: "color_mm3kvr2h" };
 
 export const BATCH_SIZE = 50;
 const LINK_TARGET = {
   line: { board: SHIPMENT_LINKS.wholesaleSub.board, columns: [SHIPMENT_LINKS.wholesaleSub.col] },
   ledger: { board: SHIPMENT_LINKS.ledger.board, columns: [SHIPMENT_LINKS.ledger.col] },
   ledgerLine: { board: LEDGER.link.board, columns: [LEDGER.link.col] }, // Wholesale subitem → Ledger item
+  baseline: { board: BASELINE.board, columns: [BASELINE.col] }, // Wholesale subitem → Last Fulfilled Processed
 };
 
 // Builds one request with one aliased mutation per entry. Returns { query, variables }.
@@ -126,8 +131,27 @@ export const WRITE_OPS = {
       vars: (k, e) => ({ [`i${k}`]: e.i }),
     }),
   },
+  // Arrival Status of Ledger subitems (daily check).
+  updateLedgerSubitems: {
+    batch: true, fields: ["i", "v"], columns: () => [LEDGER.subCol.arrival], itemBoards: () => [LEDGER.sub],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k) => `change_multiple_column_values(board_id:${LEDGER.sub}, item_id:$i${k}, column_values:$v${k}, create_labels_if_missing:false)`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
+  // Status of In-Transit subitems (container lines used by a sale): Arrived – Pending Receiving / Received.
+  setTransitLines: {
+    batch: true, fields: ["i", "v"], columns: () => [TRANSIT_LINES.col], itemBoards: () => [TRANSIT_LINES.board],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k) => `change_multiple_column_values(board_id:${TRANSIT_LINES.board}, item_id:$i${k}, column_values:$v${k}, create_labels_if_missing:false)`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
   // Connect sale lines (target "line": Wholesale subitem; "ledger": Allocation Ledger item) to their shipments,
-  // or (target "ledgerLine") a Wholesale subitem to its Allocation Ledger item.
+  // or (target "ledgerLine") a Wholesale subitem to its Allocation Ledger item, or write (target "baseline")
+  // its Last Fulfilled Processed.
   linkLines: {
     batch: true, fields: ["target", "i", "v"], columns: (e) => LINK_TARGET[e.target]?.columns || [], itemBoards: (e) => [LINK_TARGET[e.target]?.board],
     build: ({ entries }) => aliased(entries, "", {

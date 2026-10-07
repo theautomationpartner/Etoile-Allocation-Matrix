@@ -288,3 +288,43 @@ cierra.
 Prueba real en monday: EC0275 / EIVR114 guardada sin cambios desde la UI → solo cambiaron la
 ETA (actualizada a la del contenedor), "Updated" y el id del subitem. Snapshot del Ledger antes y
 después comparado item por item: ningún otro item cambió.
+
+
+--------------------------------------------------------------------------------
+ 11. REVIEW — lo despachado en Cin7, Release y llegadas por PO (2026-10-07)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 66 en total, todos pasan):
+  R-01 Status Allocation por cantidades: Released · Partially · Allocated · Over ................ PASA
+  R-02 Release: primero lo que ya llegó (warehouse), después la llegada más lejana ............... PASA
+  R-03 Release sobre un contenedor recibido: sale de ahí (es lo que pudo despacharse) ............ PASA
+  R-04 Aviso "Cin7 shipped 300 since the last review, and none of its sources has arrived yet" ... PASA
+  R-05 Release escribe la línea (340 = To ship, Allocated) y Last Fulfilled Processed = 300 ....... PASA
+  R-06 Contenedor con ETA vencida y sin Done → "Past its ETA"; con la PO llegada → "not Done" ..... PASA
+  R-07 Warehouse con más reservado que US qty → aviso con las órdenes ........................... PASA
+  R-08 Done + PO sin llegar → sigue In-Transit (Arrived – Pending Receiving) ...................... PASA
+  R-09 Done + PO Fully Arrived → warehouse, sin tocar el US qty de Master SKU ..................... PASA
+  R-10 Done + PO Partially Arrived: 400 de 800 → warehouse; 399 → In-Transit ...................... PASA
+  R-11 Done en Archive sin PO conectada → se toma como llegado .................................. PASA
+  R-12 Draft nunca coincide con la PO; Final con la PO llegada cuenta, con aviso "not Done" ....... PASA
+  R-13 La reserva de la PO sigue a su contenedor, solo a unidades que nadie tiene ................ PASA
+  R-14 Escrituras nuevas limitadas a su columna (baseline, Arrival Status, Status de In-Transit) ... PASA
+Chequeo visual (npm run ui-check, 96, nunca hace Release): "Needs review" cerrado con su contador;
+abierto lista cada caso; solo hay botones "Release N"; nada se sale del panel ni ensancha la página.
+Datos reales en seco (2026-10-07, /api/daily-check?dry=1, ~11 s): 50 casos — 26 líneas con más
+asignado que To ship (todas heredadas de EIVR114), 22 fuentes con más reservado de lo que tienen,
+1 contenedor Final con la PO ya llegada (FLEX-4084548), 1 contenedor con ETA vencida (FLEX-4119719).
+6 líneas tienen reservas de PO que ahora siguen a su contenedor.
+
+Prueba en vivo (después del merge a main, con un item de prueba):
+  1. Elegir una línea con allocation, p. ej. una de EIVR114, y anotar To ship y lo asignado.
+  2. En el subitem de Wholesale, bajar a mano US Qty Outstanding (ej. −30) y subir US Qty
+     Fulfilled lo mismo (+30), como lo haría Make con un despacho de Cin7.
+  3. Refresh en la app → "Needs review" muestra la línea: "… Cin7 shipped 30 since the last
+     review …" y el botón "Release N" con de dónde sale.
+  4. Release → toast con lo liberado; en el Ledger: Allocated Qty = To ship, Status Allocation
+     "Allocated", subitems con las nuevas cantidades; en Wholesale: Last Fulfilled Processed = el
+     nuevo US Qty Fulfilled. La línea desaparece de "Needs review".
+  5. Volver los números del subitem a mano a como estaban (Make los vuelve a escribir igual en su
+     próxima corrida: el dato real lo manda Cin7).
+  6. Daily check: Make (o curl) → POST /api/daily-check?dry=1 con el header x-daily-secret → ver
+     "writes" y "items"; sin ?dry=1 escribe.

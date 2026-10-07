@@ -90,6 +90,9 @@ Región: solo US. Todas las cantidades son de US.
       numeric_mm17ttsn     US Quantity Ordered
       numeric_mm19rrnv     US Qty Fulfilled
       numeric_mm19gkqq     US Qty Outstanding  → "To ship"
+      numeric_mm7x8pp1     Last Fulfilled Processed → US Qty Fulfilled ya revisado (sección 14).
+                           Lo escribe la app (Allocate / Release, y el daily check si está vacío);
+                           Make no lo toca.
       board_relation_mm7pqf7j  🔗 Allocation Ledger → el item del Ledger de esta línea
                                (FUENTE DE VERDAD de la allocation, ver 2.5)
       long_text_mm4kee9f   Allocation JSON antiguo (ya migrado al Ledger; no se usa)
@@ -104,18 +107,25 @@ Región: solo US. Todas las cantidades son de US.
     Grupos: "topics" (Items) · "group_mm196tfw" (Process) · "group_mm19tfx0" (Archive).
     Item: name (ej. "US / FLEX-4119719 / 40HC") · color_mm3bhhys Location (solo "US")
           · date4 ETA · color_mm1c7w2a Packing List (Final / Draft / Done / Stuck)
+          · boolean_mm7xhwt8 Is Process → si está marcado, el item es una copia del importador:
+            NUNCA se cuenta (ni oferta, ni reservas, ni llegada).
     Subitem (board 18402783956): text_mm15xggt SKU · numeric_mm3k24ed Qty
-          · text_mm2ebx76 PO Reference = NOMBRE de la PO (ej. "PO-00432"; verificado).
+          · text_mm2ebx76 PO Reference = NOMBRE de la PO (ej. "PO-00432"; verificado)
+          · board_relation_mm2ef1zr PO (item de la PO; su línea = subitem de la PO con el mismo SKU)
+          · color_mm3kvr2h Status → la app escribe "Arrived – Pending Receiving" / "Received" en las
+            líneas de contenedores usados por una venta (sección 14.3).
     Oferta en tránsito: grupo "topics", Location US, Packing List ≠ "Done".
-    Contenedor llegado: Packing List = "Done" (cualquier grupo). Sus unidades pasan a
-    warehouse stock según la regla del 50 % (4.3). Por eso se leen TODOS los grupos.
+    Contenedor llegado: Packing List = "Done" (cualquier grupo, normalmente Archive). Sus reservas
+    pasan a warehouse stock cuando la PO confirma la llegada (4.3). Por eso se leen TODOS los grupos.
 
 2.4 📦 Purchase Orders (PO) — board 18402622623  [POs]
     Item: name (ej. "PO-00432") · text_mm14nxap Reference (ej. "PO260716US")
           · color_mm1hmv7r Destination Region (solo "US") · date4 ETA · status
           · dropdown_mm17rsxm Supplier
     Subitem (board 18402780137): text_mm1598d7 SKU · numeric_mm15va7p Qty Ordered
-          · numeric_mm1g5z37 Qty Outstanding
+          · numeric_mm1g5z37 Qty Outstanding · numeric_mm1593d3 Qty Arrived
+          · status (Fully Arrived / Partially Arrived / In Transit / Ordered / …)
+    Qty Arrived es lo que confirma Cin7: con eso se sabe si un contenedor llegó al warehouse (4.3).
 
 2.5 🔗 Allocation Ledger - Monday Vibe — board 18430965833  [ALLOCATIONS]
     Un item por línea de venta (SaleID × SKU), enlazado desde el subitem de Wholesale
@@ -129,7 +139,11 @@ Región: solo US. Todas las cantidades son de US.
           · text_mm76wfw4 SKU · board_relation_mm76mpxt Master SKU
           · numeric_mm766vqv / numeric_mm76ebf5 / numeric_mm76m58e Qty Ordered / Fulfilled / Outstanding
           · numeric_mm76s5dm Allocated Qty · formula_mm76rzb0 Remaining
-          · color_mm76q1fj Status Allocation · board_relation_mm76vycr Purchase Orders
+          · color_mm76q1fj Status Allocation POR CANTIDADES (2026-10-07): "Allocated" (asignado =
+            To ship) · "Partially Allocated" (menos) · "Over Allocated" (más) · "Released" (0).
+            Las 9 etiquetas viejas por combinación de fuentes se borran con
+            scripts/setup-review.mjs --finalize cuando ningún item las use.
+          · board_relation_mm76vycr Purchase Orders
           · text_mm76yede PO Refs (separadas por ", ") · text_mm76rwqv PO Qty Used (suma)
           · text_mm76he3a PO Qty Total (suma) · numeric_mm761kw4 PO Qty Used Total
           · board_relation_mm76detw In-Transit · text_mm76fpnf In-Transit Refs (", ")
@@ -143,6 +157,9 @@ Región: solo US. Todas las cantidades son de US.
           de Master SKU / In-Transit / PO) · text_mm76r4a3 Source Ref · numeric_mm76x8g
           Qty Used · numeric_mm76pg3t Source Total Qty · date_mm76m9nh ETA
           · boolean_mm76nhw6 Packing List Done
+          · color_mm7xe2mp Arrival Status (2026-10-07): "PO - Pending" · "PO - Arrived" ·
+            "In-Transit - Pending" · "In-Transit - Arrived" · "Warehouse - Pending" (llegó entre el
+            50 % y el 100 % en la PO) · "Warehouse - Arrived" (100 %, o warehouse stock común).
     Si un item no tiene subitems se usa su Allocation JSON como respaldo.
 
 2.6 Contadores del menú: items_count de los boards 18402982970 (Wholesale),
@@ -195,20 +212,35 @@ Todo se calcula en la app a partir de los datos crudos. Nada derivado se guarda.
                 → las unidades de una PO que ya viajan en un contenedor se cuentan UNA
                 sola vez, en el contenedor (nunca PO + contenedor a la vez).
 
+4.3a La reserva sigue a la mercadería de la PO al contenedor (regla del cliente, 2026-10-07):
+  si lo reservado sobre una PO + SKU supera lo que la PO todavía ofrece (4.2), el exceso pasa a
+  los contenedores que llevan unidades de esa PO y SKU (conexión PO de la línea del contenedor, o
+  su PO Reference), primero el de ETA más próxima y solo a unidades del contenedor que nadie tiene;
+  primero se mueven las ventas de cancel date más próxima. Lo que ningún contenedor puede tomar
+  queda en la PO (y el tope 4.3b lo corta). En pantalla se ve enseguida; en el Ledger lo escribe
+  el daily check (14.3) o el próximo Allocate de esa línea.
+
 4.3 Etapa de cada entrada confirmada
   - warehouse: el SKU existe en Master SKU                          → WAREHOUSE
-  - intransit sobre contenedor en tránsito con ese SKU               → IN TRANSIT
-  - intransit sobre contenedor LLEGADO (Done) con ese SKU:
-      recorrer las líneas por Cancel Date ascendente; libre del warehouse del SKU =
-      US qty − entradas warehouse − entradas Done ya pasadas a warehouse.
-      Si ese libre ≥ 50 % del To ship de la línea → pasa a WAREHOUSE (y consume
-      warehouse). Si no → sigue IN TRANSIT hasta que se cumpla (se re-evalúa en
-      cada carga).
+  - intransit sobre contenedor (en tránsito o Done) con ese SKU: la PO confirma la llegada
+    (regla del cliente, 2026-10-07; arrival.js). Por cada línea del contenedor con ese SKU se
+    busca la línea de su PO (mismo SKU en el item conectado por board_relation_mm2ef1zr):
+      · Packing List "Draft"                                  → pendiente (nunca coincide)
+      · línea de PO "Fully Arrived" o Qty Arrived ≥ qty         → RECIBIDA
+      · Qty Arrived ≥ 50 % de la qty                           → PARCIAL (cuenta como warehouse)
+      · si no: Done → llegada, pendiente de ingreso; Final → pendiente
+      · sin PO conectada: Done (Archive) → RECIBIDA; si no → pendiente
+    Varias líneas del mismo SKU (de distintas POs) en un contenedor: decide la menos avanzada.
+    RECIBIDA o PARCIAL → etapa WAREHOUSE; si no → IN TRANSIT.
+    La reserva conserva su fuente (el contenedor): su tope es lo que trae el contenedor y NUNCA
+    consume el US qty de Master SKU (pedido del cliente: "no mezclar"). El US qty sigue libre para
+    el resto. La columna Warehouse muestra como total US qty + esas unidades recibidas.
+    Packing List "Final" con la llegada ya en la PO cuenta igual, con el aviso "not marked Done".
   - po sobre PO activa con ese SKU y outstanding > 0                 → PO
   - Cualquier otro caso (fuente borrada / archivada / sin ese SKU)   → HUÉRFANA:
     no cuenta como asignada ni descuenta libre; se suma aparte para el pie.
-  No se recortan reservas por lo ya despachado (decisión del cliente: lo corrige el
-  usuario al entrar a la línea).
+  No se recortan reservas por lo ya despachado (decisión del cliente: lo decide el usuario con
+  Release, sección 14; los casos quedan a la vista).
 
 4.3b Tope por fuente (regla del cliente, 2026-10-06): una fuente nunca da más unidades de un SKU
   de las que tiene — Warehouse: US qty; contenedor: unidades de ese SKU a bordo; PO: su Total
@@ -766,6 +798,48 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
 
 
 --------------------------------------------------------------------------------
+ 14. REVIEW — lo que Cin7 despachó y lo que necesita una decisión (2026-10-07)
+--------------------------------------------------------------------------------
+Cin7 y monday conviven: cuando se despacha en Cin7, Make sube US Qty Fulfilled y baja US Qty
+Outstanding del subitem, pero no dice de qué fuente salió. La app no adivina: muestra el caso y la
+persona decide con un botón.
+
+14.1 Lo despachado desde la última revisión
+  Last Fulfilled Processed (numeric_mm7x8pp1, subitem de Wholesale) = US Qty Fulfilled ya revisado.
+  Despachado desde la última revisión = US Qty Fulfilled − Last Fulfilled Processed (si está vacío:
+  Qty Fulfilled del Ledger). Ej.: ayer 10, hoy Cin7 dice 40 → salieron 30; al resolver pasa a 40.
+  Se actualiza al hacer Allocate o Release en esa línea (nunca solo por mirar).
+
+14.2 "Needs review" (encima de la matriz, cerrado por defecto con su contador; review.js)
+  · Allocated above what is left to ship — la línea tiene más reservado que To ship. Texto:
+    "<reservado> allocated, <To ship> left to ship. Cin7 shipped <n> since the last review[, and
+    none of its sources has arrived yet: they may have come from somewhere else]." Botón
+    "Release <n>": devuelve el exceso a las fuentes — primero lo que ya llegó (warehouse común,
+    después contenedores recibidos por ETA: es lo que pudo salir), después la llegada más lejana.
+    Escribe el Ledger de la línea (mismo camino que Allocate, con chequeo de concurrencia) y
+    Last Fulfilled Processed = US Qty Fulfilled. Es la ÚNICA acción del panel.
+  · More reserved than the source holds — por fuente y SKU: reservado > lo que tiene (warehouse:
+    US qty; contenedor: a bordo; PO: lo que falta enviar), con las órdenes.
+  · Arrived in the PO, packing list not Done — la PO ya muestra la llegada y el contenedor no está Done.
+  · Past its ETA, not Done — contenedor con reservas, ETA vencida y sin Done.
+  Los casos quedan a la vista: la app no mueve nada a Fulfilled (eso lo hace Make con Cin7).
+
+14.3 Daily check — POST /api/daily-check (api/daily-check.js), lo llama Make después de la sync
+  Header x-daily-secret = DAILY_CHECK_SECRET (variable de Vercel). ?dry=1 no escribe nada.
+  Escribe solo donde algo cambia: (1) Last Fulfilled Processed vacío ← Qty Fulfilled del Ledger;
+  (2) reservas de PO que siguieron a su contenedor (4.3a) → se reescribe esa línea del Ledger con
+  las mismas cantidades; (3) Status Allocation; (4) Arrival Status; (5) Status de las líneas de
+  In-Transit usadas por una venta ("Received" si la PO recibió toda la línea, si no
+  "Arrived – Pending Receiving"). Responde { ok, writes, hasItems, count, items, subject, text,
+  html }: Make manda el mail con su conexión de Gmail cuando hasItems = true.
+  Hasta 60 s en Vercel (vercel.json). Prueba con datos reales en seco: ~11 s.
+
+14.4 Escrituras nuevas (lista blanca): linkLines target "baseline" (solo numeric_mm7x8pp1) ·
+  updateLedgerSubitems (solo Arrival Status) · setTransitLines (solo color_mm3kvr2h, tablero
+  18402783956). Las etiquetas se escriben con create_labels_if_missing:false.
+
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -805,3 +879,7 @@ Chrome 154 con la app en un iframe de otro dominio (como monday):
             Cancel · Allocate), editor siempre visible con scroll horizontal, Allocate fijo en
             editores altos, barra fija en celular; etiquetas del panel en negrita con más contraste.
 2026-10-06  Tope por fuente (nunca X > Y; lo que excede vuelve a Left) y columnas Ordered · Fulfilled.
+2026-10-07  REVIEW — Last Fulfilled Processed; panel "Needs review" con Release; la reserva sigue de la
+            PO al contenedor; llegada confirmada por Qty Arrived de la PO (reemplaza Done → warehouse
+            por el 50 % del warehouse); Is Process nunca cuenta; Status Allocation por cantidades;
+            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.

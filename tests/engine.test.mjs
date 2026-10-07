@@ -66,32 +66,72 @@ test("drafts use the warehouse only when it covers at least half of the line", (
   }
 });
 
-test("a landed (Done) container's reservation stays In-Transit while the warehouse covers < 50% of the line", () => {
+// Client rules (2026-10-07): a container's reservation becomes warehouse stock when its PO confirms the arrival.
+// EIVR124 EC0395: 800 reserved on FLEX-4084548, whose line is 800 of PO-00432 (960 ordered).
+const landedWith = ({ packing = "Done", group = "group_mm19tfx0", poLink = true, arrived = 0, status = "In Transit" } = {}) => {
   const data = mockupData();
-  const landed = data.containers.find((c) => c.id === "US / FLEX-4084548 / 40HC");
-  landed.packingList = "Done";
-  landed.group = "group_mm19tfx0"; // moved to Archive
+  const c = data.containers.find((x) => x.id === "US / FLEX-4084548 / 40HC");
+  c.packingList = packing;
+  c.group = group;
+  for (const l of c.lines) l.poId = poLink ? "PO-00432" : null;
+  const pl = data.pos.find((p) => p.id === "PO-00432").lines.find((l) => l.sku === "EC0395");
+  Object.assign(pl, { qtyArrived: arrived, status, qtyOutstanding: pl.qtyOrdered - arrived });
+  return data;
+};
+const ec0395 = (m) => m.lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
+
+test("Done container, PO not arrived yet: the reservation stays In-Transit (arrived, pending receiving)", () => {
   const base = buildModel(mockupData());
-  const m = buildModel(data);
-  // EIVR124 EC0395: 800 reserved on the landed container; warehouse has 86 (< 400) → stays in transit
-  const l = m.lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
+  const m = buildModel(landedWith({ arrived: 0 }));
+  const l = ec0395(m);
   assert.equal(l.allocated, 800);
-  assert.equal(l.lostSource, false);
-  assert.ok(l.entries.every((e) => e.stage === SOURCE.IN_TRANSIT && e.landed));
-  assert.ok(!m.containers.some((c) => c.id === landed.id), "landed container is not in-transit supply");
+  assert.ok(l.entries.every((e) => e.stage === SOURCE.IN_TRANSIT && e.landed && e.arrival === "arrived"));
+  assert.ok(!m.containers.some((c) => c.id === "US / FLEX-4084548 / 40HC"), "landed container is not in-transit supply");
   assert.deepEqual(m.metrics.allocatedSplit, base.metrics.allocatedSplit);
 });
 
-test("a landed (Done) container's reservation becomes warehouse stock when the warehouse covers >= 50%", () => {
-  const data = mockupData();
-  const landed = data.containers.find((c) => c.id === "US / FLEX-4084548 / 40HC");
-  landed.packingList = "Done";
-  data.warehouse.EC0395.usQty = 900; // the container was received: stock is now in the warehouse
-  const m = buildModel(data);
-  const l = m.lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
-  assert.ok(l.entries.every((e) => e.stage === SOURCE.WAREHOUSE));
+test("Done container, PO line Fully Arrived: warehouse stock that never uses the Master SKU US qty", () => {
+  const m = buildModel(landedWith({ arrived: 800, status: "Fully Arrived" }));
+  const l = ec0395(m);
+  assert.equal(l.allocated, 800);
+  assert.ok(l.entries.every((e) => e.stage === SOURCE.WAREHOUSE && e.source === SOURCE.IN_TRANSIT && e.arrival === "received"));
   const wh = m.sourcesFor("EC0395").find((s) => s.source === SOURCE.WAREHOUSE);
-  assert.equal(wh.free, 100); // 900 on hand − 800 reserved
+  assert.equal(wh.free, 86); // US qty 86, untouched: the 800 are backed by the container
+  assert.equal(wh.total, 86 + 800);
+});
+
+test("Done container, PO Partially Arrived: warehouse from 50% of the container line, In-Transit below", () => {
+  const half = ec0395(buildModel(landedWith({ arrived: 400, status: "Partially Arrived" })));
+  assert.ok(half.entries.every((e) => e.stage === SOURCE.WAREHOUSE && e.arrival === "partial"));
+  const less = ec0395(buildModel(landedWith({ arrived: 399, status: "Partially Arrived" })));
+  assert.ok(less.entries.every((e) => e.stage === SOURCE.IN_TRANSIT && e.arrival === "arrived"));
+});
+
+test("Done container in Archive with no PO connected: taken as arrived (warehouse stock)", () => {
+  const l = ec0395(buildModel(landedWith({ poLink: false })));
+  assert.ok(l.entries.every((e) => e.stage === SOURCE.WAREHOUSE && e.arrival === "received"));
+});
+
+test("Draft never matches the PO; Final with the units arrived counts, with the 'not marked Done' notice", () => {
+  const draft = ec0395(buildModel(landedWith({ packing: "Draft", group: "topics", arrived: 800, status: "Fully Arrived" })));
+  assert.ok(draft.entries.every((e) => e.stage === SOURCE.IN_TRANSIT && e.arrival === "pending"));
+  const fin = ec0395(buildModel(landedWith({ packing: "Final", group: "topics", arrived: 800, status: "Fully Arrived" })));
+  assert.ok(fin.entries.every((e) => e.stage === SOURCE.WAREHOUSE && e.notDone));
+});
+
+test("a PO reservation follows its units onto the container (and only into units nobody holds)", () => {
+  const data = mockupData();
+  // EIVR118 EC0450: 200 reserved on PO-00458. All 800 of PO-00458 EC0450 are now loaded: 350 on FLEX-4170234
+  // (ETA 6 Oct) and 450 on FLEX-4188610 (ETA 27 Oct, which already had 250 of it).
+  const f86 = data.containers.find((c) => c.id === "US / FLEX-4188610 / 40HC");
+  f86.lines.find((l) => l.sku === "EC0450" && l.poRef === "PO-00458").qty = 450;
+  const m = buildModel(data);
+  const l = m.lines.find((x) => x.orderId === "EIVR118" && x.sku === "EC0450");
+  // FLEX-4170234 EC0450: 550 on board, 550 already reserved (EIVR132) → no room; FLEX-4188610: 750 on board,
+  // 330 reserved (EIVR121 150 + EIVR124 180) → the 200 go there.
+  assert.equal(l.allocated, 200);
+  assert.ok(l.followed);
+  assert.deepEqual(l.entries.map((e) => [e.source, e.sourceId, e.qty, e.followedFrom]), [["intransit", "US / FLEX-4188610 / 40HC", 200, "PO-00458"]]);
 });
 
 // Client rule (2026-10-06): a cell can never show more than its source has of that SKU (e.g. 1,100/600).

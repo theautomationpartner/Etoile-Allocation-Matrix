@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { clock, fmt } from "../../lib/format.js";
 import { buildOrderMatrix } from "../../lib/matrix.js";
 import { allocatedMessage, clampValue, editorFor, suggestSplit, validate } from "../../lib/allocation.js";
-import { saveAllocation } from "../../lib/allocationSync.js";
+import { releaseLine, saveAllocation } from "../../lib/allocationSync.js";
+import { buildReview } from "../../lib/review.js";
+import { ReviewPanel } from "./ReviewPanel.jsx";
 import { mondayApi } from "../../config.js";
 import { AllocationEditor } from "./AllocationEditor.jsx";
 import { SidePanel } from "./SidePanel.jsx";
@@ -101,6 +103,25 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
     },
   };
 
+  // ── Review (2026-10-07): lines holding more than they still have to ship can be released ──
+  const review = useMemo(() => (model ? buildReview(model, data) : null), [model, data]);
+  const [releasing, setReleasing] = useState(null);
+  async function onRelease(item) {
+    if (releasing) return;
+    setReleasing(item.key);
+    try {
+      const res = await releaseLine(fetchWrite, mondayApi, { data, lineId: item.lineId });
+      patchData((cur) => ({ ...res.data, loadedAt: cur.loadedAt }));
+      const cut = shipments.actions.fitAllocation(item.orderId, item.sku, res.allocated);
+      toast(`Released ${fmt(res.plan.units)} units of ${item.title}: ${res.plan.parts.map((p) => `${fmt(p.qty)} from ${p.title}`).join(" · ")}.${cut ? ` ${fmt(cut)} units came out of its shipments: save them to keep the change.` : ""}`);
+    } catch (e) {
+      if (e.fresh) patchData((cur) => ({ ...e.fresh, loadedAt: cur.loadedAt }));
+      toast(`Not released: ${e.message}`);
+    } finally {
+      setReleasing(null);
+    }
+  }
+
   // ── Side panel (§8.3): a trail of records; a click in the matrix starts a new trail ──
   const [rail, setRail] = useState([]);
   const panel = {
@@ -165,6 +186,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
         </button>
       </div>
       <MetricCards metrics={model?.metrics} filter={filter} onFilter={toggleFilter} />
+      <ReviewPanel items={review} busyKey={releasing} onRelease={onRelease} />
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />
       <Legend totals={matrix?.legend} />

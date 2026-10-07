@@ -3,17 +3,19 @@
 // or the client decision that replaced it.
 //
 // Input (normalized by the loader):
-//   orders:     [{ id, name, group, region, cancelDate, lines: [{ id, sku, outstanding, entries: [{ source, sourceId, ref, qty }] }] }]
+//   orders:     [{ id, name, group, region, cancelDate, lines: [{ id, sku, ordered, fulfilled, outstanding, lastProcessed, ledgerFulfilled,
+//                 entries: [{ source, sourceId, ref, qty }] }] }]
 //   warehouse:  { [sku]: { itemId, name, usQty } }
-//   containers: [{ id, name, group, location, eta, packingList, lines: [{ id, sku, qty, poRef }] }]   (all groups)
-//   pos:        [{ id, name, reference, region, eta, lines: [{ id, sku, qtyOutstanding }] }]
+//   containers: [{ id, name, group, location, eta, packingList, lines: [{ id, sku, qty, poRef, poId }] }]   (all groups, no "Is Process")
+//   pos:        [{ id, name, reference, region, eta, lines: [{ id, sku, qtyOrdered, qtyOutstanding, qtyArrived, status }] }]
+import { containerArrival, inWarehouse } from "./arrival.js";
 
 export const OPEN_ORDER_GROUPS = new Set(["topics", "group_mm1730xq"]); // Orders + Pending (§5.1)
 export const ACTIVE_CONTAINER_GROUP = "topics"; // In-Transit Shipments (Items) (§6.2)
 export const SOURCE = { WAREHOUSE: "warehouse", IN_TRANSIT: "intransit", PO: "po" };
 
-// Client rule (2026-09-30): the warehouse takes part when its free units cover at least half of
-// the line. Used both to move a landed container's reservation to warehouse stock and for drafts.
+// Client rule (2026-09-30): the warehouse takes part in a draft when its free units cover at least half
+// of the line. The same 50% decides when a partly arrived container line counts as warehouse (arrival.js).
 export const WAREHOUSE_MIN_COVER = 0.5;
 
 const n = (v) => (Number.isFinite(v) ? v : 0);
@@ -31,7 +33,7 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   // §6.2 — in-transit supply: group topics + Location US + Packing List not "Done".
   const isDone = (c) => c.packingList === "Done";
   const containers = (data.containers || []).filter((c) => c.group === ACTIVE_CONTAINER_GROUP && c.location === "US" && !isDone(c)).sort(byEta);
-  // Landed containers (any group, e.g. Archive): their units are warehouse stock now.
+  // Landed containers (any group, e.g. Archive): their reservations are checked against the PO's arrivals.
   const doneContainerById = new Map((data.containers || []).filter((c) => c.location === "US" && isDone(c)).map((c) => [String(c.id), c]));
 
   // §6.3 — POs: Destination Region US, only subitems with Qty Outstanding > 0.
@@ -42,6 +44,8 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
 
   const containerById = new Map(containers.map((c) => [String(c.id), c]));
   const poById = new Map(pos.map((p) => [String(p.id), p]));
+  const poAllById = new Map((data.pos || []).map((p) => [String(p.id), p])); // every line: arrivals of landed units
+  const arrivalOf = (c, sku) => containerArrival(c, sku, poAllById);
   const has = (src, sku) => Boolean(src?.lines.some((l) => l.sku === sku));
 
   // ── Source totals (§6) ──
@@ -55,8 +59,68 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   const poOutstanding = (po, sku) => po.lines.reduce((s, l) => (l.sku === sku ? s + n(l.qtyOutstanding) : s), 0);
   const poTotal = (po, sku) => Math.max(0, poOutstanding(po, sku) - poShipped(po, sku));
 
+  // ── Pass 0 — client rule (2026-10-07): a reservation follows its units from the PO to the container ──
+  // When units of a PO are loaded on a container the PO stops offering them (rule 2), and a reservation on
+  // the PO above what it still offers would be lost. That part moves to the containers carrying units of
+  // that PO and SKU (PO connection of the container line, or its PO Reference), the soonest ETA first, only
+  // into units of the container nobody holds yet; the earliest cancel date moves first. What no container
+  // can take stays on the PO (and pass 3 cuts it).
+  const usContainers = (data.containers || []).filter((c) => c.location === "US");
+  const rawLines = [];
+  for (const o of orders) for (const l of o.lines || []) rawLines.push({ order: o, line: l, entries: (l.entries || []).map((e) => ({ ...e, qty: n(e.qty) })) });
+  const onContainer = new Map(); // container|sku → units already reserved there
+  const byPoSku = new Map();
+  for (const x of rawLines) {
+    for (const e of x.entries) {
+      if (e.source === SOURCE.IN_TRANSIT) onContainer.set(`${e.sourceId}|${x.line.sku}`, (onContainer.get(`${e.sourceId}|${x.line.sku}`) || 0) + e.qty);
+      if (e.source !== SOURCE.PO || e.qty <= 0) continue;
+      const k = `${e.sourceId}|${x.line.sku}`;
+      if (!byPoSku.has(k)) byPoSku.set(k, []);
+      byPoSku.get(k).push({ x, e });
+    }
+  }
+  for (const [k, list] of byPoSku) {
+    const sku = list[0].x.line.sku;
+    const po = poAllById.get(k.slice(0, k.length - sku.length - 1));
+    if (!po) continue;
+    const offered = poById.has(String(po.id)) ? poTotal(poById.get(String(po.id)), sku) : 0;
+    let excess = list.reduce((s, it) => s + it.e.qty, 0) - offered;
+    if (excess <= 0) continue;
+    const key = poRefKey(po);
+    const dests = usContainers
+      .map((c) => ({
+        c,
+        room: Math.min(
+          c.lines.reduce((s, l) => (l.sku === sku && (String(l.poId || "") === String(po.id) || l.poRef === key) ? s + n(l.qty) : s), 0),
+          containerTotal(c, sku) - (onContainer.get(`${c.id}|${sku}`) || 0),
+        ),
+      }))
+      .filter((d) => d.room > 0)
+      .sort((a, b) => byEta(a.c, b.c));
+    if (!dests.length) continue;
+    for (const { x, e } of list.sort((a, b) => (a.x.order.cancelDate || "9999-12-31").localeCompare(b.x.order.cancelDate || "9999-12-31"))) {
+      let move = Math.min(e.qty, excess);
+      for (const d of dests) {
+        const t = Math.min(move, d.room);
+        if (t <= 0) continue;
+        const same = x.entries.find((y) => y.source === SOURCE.IN_TRANSIT && String(y.sourceId) === String(d.c.id));
+        if (same) same.qty += t;
+        else x.entries.push({ source: SOURCE.IN_TRANSIT, sourceId: String(d.c.id), ref: d.c.name, qty: t, eta: d.c.eta || "", followedFrom: po.name });
+        if (same && !same.followedFrom) same.followedFrom = po.name;
+        e.qty -= t;
+        d.room -= t;
+        onContainer.set(`${d.c.id}|${sku}`, (onContainer.get(`${d.c.id}|${sku}`) || 0) + t);
+        move -= t;
+        excess -= t;
+        x.followed = true;
+      }
+      if (excess <= 0) break;
+    }
+  }
+  for (const x of rawLines) x.entries = x.entries.filter((e) => e.qty > 0);
+
   // ── Pass 1: classify every confirmed entry by where its source is today ──
-  //   warehouse / intransit / po → active source · done → landed container (decided in pass 2) · null → orphan (§13 rule 4)
+  //   warehouse / intransit / po → active source · done → landed container · null → orphan (§13 rule 4)
   function classify(entry, sku) {
     const id = String(entry.sourceId ?? "");
     if (entry.source === SOURCE.WAREHOUSE) return warehouse[sku] ? SOURCE.WAREHOUSE : null;
@@ -71,59 +135,60 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
 
   const allLines = []; // every line of every open order (Outstanding 0 included: its reservations still hold units)
   let index = 0;
-  for (const o of orders) {
-    for (const l of o.lines || []) {
-      const entries = [];
-      let orphan = 0;
-      for (const e of l.entries || []) {
-        const qty = n(e.qty);
-        if (qty <= 0) continue;
-        const kind = classify(e, l.sku);
-        if (kind === null) orphan += qty;
-        else entries.push({ ...e, qty, kind });
-      }
-      allLines.push({ order: o, line: l, sku: l.sku, toShip: Math.max(0, n(l.outstanding)), entries, orphan, index: index++ });
+  for (const { order: o, line: l, entries: raw, followed } of rawLines) {
+    const entries = [];
+    let orphan = 0;
+    for (const e of raw) {
+      if (e.qty <= 0) continue;
+      const kind = classify(e, l.sku);
+      if (kind === null) orphan += e.qty;
+      else entries.push({ ...e, kind });
     }
+    allLines.push({ order: o, line: l, sku: l.sku, toShip: Math.max(0, n(l.outstanding)), entries, orphan, followed: Boolean(followed), index: index++ });
   }
 
-  // ── Pass 2: reservations on a landed ("Done") container ──
-  // They become warehouse stock only when the warehouse's free units of that SKU cover at least half of
-  // the line; otherwise they stay In-Transit until the condition is met (re-evaluated on every load).
-  const whUsedSoFar = new Map();
-  for (const x of allLines) for (const e of x.entries) if (e.kind === SOURCE.WAREHOUSE) whUsedSoFar.set(x.sku, (whUsedSoFar.get(x.sku) || 0) + e.qty);
-  for (const x of [...allLines].sort(byCancel)) {
-    const done = x.entries.filter((e) => e.kind === "done");
-    if (!done.length) continue;
-    const free = Math.max(0, whTotal(x.sku) - (whUsedSoFar.get(x.sku) || 0));
-    const toWarehouse = Boolean(warehouse[x.sku]) && free >= WAREHOUSE_MIN_COVER * x.toShip;
-    for (const e of done) {
-      e.stage = toWarehouse ? SOURCE.WAREHOUSE : SOURCE.IN_TRANSIT;
-      e.landed = true;
+  // ── Pass 2 — client rule (2026-10-07): a container's reservation becomes warehouse stock when its PO confirms
+  // the arrival (arrival.js): PO line Fully Arrived, or at least half of it arrived. It keeps its own source (the
+  // container, never the Master SKU US qty: "no mix") — only its stage changes. Otherwise it stays In-Transit.
+  for (const x of allLines) {
+    for (const e of x.entries) {
+      if (e.kind === SOURCE.IN_TRANSIT || e.kind === "done") {
+        const c = containerById.get(String(e.sourceId)) || doneContainerById.get(String(e.sourceId));
+        const a = arrivalOf(c, x.sku);
+        e.arrival = a.state;
+        e.notDone = a.notDone;
+        e.landed = e.kind === "done";
+        e.stage = inWarehouse(a.state) ? SOURCE.WAREHOUSE : SOURCE.IN_TRANSIT;
+      } else e.stage = e.kind;
     }
-    if (toWarehouse) whUsedSoFar.set(x.sku, (whUsedSoFar.get(x.sku) || 0) + done.reduce((s, e) => s + e.qty, 0));
+    x.reservedRaw = x.entries.reduce((s, e) => s + e.qty, 0); // what the Ledger holds (sources still alive)
+    x.rawEntries = x.entries.map((e) => ({ ...e }));
   }
-  for (const x of allLines) for (const e of x.entries) if (!e.stage) e.stage = e.kind;
 
   // ── Pass 3 — client rule (2026-10-06): a source never gives more units of a SKU than it has ──
   // (warehouse: US qty; container: units of the SKU on board; PO: Total of §6.3). Earliest cancel
   // date keeps its units first; what goes over is not allocated and goes back to Left.
-  const capOf = (stage, sourceId, sku) => {
-    if (stage === SOURCE.WAREHOUSE) return whTotal(sku);
-    if (stage === SOURCE.IN_TRANSIT) {
+  // A container's reservation counts against the container even when it already is warehouse stock.
+  const sourceKey = (source, sourceId, sku) => (source === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${source}|${sourceId}|${sku}`);
+  const capOf = (source, sourceId, sku) => {
+    if (source === SOURCE.WAREHOUSE) return whTotal(sku);
+    if (source === SOURCE.IN_TRANSIT) {
       const c = containerById.get(String(sourceId)) || doneContainerById.get(String(sourceId));
       return c ? containerTotal(c, sku) : 0;
     }
     const p = poById.get(String(sourceId));
     return p ? poTotal(p, sku) : 0;
   };
-  const capKey = (stage, sourceId, sku) => (stage === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${stage}|${sourceId}|${sku}`);
   const given = new Map();
   for (const x of [...allLines].sort(byCancel)) {
     const kept = [];
     for (const e of x.entries) {
-      const k = capKey(e.stage, e.sourceId, x.sku);
-      const q = Math.min(e.qty, Math.max(0, capOf(e.stage, e.sourceId, x.sku) - (given.get(k) || 0)));
-      if (q < e.qty) x.overSource = (x.overSource || 0) + (e.qty - q);
+      const k = sourceKey(e.source, e.sourceId, x.sku);
+      const q = Math.min(e.qty, Math.max(0, capOf(e.source, e.sourceId, x.sku) - (given.get(k) || 0)));
+      if (q < e.qty) {
+        x.overSource = (x.overSource || 0) + (e.qty - q);
+        (x.overBy ||= []).push({ source: e.source, sourceId: String(e.sourceId), ref: e.ref, reserved: e.qty, kept: q });
+      }
       if (q > 0) {
         kept.push(q === e.qty ? e : { ...e, qty: q, reserved: e.qty });
         given.set(k, (given.get(k) || 0) + q);
@@ -133,15 +198,16 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   }
 
   // ── Confirmed usage per source (rule 1: all open orders) ──
-  const sourceKey = (stage, sourceId, sku) => (stage === SOURCE.WAREHOUSE ? `warehouse||${sku}` : `${stage}|${sourceId}|${sku}`);
   const used = new Map();
+  const arrivedOnHand = new Map(); // sku → container units already counted as warehouse stock (reserved)
   for (const x of allLines) {
     for (const e of x.entries) {
-      const k = sourceKey(e.stage, e.sourceId, x.sku);
+      const k = sourceKey(e.source, e.sourceId, x.sku);
       used.set(k, (used.get(k) || 0) + e.qty);
+      if (e.source === SOURCE.IN_TRANSIT && e.stage === SOURCE.WAREHOUSE) arrivedOnHand.set(x.sku, (arrivedOnHand.get(x.sku) || 0) + e.qty);
     }
   }
-  const usedOf = (stage, sourceId, sku) => used.get(sourceKey(stage, sourceId, sku)) || 0;
+  const usedOf = (source, sourceId, sku) => used.get(sourceKey(source, sourceId, sku)) || 0;
 
   // ── Demand rows (§5.2: only Outstanding > 0) ──
   let orphanUnits = 0;
@@ -151,6 +217,10 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     if (x.toShip <= 0) continue;
     const confirmed = x.entries.reduce((s, e) => s + e.qty, 0);
     const allocated = Math.min(confirmed, x.toShip); // §7.1
+    // Review (client, 2026-10-07): US Qty Fulfilled already reviewed = Last Fulfilled Processed of the Wholesale
+    // subitem; while that column is empty, the Ledger's Qty Fulfilled (written with the allocation).
+    const fulfilled = n(x.line.fulfilled);
+    const base = x.line.lastProcessed ?? x.line.ledgerFulfilled ?? fulfilled;
     lines.push({
       orderId: x.order.id,
       order: x.order,
@@ -163,8 +233,14 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
       lostSource: x.orphan > 0,
       orphan: x.orphan,
       overSource: x.overSource || 0, // reserved above what its source has (pass 3): not allocated
+      overBy: x.overBy || [],
       ordered: n(x.line.ordered),
-      fulfilled: n(x.line.fulfilled),
+      fulfilled,
+      fulfilledBase: base,
+      shippedSince: Math.max(0, fulfilled - base), // shipped in Cin7 since the last review
+      reservedRaw: x.reservedRaw, // what the Ledger holds on sources still alive (before the source caps)
+      rawEntries: x.rawEntries,
+      followed: x.followed, // part of a PO reservation moved to its container (pass 0), not written yet
       entries: x.entries,
     });
   }
@@ -177,7 +253,8 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   // Sources for a SKU in proposal order (§11.3): warehouse, containers by ETA, POs by ETA.
   function sourcesFor(sku) {
     const out = [];
-    if (warehouse[sku]) out.push({ source: SOURCE.WAREHOUSE, sourceId: warehouse[sku].itemId, total: whTotal(sku), free: whFree(sku) });
+    // Total shown for the warehouse: US qty plus the container units already received for reservations.
+    if (warehouse[sku]) out.push({ source: SOURCE.WAREHOUSE, sourceId: warehouse[sku].itemId, total: whTotal(sku) + (arrivedOnHand.get(sku) || 0), free: whFree(sku) });
     for (const c of containers) {
       const total = containerTotal(c, sku);
       if (total > 0) out.push({ source: SOURCE.IN_TRANSIT, sourceId: c.id, eta: c.eta, total, free: containerFree(c, sku) });
@@ -240,7 +317,10 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   const skusOf = (src) => [...new Set(src.lines.map((l) => l.sku))];
   const whSkus = Object.keys(warehouse);
   const sourceTotals = {
-    warehouse: { total: sum(whSkus, whTotal), committed: sum(whSkus, (s) => Math.min(whTotal(s), usedOf(SOURCE.WAREHOUSE, null, s))) },
+    warehouse: {
+      total: sum(whSkus, (s) => whTotal(s) + (arrivedOnHand.get(s) || 0)),
+      committed: sum(whSkus, (s) => Math.min(whTotal(s), usedOf(SOURCE.WAREHOUSE, null, s)) + (arrivedOnHand.get(s) || 0)),
+    },
     containers: new Map(containers.map((c) => [String(c.id), {
       total: sum(skusOf(c), (s) => containerTotal(c, s)),
       committed: sum(skusOf(c), (s) => Math.min(containerTotal(c, s), usedOf(SOURCE.IN_TRANSIT, c.id, s))),
@@ -278,6 +358,9 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     whTotal,
     freeOf,
     usedOf,
+    arrivalOf,
+    arrivedOnHand,
+    allLines,
     counts: { orders: new Set(lines.map((l) => l.orderId)).size, rows: lines.length },
   };
 }

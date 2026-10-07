@@ -80,7 +80,8 @@ test("entries follow the §14.1 JSON contract and the Ledger record the migratio
   const rec = ledgerRecord({ order: ed.order, raw: { ...ed.raw, ordered: 250, fulfilled: 0 }, sku: "EC0452", entries, data });
   const L = LEDGER.col;
   assert.equal(rec.name, "EIVR132 | EC0452");
-  assert.deepEqual(rec.itemValues[L.status], { label: "PO + In-Transit + Warehouse" });
+  assert.deepEqual(rec.itemValues[L.status], { label: "Partially Allocated" }); // 245 of 250 to ship
+  assert.deepEqual(rec.subitems.map((s) => s.values[LEDGER.subCol.arrival].label), ["Warehouse - Arrived", "In-Transit - Pending", "PO - Pending"]);
   assert.equal(rec.itemValues[L.allocated], "245");
   assert.equal(rec.itemValues[L.whUsed], "45");
   assert.equal(rec.itemValues[L.itRefs], F70);
@@ -141,7 +142,9 @@ test("Allocate rewrites the line's Ledger item: old sources out, new in, columns
   const { data } = setup();
   const { write, api, calls } = fakeMonday(data, { item: { id: "900", group: LEDGER.groups.active, subitemIds: ["a", "b", "c"] } });
   const res = await saveAllocation(write, api, { data, lineId: "EIVR132-EC0452", values: { warehouse: 45, [F70]: 150 } });
-  assert.deepEqual(calls.map((c) => c[0]), ["deleteLedgerSubitems", "createLedgerSubitems", "updateLedgerItem", "linkLines"]);
+  assert.deepEqual(calls.map((c) => c[0]), ["deleteLedgerSubitems", "createLedgerSubitems", "updateLedgerItem", "linkLines", "linkLines", "setTransitLines"]);
+  assert.equal(calls[4][1].entries[0].target, "baseline"); // Last Fulfilled Processed = US Qty Fulfilled
+  assert.deepEqual(JSON.parse(calls[5][1].entries[0].v), { color_mm3kvr2h: { label: "Arrived – Pending Receiving" } });
   assert.deepEqual(calls[0][1].entries, [{ i: "a" }, { i: "b" }, { i: "c" }]);
   assert.equal(calls[1][1].p, "900");
   assert.equal(res.allocated, 195);
@@ -154,13 +157,13 @@ test("all zero releases the Ledger item; allocating again brings it back to Acti
   const { data } = setup();
   const rel = fakeMonday(data, { item: { id: "900", group: LEDGER.groups.active, subitemIds: ["a"] } });
   await saveAllocation(rel.write, rel.api, { data, lineId: "EIVR132-EC0452", values: {} });
-  assert.deepEqual(rel.calls.map((c) => c[0]), ["deleteLedgerSubitems", "updateLedgerItem", "moveLedgerItem", "linkLines"]);
+  assert.deepEqual(rel.calls.map((c) => c[0]), ["deleteLedgerSubitems", "updateLedgerItem", "moveLedgerItem", "linkLines", "linkLines"]);
   assert.match(rel.calls[1][1].v, /"label":"Released"/);
   assert.equal(rel.calls[2][1].g, LEDGER.groups.released);
 
   const back = fakeMonday(data, { item: { id: "900", group: LEDGER.groups.released, subitemIds: [] } });
   await saveAllocation(back.write, back.api, { data, lineId: "EIVR127-EC0451", values: { "PO-00458": 10 } });
-  assert.deepEqual(back.calls.map((c) => c[0]), ["createLedgerSubitems", "updateLedgerItem", "moveLedgerItem", "linkLines"]);
+  assert.deepEqual(back.calls.map((c) => c[0]), ["createLedgerSubitems", "updateLedgerItem", "moveLedgerItem", "linkLines", "linkLines"]);
   assert.equal(back.calls[2][1].g, LEDGER.groups.active);
 });
 
@@ -168,7 +171,7 @@ test("a Ledger item in Fulfilled stays where it is, linked to its line, and is r
   const { data } = setup();
   const f = fakeMonday(data, { item: { id: "900", group: "group_mm76zg9t", subitemIds: ["a"] } });
   await saveAllocation(f.write, f.api, { data, lineId: "EIVR132-EC0452", values: { warehouse: 45, [F70]: 180 } });
-  assert.deepEqual(f.calls.map((c) => c[0]), ["deleteLedgerSubitems", "createLedgerSubitems", "updateLedgerItem", "linkLines"]);
+  assert.deepEqual(f.calls.map((c) => c[0]), ["deleteLedgerSubitems", "createLedgerSubitems", "updateLedgerItem", "linkLines", "linkLines", "setTransitLines"]);
   const z = fakeMonday(data, { item: { id: "900", group: "group_mm76zg9t", subitemIds: ["a"] } });
   await saveAllocation(z.write, z.api, { data, lineId: "EIVR132-EC0452", values: {} });
   assert.ok(!z.calls.some((c) => c[0] === "moveLedgerItem"));
@@ -178,7 +181,7 @@ test("a line with no Ledger item gets one in Active, linked from its Wholesale s
   const { data } = setup();
   const { write, api, calls } = fakeMonday(data, { item: null });
   await saveAllocation(write, api, { data, lineId: "EIVR127-EC0451", values: { "PO-00458": 10 } });
-  assert.deepEqual(calls.map((c) => c[0]), ["createLedgerItem", "createLedgerSubitems", "linkLines"]);
+  assert.deepEqual(calls.map((c) => c[0]), ["createLedgerItem", "createLedgerSubitems", "linkLines", "linkLines"]);
   assert.deepEqual(JSON.parse(calls[2][1].entries[0].v), { [LEDGER.link.col]: { item_ids: [901] } });
   assert.equal(calls[2][1].entries[0].target, "ledgerLine");
 });

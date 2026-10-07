@@ -7,6 +7,7 @@ import { containerCode, orderParts, retailerShort } from "./matrix.js";
 import { LEDGER } from "./mondayWrites.js";
 import { fmt, plural, dayMonthYear } from "./format.js";
 import { localToday } from "./shipments.js";
+import { arrivalLabel } from "./arrival.js";
 
 const KIND = { [SOURCE.WAREHOUSE]: "wh", [SOURCE.IN_TRANSIT]: "it", [SOURCE.PO]: "po" };
 const RANK = { wh: 0, it: 1, po: 2 };
@@ -179,13 +180,15 @@ export function entriesFrom(ed, values, data) {
   return out;
 }
 
-// Ledger "Allocation Status" by the set of source types (as in the migration).
-export const STATUS_BY_SET = {
-  "": "Unallocated", warehouse: "Warehouse Stock", intransit: "In-Transit", po: "PO Pending",
-  "intransit+po": "PO + In-Transit", "intransit+warehouse": "In-Transit + Warehouse", "po+warehouse": "PO + Warehouse",
-  "intransit+po+warehouse": "PO + In-Transit + Warehouse",
-};
-export const RELEASED = "Released";
+// Ledger "Status Allocation" by quantities (client decision, 2026-10-07): what the line holds against what it
+// still has to ship. Where each part comes from is in the Source Type / Arrival Status of each subitem.
+export const ALLOCATION_STATUS = { allocated: "Allocated", partial: "Partially Allocated", over: "Over Allocated", released: "Released" };
+export const RELEASED = ALLOCATION_STATUS.released;
+export function allocationStatus(reserved, outstanding) {
+  if (reserved <= 0) return ALLOCATION_STATUS.released;
+  if (reserved > outstanding) return ALLOCATION_STATUS.over;
+  return reserved === outstanding ? ALLOCATION_STATUS.allocated : ALLOCATION_STATUS.partial;
+}
 const TYPE_LABEL = { warehouse: "Warehouse Stock", intransit: "In-Transit", po: "Purchase Order" };
 const numericId = (id) => (/^\d+$/.test(String(id || "")) ? Number(id) : null);
 
@@ -211,7 +214,7 @@ export function ledgerRecord({ order, raw, sku, entries, data, now = new Date() 
   const refs = (arr) => [...new Set(arr.map((p) => p.ref).filter(Boolean))].join(", ");
   const total = (arr, f) => String(sum(arr, f));
   const ids = (arr) => [...new Set(arr.map((p) => numericId(p.sourceId)).filter(Boolean))];
-  const types = [...new Set(parts.map((p) => p.source))].sort().join("+");
+  const where = { containerById: new Map((data.containers || []).map((c) => [String(c.id), c])), poById: new Map((data.pos || []).map((p) => [String(p.id), p])) };
   const etas = parts.filter((p) => p.source !== SOURCE.WAREHOUSE && p.eta).map((p) => p.eta).sort();
   const po = of(SOURCE.PO), it = of(SOURCE.IN_TRANSIT), wh = of(SOURCE.WAREHOUSE);
   const iso = now.toISOString();
@@ -226,7 +229,7 @@ export function ledgerRecord({ order, raw, sku, entries, data, now = new Date() 
     [L.fulfilled]: String(raw.fulfilled ?? ""),
     [L.outstanding]: String(raw.outstanding ?? ""),
     [L.allocated]: String(sum(parts, (p) => p.qty)),
-    [L.status]: { label: parts.length ? STATUS_BY_SET[types] || "Unallocated" : RELEASED },
+    [L.status]: { label: allocationStatus(sum(parts, (p) => p.qty), Number(raw.outstanding) || 0) },
     [L.poRel]: { item_ids: ids(po) },
     [L.poRefs]: refs(po),
     [L.poUsed]: total(po, (p) => p.qty),
@@ -252,9 +255,48 @@ export function ledgerRecord({ order, raw, sku, entries, data, now = new Date() 
       ...(p.total !== null ? { [LS.total]: String(p.total) } : {}),
       ...(p.eta ? { [LS.eta]: { date: p.eta } } : {}),
       ...(p.source === SOURCE.IN_TRANSIT ? { [LS.packingDone]: { checked: p.packingDone ? "true" : "false" } } : {}),
+      [LS.arrival]: { label: arrivalLabel(p, sku, where) },
     },
   }));
   return { name: `${so || number} | ${sku}`, itemValues, subitems };
+}
+
+// Review (client, 2026-10-07) — "Release": a line holds more than it still has to ship (Cin7 shipped units,
+// or the order was lowered). The extra units go back to the sources: first what already arrived (warehouse
+// stock, plain first, then received containers by ETA — that is what could have shipped), then the farthest
+// arrival. Returns null when nothing is extra, else
+//   { units, parts: [{ rowId, title, qty }], values }  — values: what stays per editor row (for saveAllocation)
+export function releasePlan(line) {
+  const units = (line.reservedRaw || 0) - line.toShip;
+  if (units <= 0) return null;
+  const etaKey = (e) => e.eta || "9999-12-31";
+  const arrived = line.rawEntries.filter((e) => e.stage === SOURCE.WAREHOUSE)
+    .sort((a, b) => (a.source === SOURCE.WAREHOUSE ? 0 : 1) - (b.source === SOURCE.WAREHOUSE ? 0 : 1) || etaKey(a).localeCompare(etaKey(b)));
+  const coming = line.rawEntries.filter((e) => e.stage !== SOURCE.WAREHOUSE).sort((a, b) => etaKey(b).localeCompare(etaKey(a)));
+  const left = new Map(line.rawEntries.map((e) => [e, e.qty]));
+  const parts = [];
+  let need = units;
+  for (const e of [...arrived, ...coming]) {
+    if (need <= 0) break;
+    const t = Math.min(e.qty, need);
+    left.set(e, e.qty - t);
+    need -= t;
+    const title = e.source === SOURCE.WAREHOUSE ? "Warehouse" : e.source === SOURCE.IN_TRANSIT ? containerCode(e.ref || String(e.sourceId)) : e.ref || String(e.sourceId);
+    const same = parts.find((p) => p.title === title);
+    if (same) same.qty += t;
+    else parts.push({ rowId: rowIdOf(e), title, qty: t });
+  }
+  // What stays per row: never more than the line can actually keep after the source caps (pass 3).
+  const keep = new Map();
+  for (const e of line.rawEntries) keep.set(rowIdOf(e), (keep.get(rowIdOf(e)) || 0) + left.get(e));
+  const capped = new Map();
+  for (const e of line.entries) capped.set(rowIdOf(e), (capped.get(rowIdOf(e)) || 0) + e.qty);
+  const values = {};
+  for (const [id, q] of keep) {
+    const v = Math.min(q, capped.get(id) || 0);
+    if (v > 0) values[id] = v;
+  }
+  return { units, parts, values };
 }
 
 // §10 toast after Allocate.

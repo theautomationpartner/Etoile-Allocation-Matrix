@@ -92,6 +92,19 @@ async function run() {
     check(`no cell shows more than its source has (X ≤ Y in X/Y) ${tag}`, await ev(`return [...document.querySelectorAll("tr.rw td.cl.a.it button")].every(b => { const p=b.textContent.split(",").join("").split(String.fromCharCode(47)); return p.length < 2 || parseInt(p[0],10) <= parseInt(p[1],10); })`));
     check(`Ordered · Fulfilled · To ship · Allocated · Left, readable ${tag}`, await ev(`const h=[...document.querySelectorAll("th.s2 .hn span")]; return h.map(s=>s.textContent).join("|")==="Ordered|Fulfilled|To ship|Allocated|Left" && h.every(s=>s.scrollWidth<=s.clientWidth+1) && [...document.querySelectorAll("tr.rw .s2 .nn")].every(n=>n.children.length===5)`));
     check(`rows show only the product name, no red notices ${tag}`, await ev(`return !document.querySelector("tr.rw .rh .m.warn, tr.g .gh .m .warn") && ![...document.querySelectorAll(".mx-foot span")].some(s => /no longer active/.test(s.textContent))`));
+    // Review (2026-10-07): closed by default with its count; opened it lists the cases; Release is never clicked.
+    const rv = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const s=document.querySelector("section.rv"); if(!s) return JSON.stringify({panel:false});
+      const res={ panel:true, closed: !s.querySelector(".rv-b"), count: +s.querySelector(".rv-n").textContent };
+      s.querySelector(".rv-h").click(); await wait(200);
+      const items=[...s.querySelectorAll(".rv-i")];
+      res.items=items.length; res.release=s.querySelectorAll(".rv-i .btn").length;
+      res.releaseLabels=[...s.querySelectorAll(".rv-i .btn")].every(b=>/^Release [0-9,]+$/.test(b.textContent));
+      res.inside = items.every(i=>i.getBoundingClientRect().right <= s.getBoundingClientRect().right + 1);
+      res.noScroll = document.documentElement.scrollWidth <= innerWidth + 1;
+      s.querySelector(".rv-h").click(); await wait(150); res.closesAgain = !s.querySelector(".rv-b");
+      return JSON.stringify(res)`));
+    check(`"Needs review" is closed by default and shows its count ${tag}`, rv.panel && rv.closed && Number.isFinite(rv.count), JSON.stringify(rv));
+    check(`"Needs review" lists every case; only "Release N" buttons ${tag}`, rv.items === rv.count && rv.releaseLabels && rv.inside && rv.noScroll && rv.closesAgain, JSON.stringify(rv));
     // Step 3 — allocation editor (opened and closed, never Allocate) and side panel.
     const ed = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const p=document.querySelector("tr.rw .pill"); if(!p) return JSON.stringify({pill:false});
       p.click(); await wait(250); const e=document.querySelector("tr.ed .ap");

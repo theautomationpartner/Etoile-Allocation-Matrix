@@ -4,5 +4,10 @@
     "deploymentEnabled": {
       "dev": false
     }
+  },
+  "functions": {
+    "api/daily-check.js": {
+      "maxDuration": 60
+    }
   }
 }
