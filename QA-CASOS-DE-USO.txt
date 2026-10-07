@@ -308,6 +308,9 @@ Tests automáticos (npm test, 66 en total, todos pasan):
   R-12 Draft nunca coincide con la PO; Final con la PO llegada cuenta, con aviso "not Done" ....... PASA
   R-13 La reserva de la PO sigue a su contenedor, solo a unidades que nadie tiene ................ PASA
   R-14 Escrituras nuevas limitadas a su columna (baseline, Arrival Status, Status de In-Transit) ... PASA
+  R-15 Línea ya despachada que sigue reservando → aparece; Release devuelve todo y queda Released .. PASA
+  R-16 Mail: asunto, tabla por tipo, "Release N", link a la app; prueba con asunto "[Test]" ......... PASA
+  R-17 Daily check: la segunda corrida no escribe nada (idempotente, datos reales) ............... PASA
 Chequeo visual (npm run ui-check, 96, nunca hace Release): "Needs review" cerrado con su contador;
 abierto lista cada caso; solo hay botones "Release N"; nada se sale del panel ni ensancha la página.
 Datos reales en seco (2026-10-07, /api/daily-check?dry=1, ~11 s): 50 casos — 26 líneas con más

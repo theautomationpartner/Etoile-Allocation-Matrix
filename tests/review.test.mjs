@@ -51,10 +51,13 @@ test("review: shipped with none of its sources arrived is said plainly; Release 
   assert.equal(over.action, "Release 300");
   assert.equal(over.detail, "90 from Warehouse · 210 from FLEX-4084548");
   assert.ok(items.filter((i) => i.type !== "over").every((i) => !i.action));
-  const mail = reviewMail(items, { appUrl: "https://example.test" });
-  assert.match(mail.subject, /^Allocation Matrix · \d+ things? needs? review$/);
+  const mail = reviewMail(items);
+  assert.match(mail.subject, /^Allocation Matrix · \d+ items? needs? review$/);
   assert.match(mail.text, /EIVR124 · EC0394/);
-  assert.match(mail.html, /<b>EIVR124 · EC0394<\/b>/);
+  assert.match(mail.html, />EIVR124 · EC0394</);
+  assert.match(mail.html, /<b>Release 300<\/b>/);
+  assert.match(mail.html, /href="https:\/\/etoile8\.monday\.com\/custom_objects\/18433465002"/); // the app in monday
+  assert.match(reviewMail([], { dryRun: true }).subject, /^\[Test\] Allocation Matrix · nothing to review$/);
 });
 
 test("review: a container past its ETA, or arrived in the PO but not Done, is listed", () => {
@@ -117,4 +120,23 @@ test("the new writes are limited to their boards and columns", () => {
   assert.throws(() => checkWrite("setTransitLines", { entries: [{ i: "1", v: JSON.stringify({ numeric_mm3k24ed: "1" }) }] }), /cannot write/);
   assert.doesNotThrow(() => checkWrite("updateLedgerSubitems", { entries: [{ i: "1", v: JSON.stringify({ [LEDGER.subCol.arrival]: { label: "PO - Pending" } }) }] }));
   assert.throws(() => checkWrite("updateLedgerSubitems", { entries: [{ i: "1", v: JSON.stringify({ [LEDGER.subCol.qty]: "1" }) }] }), /cannot write/);
+});
+
+test("a fully shipped line that still holds units is listed; Release gives everything back (Released)", async () => {
+  const data = mockupData();
+  const l = data.orders.find((o) => o.id === "EIVR124").lines.find((x) => x.sku === "EC0395");
+  Object.assign(l, { ordered: 800, fulfilled: 800, outstanding: 0, lastProcessed: 800 });
+  const items = buildReview(buildModel(data), data, { today: "2026-09-01" });
+  const over = items.find((i) => i.type === "over" && i.lineId === "EIVR124-EC0395");
+  assert.equal(over.text, "800 allocated, nothing left to ship (fully shipped).");
+  assert.equal(over.action, "Release 800");
+  const calls = [];
+  const write = async (op, v) => { checkWrite(op, v); calls.push([op, v]); return {}; };
+  const byKey = new Map([["EIVR124-EC0395", { itemId: "L-1", entries: l.entries }]]);
+  const api = { loadLedger: async () => ({ byId: new Map(), byKey }), findLedgerItem: async () => ({ id: "900", group: LEDGER.groups.active, subitemIds: ["a"] }) };
+  const res = await releaseLine(write, api, { data, lineId: "EIVR124-EC0395" });
+  assert.equal(res.plan.units, 800);
+  assert.deepEqual(calls.map((c) => c[0]), ["deleteLedgerSubitems", "updateLedgerItem", "moveLedgerItem", "linkLines"]);
+  assert.match(calls[1][1].v, /"label":"Released"/);
+  assert.ok(!buildReview(buildModel(res.data), res.data, { today: "2026-09-01" }).some((i) => i.lineId === "EIVR124-EC0395"));
 });

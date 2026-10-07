@@ -32,14 +32,31 @@ export async function saveAllocation(write, api, { data, lineId, values }) {
 // just now. Returns what saveAllocation returns, plus plan.
 export async function releaseLine(write, api, { data, lineId }) {
   const fresh = withLedger(data, await api.loadLedger());
-  const line = buildModel(fresh).lines.find((l) => String(l.lineId) === String(lineId));
+  const model = buildModel(fresh);
+  const line = model.lines.find((l) => String(l.lineId) === String(lineId)) || model.heldLines.find((l) => String(l.lineId) === String(lineId));
   const plan = line && releasePlan(line);
   if (!plan) {
     const err = new AllocationConflict("This line has nothing extra to release any more. The figures were updated.");
     err.fresh = fresh;
     throw err;
   }
-  return { ...(await saveWith(write, api, fresh, lineId, plan.values)), plan };
+  if (!line.held) return { ...(await saveWith(write, api, fresh, lineId, plan.values)), plan };
+
+  // Fully shipped line (nothing left to ship): everything goes back; the record becomes Released.
+  const rec = ledgerRecord({ order: line.order, raw: line.raw, sku: line.sku, entries: [], data: fresh });
+  await writeLedgerLine(write, api, { lineId, linkId: line.raw.ledgerLinkId, rec, empty: true });
+  const fulfilled = Number(line.raw.fulfilled) || 0;
+  if (line.raw.lastProcessed !== fulfilled) {
+    await write("linkLines", { entries: [{ target: "baseline", i: String(lineId), v: JSON.stringify({ [BASELINE.col]: String(fulfilled) }) }] });
+  }
+  const next = {
+    ...fresh,
+    orders: fresh.orders.map((o) => ({
+      ...o,
+      lines: o.lines.map((l) => (String(l.id) === String(lineId) ? { ...l, entries: [], ledgerItemId: null, lastProcessed: fulfilled, ledgerFulfilled: fulfilled } : l)),
+    })),
+  };
+  return { data: next, entries: [], allocated: 0, plan };
 }
 
 async function saveWith(write, api, fresh, lineId, values) {

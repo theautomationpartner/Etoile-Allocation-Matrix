@@ -131,6 +131,15 @@ export const WRITE_OPS = {
       vars: (k, e) => ({ [`i${k}`]: e.i }),
     }),
   },
+  // Status Allocation of Ledger items, in batches (daily check).
+  setLedgerStatus: {
+    batch: true, fields: ["i", "v"], columns: () => [LEDGER.col.status], itemBoards: () => [LEDGER.board],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k) => `change_multiple_column_values(board_id:${LEDGER.board}, item_id:$i${k}, column_values:$v${k}, create_labels_if_missing:false)`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
   // Arrival Status of Ledger subitems (daily check).
   updateLedgerSubitems: {
     batch: true, fields: ["i", "v"], columns: () => [LEDGER.subCol.arrival], itemBoards: () => [LEDGER.sub],

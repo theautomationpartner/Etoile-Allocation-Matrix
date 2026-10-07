@@ -245,6 +245,18 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     });
   }
 
+  // Lines with nothing left to ship (fully shipped in Cin7) whose Ledger record still holds units: those units
+  // stay blocked for other orders until someone releases them (Review). Same shape as a demand row.
+  const heldLines = allLines.filter((x) => x.toShip <= 0 && x.reservedRaw > 0).map((x) => {
+    const fulfilled = n(x.line.fulfilled);
+    const base = x.line.lastProcessed ?? x.line.ledgerFulfilled ?? fulfilled;
+    return {
+      orderId: x.order.id, order: x.order, lineId: x.line.id, sku: x.sku, toShip: 0, allocated: 0, left: 0,
+      ordered: n(x.line.ordered), fulfilled, fulfilledBase: base, shippedSince: Math.max(0, fulfilled - base),
+      reservedRaw: x.reservedRaw, rawEntries: x.rawEntries, entries: x.entries, raw: x.line, held: true,
+    };
+  });
+
   // ── Free per source (§7.1: Total − Σ confirmed of all open orders) ──
   const whFree = (sku) => Math.max(0, whTotal(sku) - usedOf(SOURCE.WAREHOUSE, null, sku));
   const containerFree = (c, sku) => Math.max(0, containerTotal(c, sku) - usedOf(SOURCE.IN_TRANSIT, c.id, sku));
@@ -361,6 +373,7 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
     arrivalOf,
     arrivedOnHand,
     allLines,
+    heldLines,
     counts: { orders: new Set(lines.map((l) => l.orderId)).size, rows: lines.length },
   };
 }

@@ -822,6 +822,8 @@ persona decide con un botón.
     US qty; contenedor: a bordo; PO: lo que falta enviar), con las órdenes.
   · Arrived in the PO, packing list not Done — la PO ya muestra la llegada y el contenedor no está Done.
   · Past its ETA, not Done — contenedor con reservas, ETA vencida y sin Done.
+  · También entran las líneas YA DESPACHADAS (To ship 0) que siguen reservando en el Ledger:
+    "<n> allocated, nothing left to ship (fully shipped)." Release devuelve todo (Released).
   Los casos quedan a la vista: la app no mueve nada a Fulfilled (eso lo hace Make con Cin7).
 
 14.3 Daily check — POST /api/daily-check (api/daily-check.js), lo llama Make después de la sync
@@ -831,11 +833,18 @@ persona decide con un botón.
   las mismas cantidades; (3) Status Allocation; (4) Arrival Status; (5) Status de las líneas de
   In-Transit usadas por una venta ("Received" si la PO recibió toda la línea, si no
   "Arrived – Pending Receiving"). Responde { ok, writes, hasItems, count, items, subject, text,
-  html }: Make manda el mail con su conexión de Gmail cuando hasItems = true.
+  html, webhook }. Al terminar (siempre, también sin casos o con error) hace POST del mismo reporte
+  al webhook de la variable SALE_REPORT_GMAIL (Make → Gmail): mail HTML con contadores por tipo, una
+  tabla por tipo con qué hacer, y el botón "Open the Allocation Matrix" →
+  https://etoile8.monday.com/custom_objects/18433465002 (APP_URL lo puede cambiar). ?dry=1 manda el
+  mail con el asunto "[Test] …" y el aviso "nothing was written".
+  Primera corrida real (2026-10-07, desde local): 74 Last Fulfilled Processed, 6 líneas con reserva de
+  PO pasada a su contenedor, 35 Status Allocation, 61 Arrival Status, 59 Status de In-Transit
+  (223 s; las corridas diarias siguientes solo escriben lo que cambió). Segunda corrida: 0 escrituras.
   Hasta 60 s en Vercel (vercel.json). Prueba con datos reales en seco: ~11 s.
 
 14.4 Escrituras nuevas (lista blanca): linkLines target "baseline" (solo numeric_mm7x8pp1) ·
-  updateLedgerSubitems (solo Arrival Status) · setTransitLines (solo color_mm3kvr2h, tablero
+  updateLedgerSubitems (solo Arrival Status) · setLedgerStatus (solo Status Allocation) · setTransitLines (solo color_mm3kvr2h, tablero
   18402783956). Las etiquetas se escriben con create_labels_if_missing:false.
 
 

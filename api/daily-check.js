@@ -6,7 +6,7 @@
 //   POST /api/daily-check?dry=1      same, nothing written (shows what would be written)
 //
 // Writes (only where something changes):
-//   1. Last Fulfilled Processed of Wholesale subitems that have a Ledger item and an empty column: the Ledger's
+//   1. Last Fulfilled Processed of Wholesale subitems (open orders) with an empty column: the Ledger's
 //      Qty Fulfilled (what was reviewed when the line was allocated). Never the current figure: what Cin7
 //      shipped since stays to review.
 //   2. A PO reservation whose units were loaded on a container follows them (engine pass 0): the line's
@@ -14,9 +14,11 @@
 //   3. Status Allocation of each Ledger item (Allocated / Partially Allocated / Over Allocated / Released).
 //   4. Arrival Status of each Ledger subitem.
 //   5. In-Transit Status of the container lines used by a sale (Arrived – Pending Receiving / Received).
-// Response: { ok, dryRun, at, writes, hasItems, count, items, subject, text, html }
+// Response: { ok, dryRun, at, writes, hasItems, count, items, subject, text, html, webhook }
+// At the end the same report is POSTed to the webhook in SALE_REPORT_GMAIL (Make sends it with Gmail).
 //
-// Env: MONDAY_TOKEN, DAILY_CHECK_SECRET (any long random text, also typed in Make), APP_URL (optional, for the mail).
+// Env: MONDAY_TOKEN, DAILY_CHECK_SECRET (any long random text, also typed in Make), SALE_REPORT_GMAIL (webhook URL),
+// APP_URL (optional; default: the app in monday).
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createMondayApi } from "../src/lib/monday.js";
 import { buildModel, SOURCE } from "../src/lib/engine.js";
@@ -24,7 +26,7 @@ import { BASELINE, LEDGER, WRITE_OPS, checkWrite, chunks } from "../src/lib/mond
 import { allocationStatus, ledgerRecord } from "../src/lib/allocation.js";
 import { arrivalLabel } from "../src/lib/arrival.js";
 import { transitUpdates, writeLedgerLine, writeTransitLines } from "../src/lib/allocationSync.js";
-import { buildReview, reviewMail } from "../src/lib/review.js";
+import { APP_LINK, buildReview, reviewMail } from "../src/lib/review.js";
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const digest = (s) => createHash("sha256").update(String(s)).digest();
@@ -60,6 +62,7 @@ export async function POST(request) {
   if (!process.env.MONDAY_TOKEN || !process.env.DAILY_CHECK_SECRET) return json(500, { error: "Server not configured (MONDAY_TOKEN / DAILY_CHECK_SECRET)." });
   if (!sameSecret(request.headers.get("x-daily-secret"), process.env.DAILY_CHECK_SECRET)) return json(401, { error: "Not authorized." });
   const dryRun = new URL(request.url).searchParams.get("dry") === "1";
+  const appUrl = process.env.APP_URL || APP_LINK;
   const at = new Date().toISOString();
   const log = [];
   const planned = { baseline: 0, followed: 0, status: 0, arrival: 0, transit: 0 };
@@ -79,10 +82,11 @@ export async function POST(request) {
     const model = buildModel(data);
     const where = { containerById: new Map(data.containers.map((c) => [String(c.id), c])), poById: new Map(data.pos.map((p) => [String(p.id), p])) };
 
-    // 1 — Last Fulfilled Processed where it is still empty.
+    // 1 — Last Fulfilled Processed where it is still empty (every line of the open orders; a new line from
+    // Make gets it on the next run).
     const baseline = [];
     for (const x of model.allLines) {
-      if (!x.line.ledgerItemId || (x.line.lastProcessed !== null && x.line.lastProcessed !== undefined)) continue;
+      if (x.line.lastProcessed !== null && x.line.lastProcessed !== undefined) continue;
       baseline.push({ target: "baseline", i: String(x.line.id), v: JSON.stringify({ [BASELINE.col]: String(x.line.ledgerFulfilled ?? x.line.fulfilled ?? 0) }) });
     }
     planned.baseline = baseline.length;
@@ -122,7 +126,7 @@ export async function POST(request) {
     }
     planned.status = status.length;
     planned.arrival = arrival.length;
-    for (const s of status) await write("updateLedgerItem", { i: s.i, v: JSON.stringify({ [LEDGER.col.status]: { label: s.label } }) });
+    for (const part of chunks(status)) await write("setLedgerStatus", { entries: part.map((s) => ({ i: s.i, v: JSON.stringify({ [LEDGER.col.status]: { label: s.label } }) })) });
     for (const part of chunks(arrival)) await write("updateLedgerSubitems", { entries: part });
 
     // 5 — In-Transit Status of the container lines that hold reservations.
@@ -133,12 +137,39 @@ export async function POST(request) {
     await writeTransitLines(write, transit);
 
     const items = buildReview(model, data);
-    const mail = reviewMail(items, { appUrl: process.env.APP_URL || "" });
-    return json(200, { ok: true, dryRun, at, writes: planned, requests: log.length, hasItems: items.length > 0, count: items.length, items, ...mail });
+    const mail = reviewMail(items, { appUrl, at, writes: dryRun ? null : planned, dryRun });
+    const body = { ok: true, dryRun, at, writes: planned, requests: log.length, hasItems: items.length > 0, count: items.length, appUrl, ...mail, items };
+    body.webhook = await notify(body);
+    return json(200, body);
   } catch (error) {
     console.error("[daily-check]", error);
-    return json(500, { ok: false, dryRun, at, writes: planned, requests: log.length, error: String(error?.message || error) });
+    const body = { ok: false, dryRun, at, writes: planned, requests: log.length, error: String(error?.message || error), appUrl, ...failedMail(error, at, appUrl) };
+    body.webhook = await notify(body);
+    return json(500, body);
   }
+}
+
+// The report goes to the webhook in SALE_REPORT_GMAIL (Make → Gmail): { ok, dryRun, at, hasItems, count,
+// subject, html, text, appUrl, writes, items }. Sent on every run, also when nothing needs review or it failed.
+async function notify(body) {
+  const url = process.env.SALE_REPORT_GMAIL || process.env.SALE_REPORT_GMAIl;
+  if (!url) return "not configured";
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return res.ok ? "sent" : `HTTP ${res.status}`;
+  } catch (e) {
+    return `failed: ${e?.message || e}`;
+  }
+}
+
+function failedMail(error, at, appUrl) {
+  const msg = String(error?.message || error).replace(/</g, "&lt;");
+  return {
+    hasItems: false, count: 0,
+    subject: "Allocation Matrix · daily review failed",
+    text: `The daily review could not run (${at}): ${error?.message || error}`,
+    html: `<div style="font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:13px;color:#15171C"><p><b>The daily review could not run.</b></p><p style="color:#585F6B">${msg}</p><p>Nothing was changed after the error. <a href="${appUrl}">Open the Allocation Matrix</a></p></div>`,
+  };
 }
 
 export function GET() {
