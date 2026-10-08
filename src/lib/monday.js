@@ -32,7 +32,7 @@ export const COL = {
   ledgerSub: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6", arrival: "color_mm7xe2mp" },
 };
 
-export const OPEN_GROUPS = ["topics"]; // Wholesale: Orders only (client decision, 2026-10-08: Pending is not read)
+export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active
 export const LEDGER_FULFILLED_GROUP = "group_mm76zg9t"; // Ledger: Fulfilled — still the line's record while its order is open
 export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero (holds no units)
@@ -165,7 +165,7 @@ export function createMondayApi(transport = fetchTransport) {
   }
 
   // One Ledger item per sale line (groups Active and Fulfilled), one subitem per source feeding it.
-  // As in the Allocation Queue, what decides is the ORDER's group (Orders): a line of an open
+  // As in the Allocation Queue, what decides is the ORDER's group (Orders + Pending): a line of an open
   // order keeps the units of its Ledger item even if that item sits in Fulfilled. Released holds none.
   // byId → the Ledger item a Wholesale subitem links to (board_relation_mm7pqf7j);
   // byKey → fallback by Allocation Key (= Wholesale subitem id).
@@ -312,9 +312,7 @@ export function createMondayApi(transport = fetchTransport) {
       transport(`query($b:ID!,$v:[String]!){ items_page_by_column_values(board_id:$b, limit:10, columns:[{column_id:"${COL.ledger.key}", column_values:$v}]){ items { ${f} } } }`,
         { b: BOARDS.ledger, v: [String(lineId)] }),
     ]);
-    // Only the groups the app works with: an archived record (e.g. "Archived – Pending orders") is never reused.
-    const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger
-      && [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP, LEDGER_RELEASED_GROUP].includes(it.group?.id);
+    const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger;
     const rank = (it) => ({ [LEDGER_ACTIVE_GROUP]: 0, [LEDGER_FULFILLED_GROUP]: 1, [LEDGER_RELEASED_GROUP]: 2 }[it.group?.id] ?? 3);
     const candidates = [...(linked?.items || []), ...((byKey?.items_page_by_column_values?.items || []).sort((a, b) => rank(a) - rank(b)))].filter(live);
     const it = candidates[0];

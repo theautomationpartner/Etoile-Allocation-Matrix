@@ -10,9 +10,7 @@
 //   pos:        [{ id, name, reference, region, eta, lines: [{ id, sku, qtyOrdered, qtyOutstanding, qtyArrived, status }] }]
 import { containerArrival, inWarehouse } from "./arrival.js";
 
-// Client decision (2026-10-08): only the Orders group is demand. Pending (group_mm1730xq) held old, obsolete
-// sales (EIVR114, #ECUS28341): it is not read any more; its Ledger records were archived.
-export const OPEN_ORDER_GROUPS = new Set(["topics"]); // Orders (§5.1)
+export const OPEN_ORDER_GROUPS = new Set(["topics", "group_mm1730xq"]); // Orders + Pending (§5.1)
 export const ACTIVE_CONTAINER_GROUP = "topics"; // In-Transit Shipments (Items) (§6.2)
 export const SOURCE = { WAREHOUSE: "warehouse", IN_TRANSIT: "intransit", PO: "po" };
 
@@ -29,7 +27,7 @@ const byCancel = (a, b) => (a.order.cancelDate || "9999-12-31").localeCompare(b.
 export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   const warehouse = data.warehouse || {};
 
-  // §5.1 / §11.2 — demand: Orders group, region US.
+  // §5.1 / §11.2 — demand: Orders + Pending groups, region US.
   const orders = (data.orders || []).filter((o) => OPEN_ORDER_GROUPS.has(o.group) && o.region === "US");
 
   // §6.2 — in-transit supply: group topics + Location US + Packing List not "Done".
