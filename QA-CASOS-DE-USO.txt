@@ -441,3 +441,15 @@ columna File se achicó); en celular la tabla se desplaza dentro de su tarjeta.
        Still to ship de las POs (45,323) · sin faltantes en ninguna (0) ............................................ PASA
   F-05 Consola del navegador sin errores ni avisos recorriendo las 8 pantallas .................................... PASA
 npm test 96/96 · npm run ui-check 192/192 (1200, 1440 y 390 px) · build sin errores.
+
+--------------------------------------------------------------------------------
+ 19. MASTER SKU — revisión contra "Master SKU Inventory — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  R-01 Registros de entrada unidos a los contenedores por SKU + PO Reference (§6, §8): ejemplo del documento EC0450
+       → PO260620US 500 en viaje (200 + 300) · PO260705US 600 en viaje + 200 por embarcar; un contenedor AU nunca
+       cuenta ........................................................................................................ PASA
+  R-02 Dato real: PO-00430 · EC0357 mostraba "EC103 (456) + EC103 (456)" (contenedor AU, repetido, vía In Transit ID);
+       ahora "FLEX-4132795 (456) · 144 still estimated", igual que Purchase Orders ..................................... PASA
+  R-03 Panel de SKU: "Incoming records" = los registros de la fila desplegada ....................................... PASA
+  R-04 Panel de contenedor: "Packing list that created it" (archivo, Import Status, fecha de subida) ................ PASA
+npm test 98/98 · npm run ui-check 192/192.

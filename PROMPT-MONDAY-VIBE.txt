@@ -889,9 +889,13 @@ Show: All products · Sold short · No warehouse stock · Has unassigned demand 
   demand, con su cantidad. El buscador filtra por SKU, producto, PO o contenedor.
 Fila → panel lateral del SKU. ▸ → Incoming records: subitems de Master SKU (board 18402981518) de región US,
   agrupados por PurchaseID (PO × SKU): Incoming record (Name) · Purchase order (board_relation_mm19zsyp) ·
-  Shipment (In Transit ID text_mm34kmb5 → línea de contenedor, con US In Transit) · ETA (date_mm2vrt3q) ·
-  Arrival (color_mm2vzyxm Estimated/Confirmed) · Travelling (Σ US In Transit) · Still to ship (US Qty Outstanding
-  − Travelling) · Packing list de cada contenedor. Clic en el registro → panel de la PO; en un contenedor → su panel.
+  Shipment = contenedores en tránsito de la matriz con una línea del mismo SKU y PO Reference (o conexión a la PO)
+  de ese registro (requerimientos §6 y §8; antes se usaba In Transit ID, que apuntaba a contenedores AU y repetía) ·
+  ETA = la del primer contenedor, si no la de la PO · Arrival = Confirmed si algún contenedor lo trae, si no
+  Estimated · Travelling = Σ de esos contenedores · Still to ship = US Qty Outstanding − Travelling · Packing list
+  de cada contenedor. Clic en el registro → panel de la PO; en un contenedor → su panel.
+Panel de SKU: sección "Incoming records" (los mismos registros). Panel de contenedor: sección "Packing list that
+  created it" (la subida del Importer conectada: archivo, Import Status, fecha).
 El Control center ("Review SKUs", "Open in Master SKU") abre esta pantalla con "Sold short".
 
 --------------------------------------------------------------------------------
@@ -1034,3 +1038,4 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 2026-10-08  PURCHASE ORDERS — sección 19; Arrived y Status de la línea salen de monday (también en el panel).
 2026-10-08  IN-TRANSIT IMPORTER — sección 20; se lee el tablero del Importer. Todas las pantallas del menú habilitadas.
 2026-10-08  Menú lateral claro en el tema claro; botón de tema con sol / luna. Prueba final: 192 chequeos + cruce de cifras.
+2026-10-08  MASTER SKU revisado contra sus requerimientos: registros unidos por SKU + PO Reference; secciones de panel nuevas.

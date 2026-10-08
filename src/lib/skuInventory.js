@@ -5,7 +5,7 @@
 //   Qty Outstanding of the US PO lines (not received yet, travelling included) · Sold = left to ship of open sales ·
 //   Unassigned = Left · Free to sell = free warehouse + free in transit · Short = Impossible to cover of the SKU.
 // The expanded row lists the product's Incoming records (Master SKU subitems, region US), grouped per
-// PurchaseID (PO × SKU) as in the mockup: one row per PO with the containers that carry it.
+// PurchaseID (PO × SKU) as in the mockup: one row per PO with the containers that carry it (see incomingOf).
 import { SOURCE } from "./engine.js";
 import { containerCode } from "./matrix.js";
 
@@ -28,8 +28,6 @@ export function buildSkuInventory(model, data) {
     linesBy.get(l.sku).push(l);
   }
   const usPos = (data.pos || []).filter((p) => p.region === "US");
-  const containerOfLine = new Map();
-  for (const c of data.containers || []) for (const l of c.lines || []) containerOfLine.set(String(l.id), c);
   const poById = new Map((data.pos || []).map((p) => [String(p.id), p]));
 
   const rows = Object.entries(warehouse).map(([sku, w]) => {
@@ -45,7 +43,7 @@ export function buildSkuInventory(model, data) {
     const free = whFree + itFree;
     const cover = sold ? Math.min(100, Math.round(((sold - gap) / sold) * 100)) : 100;
     const status = gap ? { c: "gap", t: `Short ${gap.toLocaleString("en-US")}` } : need ? { c: "po", t: "Needs assigning" } : sold ? { c: "wh", t: "Covered" } : { c: "mut", t: "No demand" };
-    return { sku, name: w.name, onHand, inTransit, onOrder, sold, need, gap, whFree, itFree, free, cover, status, incoming: incomingOf(w, containerOfLine, poById) };
+    return { sku, name: w.name, onHand, inTransit, onOrder, sold, need, gap, whFree, itFree, free, cover, status, incoming: incomingOf(w, sku, model.containers, poById) };
   });
   rows.sort((a, b) => b.gap - a.gap || b.need - a.need || a.sku.localeCompare(b.sku));
 
@@ -71,8 +69,18 @@ export function buildSkuInventory(model, data) {
   };
 }
 
-// Incoming records of one product (region US), one row per PurchaseID (PO × SKU), as in the mockup.
-function incomingOf(w, containerOfLine, poById) {
+// Incoming records of one product, for its side panel (the same rows as the expanded Master SKU row).
+export function incomingRecords(model, data, sku) {
+  return incomingOf(data.warehouse?.[sku] || {}, sku, model.containers, new Map((data.pos || []).map((p) => [String(p.id), p])));
+}
+
+// Incoming records of one product (requirements §6): one per purchase order (PurchaseID = PO × SKU, the Master
+// SKU subitems of region US, grouped as in the mockup) that still has units of the SKU to receive.
+//   Shipment = the containers in transit (the matrix's: topics, US, not Done) carrying that SKU from that PO —
+//   container line with the same SKU and PO Reference (or PO connection) · Travelling = Σ of those · Still to ship =
+//   the record's US Qty Outstanding − Travelling · ETA = first container's ETA, else the PO's · Arrival = Confirmed
+//   when a container carries it, else Estimated.
+function incomingOf(w, sku, containers, poById) {
   const groups = new Map();
   for (const rec of w.incoming || []) {
     const us = rec.region ? rec.region === "US" : rec.onOrder > 0 || rec.inTransit > 0;
@@ -83,21 +91,18 @@ function incomingOf(w, containerOfLine, poById) {
   }
   const out = [];
   for (const [key, recs] of groups) {
-    const ships = recs.filter((r) => r.transitLineId && r.inTransit > 0).map((r) => {
-      const c = containerOfLine.get(r.transitLineId);
-      return { recordId: r.id, containerId: c ? String(c.id) : null, code: c ? containerCode(c.name) : "", qty: r.inTransit, eta: c?.eta || r.eta, packingList: c?.packingList || "" };
-    }).sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999"));
-    const travelling = sum(ships, (s) => s.qty);
+    const po = recs.map((r) => r.poId && poById.get(String(r.poId))).find(Boolean) || null;
+    const ships = po ? containers.map((c) => {
+      const qty = sum(c.lines.filter((l) => l.sku === sku && (l.poRef === po.name || String(l.poId || "") === String(po.id))), (l) => l.qty);
+      return { recordId: `${key}|${c.id}`, containerId: String(c.id), code: containerCode(c.name), qty, eta: c.eta || "", packingList: c.packingList || "" };
+    }).filter((x) => x.qty > 0).sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999")) : [];
+    const travelling = sum(ships, (x) => x.qty);
     const outstanding = Math.max(...recs.map((r) => r.outstanding), 0);
     const toShip = Math.max(0, outstanding - travelling);
     if (!travelling && !toShip) continue; // nothing pending any more
-    const po = recs.map((r) => r.poId && poById.get(r.poId)).find(Boolean) || null;
-    const etas = ships.map((s) => s.eta).filter(Boolean).sort();
     out.push({
-      key, name: recs[0].name, poId: po ? String(po.id) : null, poName: po?.name || "",
-      ships, eta: etas[0] || recs.map((r) => r.eta).filter(Boolean).sort()[0] || "",
-      arrival: recs.some((r) => r.arrival === "Confirmed") ? "Confirmed" : "Estimated",
-      travelling, toShip,
+      key, name: recs[0].name, poId: po ? String(po.id) : null, poName: po?.name || "", poEta: po?.eta || "",
+      ships, eta: ships[0]?.eta || po?.eta || "", arrival: ships.length ? "Confirmed" : "Estimated", travelling, toShip,
     });
   }
   return out.sort((a, b) => (a.eta || "9999").localeCompare(b.eta || "9999") || a.name.localeCompare(b.name));

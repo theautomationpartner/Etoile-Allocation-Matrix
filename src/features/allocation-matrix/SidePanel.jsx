@@ -4,6 +4,7 @@ import { containerCode, orderParts, retailerShort } from "../../lib/matrix.js";
 import { SOURCE } from "../../lib/engine.js";
 import { pathMatch, pathsFor, sortPaths, sumQ, unitPaths } from "../../lib/paths.js";
 import { localToday } from "../../lib/shipments.js";
+import { incomingRecords } from "../../lib/skuInventory.js";
 
 // Side panel (PDF §8.3, mockup "rail"): opened from an order, a SKU or a source. Each record shows its
 // allocation paths <container, PO or warehouse> → <order> with units; a container also shows its split by
@@ -311,6 +312,8 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
   const pct = tot ? Math.min(100, Math.round((res / tot) * 100)) : 0;
   const pos = [...new Set(c.lines.map((l) => l.poRef))];
   const days = c.eta ? daysTo(c.eta) : null;
+  // The Importer upload that created it (In-Transit / Wholesale Importer, its "In-Transit Shipment" connection).
+  const imp = (data.imports || []).find((x) => String(x.shipmentId) === String(c.id));
   return (
     <>
       <div className="rail-h"><h3>{containerCode(c.name)}</h3></div>
@@ -340,6 +343,15 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
           })}
         </div>
       </div>
+
+      {imp && (
+        <div className="sec">
+          <h4>Packing list that created it</h4>
+          <div className="rel">
+            <RelRow kind="mut" title={imp.files[0] || imp.name} meta={["Importer", imp.status, imp.uploaded ? `uploaded ${dayMonthYear(imp.uploaded)}` : ""].filter(Boolean).join(" · ")} qty="" />
+          </div>
+        </div>
+      )}
 
       <div className="sec">
         <h4>SKUs on board <span className="c">{plural(skus.length, "SKU", "SKUs")} · {plural(c.lines.length, "subitem", "subitems")}</span></h4>
@@ -433,6 +445,7 @@ function SkuPanel({ id, prev, ctx, model, data, onOpen }) {
   const nPO = new Set(ps.filter((p) => p.po || p.poRef).map((p) => p.po || p.poRef)).size;
   const nShip = new Set(ps.filter((p) => p.ship && p.k === "it").map((p) => p.ship)).size;
   const nSO = new Set(ps.filter((p) => p.order).map((p) => p.order)).size;
+  const incoming = incomingRecords(model, data, id);
   return (
     <>
       <div className="rail-h"><h3>{id}</h3></div>
@@ -455,6 +468,17 @@ function SkuPanel({ id, prev, ctx, model, data, onOpen }) {
       <div className="sec">
         <h4>Where every unit goes <span className="c">{plural(nPO, "PO", "POs")} · {plural(nShip, "container", "containers")} · {plural(nSO, "order", "orders")}</span></h4>
         <PathTable type="sku" id={id} ctx={ctx} onOpen={onOpen} hl={prev} rollup />
+      </div>
+      <div className="sec">
+        <h4>Incoming records <span className="c">one per PO, as in Master SKU</span></h4>
+        <div className="rel">
+          {incoming.length ? incoming.map((x) => (
+            <RelRow key={x.key} kind={x.ships.length ? "it" : "po"} title={x.name}
+              meta={[x.poName || "No PO", x.ships.length ? `on ${x.ships.map((y) => `${y.code || "a container not found"} (${fmt(y.qty)})`).join(" + ")}` : "no shipment yet", x.arrival,
+                x.ships.length && x.toShip ? `${fmt(x.toShip)} still estimated${x.poEta ? ` for ${dayMonth(x.poEta)}` : ""}` : ""].filter(Boolean).join(" · ")}
+              qty={x.ships.length ? `${fmt(x.travelling)} travelling` : `${fmt(x.toShip)} to ship`} onOpen={x.poId ? () => onOpen("po", x.poId) : undefined} />
+          )) : <div className="empty-note">No open purchase orders for this SKU.</div>}
+        </div>
       </div>
     </>
   );
