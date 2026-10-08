@@ -74,7 +74,9 @@ Región: solo US. Todas las cantidades son de US.
 2.1 🛍️ Wholesale Allocation (Reservations) — board 18402982970  [DEMANDA]
     Item = una orden de venta mayorista. Subitem = un SKU de esa orden.
     Grupos: Orders "topics" · Pending "group_mm1730xq" · Fulfilled "group_mm17q5pm".
-    Solo Orders y Pending son demanda abierta. Fulfilled nunca se muestra.
+    Solo Orders es demanda abierta (decisión del cliente, 2026-10-08: Pending tenía ventas viejas y
+    obsoletas y no se lee más; su allocation se archivó, ver EtoileContextoApp/ARCHIVO-ventas-pending.md).
+    Fulfilled nunca se muestra.
     Item:
       name                 ej. "EIVR118 - SO-201939" (número de orden - SO)
       dropdown_mm17we0j    Retailer
@@ -130,7 +132,9 @@ Región: solo US. Todas las cantidades son de US.
 2.5 🔗 Allocation Ledger - Monday Vibe — board 18430965833  [ALLOCATIONS]
     Un item por línea de venta (SaleID × SKU), enlazado desde el subitem de Wholesale
     por board_relation_mm7pqf7j. Un SUBITEM POR FUENTE que abastece la línea.
-    Grupos: Active "group_mm76c2zx" · Fulfilled "group_mm76zg9t" · Released "group_mm76qvz".
+    Grupos: Active "group_mm76c2zx" · Fulfilled "group_mm76zg9t" · Released "group_mm76qvz"
+    · "Archived – Pending orders" (2026-10-08: allocation de las ventas de Pending; la app no lo lee
+    ni reutiliza sus items).
     Se leen Active y Fulfilled: como en la Allocation Queue, manda el grupo de la ORDEN
     (Orders + Pending); una línea de una orden abierta conserva su item aunque esté en Fulfilled.
     Released no guarda unidades.
@@ -891,4 +895,6 @@ persona decide con un botón.
 2026-10-07  REVIEW — Last Fulfilled Processed; panel "Needs review" con Release; la reserva sigue de la
             PO al contenedor; llegada confirmada por Qty Arrived de la PO (reemplaza Done → warehouse
             por el 50 % del warehouse); Is Process nunca cuenta; Status Allocation por cantidades;
-            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+2026-10-08  Solo el grupo Orders de Wholesale es demanda (Pending afuera). Allocation de EIVR114 archivada en el
+            Ledger ("Archived – Pending orders") y desconectada; webhook SALE_REPORT_GMAIL con el mail diario.

@@ -162,3 +162,14 @@ test("units of a PO already shipped on a container cannot stay reserved on the P
   assert.equal(l.allocated, 0);
   assert.equal(l.left, 150);
 });
+
+// Client decision (2026-10-08): only the Orders group is demand; Pending is not read.
+test("a sale in Pending is not demand and its reservations hold no units", () => {
+  const base = buildModel(mockupData());
+  const data = mockupData();
+  data.orders.find((o) => o.id === "EIVR124").group = "group_mm1730xq"; // Pending
+  const m = buildModel(data);
+  assert.ok(!m.lines.some((l) => l.orderId === "EIVR124"));
+  // EIVR124 held 800 of EC0395 on FLEX-4084548: they are free again.
+  assert.equal(m.freeOf(SOURCE.IN_TRANSIT, "US / FLEX-4084548 / 40HC", "EC0395"), base.freeOf(SOURCE.IN_TRANSIT, "US / FLEX-4084548 / 40HC", "EC0395") + 800);
+});
