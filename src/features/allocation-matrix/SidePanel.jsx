@@ -365,8 +365,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
   if (!p) return <div className="empty-note">This purchase order is no longer in Monday.</div>;
   const skus = [...new Set(p.lines.map((l) => l.sku))];
   const ord = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyOrdered);
-  const outst = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyOutstanding);
-  const arrived = (k) => Math.max(0, ord(k) - outst(k));
+  const arrived = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyArrived); // Qty Arrived (may exceed Qty Ordered)
   const shipped = (k) => model.poShipped(p, k);
   const left = (k) => model.poTotal(p, k);
   const ships = model.containers.filter((c) => c.lines.some((l) => l.poRef === p.name));
@@ -391,7 +390,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
         <h4>Line items <span className="c">{plural(skus.length, "SKU", "SKUs")}</span></h4>
         <div className="rel">
           {skus.map((k) => {
-            const st = arrived(k) >= ord(k) && ord(k) > 0 ? "Fully Arrived" : arrived(k) > 0 ? "Partially Arrived" : "Ordered";
+            const st = p.lines.find((l) => l.sku === k && l.status)?.status || (arrived(k) >= ord(k) && ord(k) > 0 ? "Fully Arrived" : arrived(k) > 0 ? "Partially Arrived" : "Ordered");
             const on = ships.map((c) => [c, sumBy(c.lines.filter((l) => l.sku === k && l.poRef === p.name), (l) => l.qty)]).filter(([, q]) => q > 0);
             return <RelRow key={k} kind="po" title={`${k} · ${data.warehouse?.[k]?.name || k}`}
               meta={`${st} · ordered ${fmt(ord(k))} · arrived ${fmt(arrived(k))} · shipped ${fmt(shipped(k))}${on.length ? ` (${on.map(([c, q]) => `${containerCode(c.name)} ${fmt(q)}`).join(", ")})` : ""}`}

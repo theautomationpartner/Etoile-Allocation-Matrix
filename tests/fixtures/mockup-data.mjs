@@ -38,6 +38,13 @@ const POS = [
   { id: "PO-00458", ref: "PO260705US", region: "US", eta: "2026-10-30", lines: { EC0450: [800, 0], EC0451: [300, 0] } },
 ];
 
+// The mockup's PO Status and Supplier.
+const PO_INFO = {
+  "PO-00385": ["COMPLETED", "Guangzhou Tinlee Leather Co., Ltd"], "PO-00432": ["AUTHORISED", "KONCAI Aluminum Cases Ltd."],
+  "PO-00441": ["ORDERED", "UNI Leather Co.,Ltd"], "PO-00445": ["ORDERED", "Guangzhou Fiedle Leather Bag Co.,Ltd"],
+  "PO-00450": ["AUTHORISED", "Dongguan Hengli Leather Goods Co., Ltd"], "PO-00458": ["AUTHORISED", "Dongguan Hengli Leather Goods Co., Ltd"],
+};
+
 const SHIPS = [
   { id: "US / FLEX-4084548 / 40HC", eta: "2026-09-03", packing: "Final",
     lines: [["EC0394", "PO-00432", 600], ["EC0395", "PO-00432", 800], ["EC0389", "PO-00432", 408], ["EC0385", "PO-00432", 408]] },
@@ -92,8 +99,11 @@ export function mockupData() {
   return {
     warehouse: Object.fromEntries(Object.entries(SKUS).map(([sku, s]) => [sku, { itemId: `wh-${sku}`, name: s.n, usQty: s.us }])),
     pos: POS.map((p) => ({
-      id: p.id, name: p.id, reference: p.ref, region: p.region, eta: p.eta,
-      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({ id: `${p.id}-${sku}`, sku, qtyOrdered: ord, qtyOutstanding: ord - arr })),
+      id: p.id, name: p.id, reference: p.ref, region: p.region, eta: p.eta, status: PO_INFO[p.id][0], supplier: PO_INFO[p.id][1],
+      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({
+        id: `${p.id}-${sku}`, sku, qtyOrdered: ord, qtyOutstanding: ord - arr, qtyArrived: arr,
+        status: arr >= ord ? "Fully Arrived" : arr > 0 ? "Partially Arrived" : "Ordered",
+      })),
     })),
     containers: SHIPS.map((s) => ({
       id: s.id, name: s.id, group: "topics", location: "US", eta: s.eta, packingList: s.packing,

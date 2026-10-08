@@ -306,8 +306,8 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   .nav-h "BOARDS" → "Wholesale Allocation" (.cnt items del board) · "In-Transit
   Shipments" (.cnt contenedores en tránsito) · "Purchase Orders" · "Master SKU
   Inventory" · "In-Transit Importer" (.cnt items de cada board).
-  Habilitados: Control center, Allocation matrix, Wholesale Allocation, In-Transit Shipments y Master SKU
-  Inventory; el resto a.off (42 % opacidad, not-allowed, tooltip "<nombre> — not available yet").
+  Habilitados: Control center, Allocation matrix, Wholesale Allocation, In-Transit Shipments, Purchase Orders y
+  Master SKU Inventory; el resto a.off (42 % opacidad, not-allowed, tooltip "<nombre> — not available yet").
   .side-foot: "Monday synced HH:MM AM/PM" + botón "Theme" (claro/oscuro, se recuerda).
 
 5.2 Barra superior (.topbar, sticky): .crumb "Etoile · US › Allocation matrix" ·
@@ -937,6 +937,29 @@ Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("D
   where it sits" ("Has free units").
 
 --------------------------------------------------------------------------------
+ 19. PURCHASE ORDERS (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vPO. Solo lectura. Una fila por PO de 📦 Purchase Orders (PO) con Destination Region US (como la matriz;
+las Voided son todas AU). Orden: abiertas primero (ETA más cercana), luego las que no tienen pendiente (ETA más
+reciente) — el mockup ordena por nombre, pero con los datos reales las 28 ya llegadas tapaban las abiertas
+(src/lib/purchaseOrders.js):
+  Ordered / Arrived = Σ Qty Ordered / Qty Arrived de los subitems (Arrived puede superar Ordered: así viene de Cin7)
+  · Shipped = unidades de la PO en contenedores activos (línea con PO Reference = la PO; model.poShipped) · Still
+  to ship = Qty Outstanding − Shipped (lo que la PO todavía ofrece a la matriz) · Progress = Arrived + Shipped
+  sobre Ordered, tope 100 ("N% on the move") · Shipments = esos contenedores con sus unidades de la PO · Sold to
+  = retailers con unidades de la PO.
+Tarjetas (cada una filtra): Open purchase orders (Qty Outstanding > 0; "N units not shipped by suppliers yet" =
+  Σ Still to ship) · Nothing shipped yet (abiertas sin contenedor) · Already sold to customers · Arrives after a
+  cancel date (una reserva hecha en la PO para una orden cuya cancel date es anterior a la ETA de la PO).
+Show: All POs · Still open · Nothing shipped · Partially shipped · Sold to customers · Lands too late. Badge del
+  menú = All POs. El buscador filtra por PO, referencia, proveedor, SKU, contenedor, retailer u orden.
+Fila → panel de la PO; chip de contenedor → su panel. ▸ → una línea por SKU: Product · SKU · Status (el Status del
+  subitem: Fully Arrived / Partially Arrived / Ordered) · Ordered · Arrived · Shipped · Still to ship · Reserved
+  on PO (reservas hechas en la PO) · Sold to (direct + via containers: retailer · qty, abre la orden; lo que viaja
+  en contenedores sale del mismo reparto de In-Transit Shipments). Una línea → panel del SKU.
+Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ordered − Outstanding, calculado).
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -985,3 +1008,4 @@ Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("D
 2026-10-08  MASTER SKU INVENTORY — sección 16; Incoming records desde los subitems de Master SKU.
 2026-10-08  WHOLESALE ALLOCATION — sección 17; el grupo Fulfilled se lee aparte, sin tocar la demanda.
 2026-10-08  IN-TRANSIT SHIPMENTS — sección 18; se lee el ETD del contenedor y el nombre de sus subitems.
+2026-10-08  PURCHASE ORDERS — sección 19; Arrived y Status de la línea salen de monday (también en el panel).

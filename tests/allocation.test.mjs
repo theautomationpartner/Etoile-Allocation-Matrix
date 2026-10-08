@@ -24,7 +24,7 @@ test("editor rows: one per source, cap = free + what the line already has (§8.1
   assert.deepEqual([po.base, po.max], [25, 120]); // 300 ordered − 180 on FLEX-4170234 = 120
   assert.equal(it.meta, "arrives 6 Oct 2026 · packing list Final");
   assert.deepEqual(it.lines, ["180 from PO260620US"]); // supplier reference, not the PO number
-  assert.equal(po.meta, "PO260620US · ETA 2 Oct 2026 · supplier has not shipped it yet");
+  assert.equal(po.meta, "PO260620US · Dongguan Hengli Leather Goods Co. · ETA 2 Oct 2026 · supplier has not shipped it yet");
   assert.equal(wh.meta, "physical stock at Red Stag + Boxzooka · ready to ship today");
   assert.deepEqual(ed.values, { warehouse: 45, [F70]: 180, "PO-00450": 25 });
   assert.equal(ed.goal, 250);

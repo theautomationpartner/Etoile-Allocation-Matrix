@@ -394,3 +394,21 @@ center; tarjetas, chips y columnas del mockup; All shipments = filas = badge del
 abrir el panel, un subitem abre su SKU, ▾ los oculta; una fila abre el contenedor y un chip de PO la PO; la cantidad
 de cada chip = contenedores listados; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido en
 1200: la columna Shipment se achicó 22 px); en celular la tabla se desplaza dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 16. PURCHASE ORDERS — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 92 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  P-01 Tarjetas = mockup: 5 (6,922 sin embarcar) · 1 · 5 · 0; chips 6·5·1·4·5·0 ................................ PASA
+  P-02 Filas = mockup: PO-00432 7,490·0·6,586·904 88% con 4 contenedores · PO-00441 3,700·0·1,752·1,948 47% ...... PASA
+  P-03 Líneas = mockup: PO-00441 EC0387 1,400·0·632·768, reservado 600, vendido 901 (EIVR118 600, EIVR121 301) ... PASA
+  P-04 Solo POs US; Arrived = Qty Arrived de monday aunque supere lo pedido ........................................ PASA
+  P-05 Reserva en una PO que llega después de la cancel date → "Lands too late" ..................................... PASA
+Nota: en lo que viaja en contenedores, el reparto por orden entre 2 POs del mismo SKU puede diferir del mockup (el
+mockup trae la PO en cada reserva; monday no). Los totales por PO y SKU son iguales.
+Chequeo visual (npm run ui-check, 173): se abre desde el menú; tarjetas, chips y columnas del mockup; All POs =
+filas = badge del menú; ▸ muestra las líneas sin abrir el panel, una línea abre su SKU, ▾ las oculta; una fila abre
+la PO y un chip de contenedor el contenedor; la cantidad de cada chip = POs listadas; una tarjeta filtra y un segundo
+clic vuelve; las 10 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: anchos y márgenes); en celular
+la tabla se desplaza dentro de su tarjeta.
+Dato real a revisar: PO-00432 tiene 16,788 unidades en contenedores con PO Reference PO-00432 y 13,812 pedidas.

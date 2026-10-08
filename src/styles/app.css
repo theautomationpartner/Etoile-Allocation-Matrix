@@ -357,3 +357,24 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .trt tr.subsub td:first-child { padding-left: 44px; }
 .trt tr.clickable:focus-visible td { background: var(--surface-2); }
 .trt tr.clickable:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--focus); }
+
+/* ── Purchase Orders (mockup vPO) ── */
+.pot td.r, .pot th.r { font-variant-numeric: tabular-nums; }
+.pot td.r, .pot th.r { padding-left: 3px; }
+.pot th, .pot td { padding-left: 6px; padding-right: 6px; }
+.pot .po-name { min-width: 120px; }
+.pot .po-prog { min-width: 90px; }
+.pot .po-o { display: flex; align-items: flex-start; gap: 6px; }
+.pot .po-o .exp { flex: none; margin-top: 1px; }
+.pot .po-meta { font-size: 11.5px; }
+.pot .po-sup { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pot .po-date { white-space: nowrap; }
+.pot .po-days, .pot .po-pct { font-size: 11px; }
+.pot .po-pct { margin-top: 4px; white-space: nowrap; }
+.pot .po-it { color: var(--it); }
+.pot td .chip { white-space: nowrap; }
+.pot .po-chips { line-height: 1.9; }
+.pot .po-chips .chip { margin: 2px 4px 2px 0; }
+.pot tr.sub td:first-child { padding-left: 30px; }
+.pot tr.clickable:focus-visible td { background: var(--surface-2); }
+.pot tr.clickable:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--focus); }

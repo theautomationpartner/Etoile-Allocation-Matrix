@@ -3,6 +3,7 @@ import { ControlCenter } from "./features/control-center/ControlCenter.jsx";
 import { SkuInventory } from "./features/sku-inventory/SkuInventory.jsx";
 import { WholesaleAllocation } from "./features/wholesale/WholesaleAllocation.jsx";
 import { InTransitShipments } from "./features/in-transit/InTransitShipments.jsx";
+import { PurchaseOrders } from "./features/purchase-orders/PurchaseOrders.jsx";
 import { useShipments } from "./hooks/useShipments.js";
 import { fetchWrite } from "./lib/mondayWrites.js";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -17,7 +18,8 @@ import { AuthGate } from "./components/AuthGate.jsx";
 import { UsersAccess } from "./features/users/UsersAccess.jsx";
 
 // Side nav badges, as in the mockup: SKUs that cannot be covered (alert on Control center), the orders listed
-// on Wholesale Allocation (US: Orders, Pending and Fulfilled), containers in transit, and each board's item count.
+// on Wholesale Allocation (US: Orders, Pending and Fulfilled), containers in transit, the US purchase orders, and
+// each board's item count.
 function navCounts({ data, model }) {
   if (!data || !model) return {};
   const b = data.boardCounts || {};
@@ -26,7 +28,7 @@ function navCounts({ data, model }) {
     wholesale: (data.orders || []).filter((o) => OPEN_ORDER_GROUPS.has(o.group) && o.region === "US").length
       + (data.fulfilledOrders || []).filter((o) => o.region === "US").length,
     transit: model.containers.length,
-    po: b[BOARDS.po],
+    po: (data.pos || []).filter((p) => p.region === "US").length,
     sku: b[BOARDS.warehouse],
     importer: b[IMPORTER_BOARD],
   };
@@ -41,10 +43,11 @@ function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
   const isAdmin = user?.role === "admin";
-  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | transit | sku | users (admins only)
+  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | transit | po | sku | users (admins only)
   const [skuFilter, setSkuFilter] = useState("all"); // Master SKU Inventory Show filter (kept while the app is open)
   const [whFilter, setWhFilter] = useState("all"); // Wholesale Allocation Show filter
   const [trFilter, setTrFilter] = useState("all"); // In-Transit Shipments Show filter
+  const [poFilter, setPoFilter] = useState("all"); // Purchase Orders Show filter
   const [search, setSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const onUsers = isAdmin && view === "users";
@@ -70,8 +73,8 @@ function Workspace({ user }) {
     setTrFilter(filter || "all");
     setView("transit");
   };
-  const current = onUsers ? "users" : ["home", "wholesale", "transit", "sku"].includes(view) ? view : "matrix";
-  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", transit: "In-Transit Shipments", sku: "Master SKU Inventory" };
+  const current = onUsers ? "users" : ["home", "wholesale", "transit", "po", "sku"].includes(view) ? view : "matrix";
+  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", transit: "In-Transit Shipments", po: "Purchase Orders", sku: "Master SKU Inventory" };
 
   useEffect(() => {
     if (theme) document.documentElement.setAttribute("data-theme", theme);
@@ -112,6 +115,12 @@ function Workspace({ user }) {
         {current === "transit" && (
           <div className="view">
             <InTransitShipments {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
+              onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+          </div>
+        )}
+        {current === "po" && (
+          <div className="view">
+            <PurchaseOrders {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={poFilter} onFilter={setPoFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
