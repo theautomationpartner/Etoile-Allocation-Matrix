@@ -28,7 +28,7 @@ export const COL = {
     usOutstanding: "numeric_mm19bvcx", usOnOrder: "numeric_mm19v320", purchaseId: "text_mm1cnjfs", transitId: "text_mm34kmb5" },
   // isProcess: "Is Process" checkbox — copies made while importing, never counted.
   // subPo: the PO item of each container line · subStatus: Arrived – Pending Receiving / Received (written by the app)
-  it: { location: "color_mm3bhhys", eta: "date4", etd: "date_mm15dw6", packingList: "color_mm1c7w2a", isProcess: "boolean_mm7xhwt8", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76", subPo: "board_relation_mm2ef1zr", subStatus: "color_mm3kvr2h" },
+  it: { location: "color_mm3bhhys", eta: "date4", etd: "date_mm15dw6", deletion: "color_mm3y67m8", packingList: "color_mm1c7w2a", isProcess: "boolean_mm7xhwt8", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76", subPo: "board_relation_mm2ef1zr", subStatus: "color_mm3kvr2h" },
   po: { reference: "text_mm14nxap", region: "color_mm1hmv7r", eta: "date4", status: "status", supplier: "dropdown_mm17rsxm", subSku: "text_mm1598d7", subQtyOrdered: "numeric_mm15va7p", subQtyOutstanding: "numeric_mm1g5z37", subQtyArrived: "numeric_mm1593d3", subStatus: "status" },
   ledger: { key: "text_mm76g12x", saleRel: "board_relation_mm76cxt5", saleId: "text_mm76t66a", sku: "text_mm76wfw4", fulfilled: "numeric_mm76ebf5", allocatedQty: "numeric_mm76s5dm", status: "color_mm76q1fj", json: "long_text_mm764vdq", shipmentsRel: "board_relation_mm7p81dk" },
   // Ledger subitems: one per source that feeds the sale line (the structured record of the allocation).
@@ -270,7 +270,7 @@ export function createMondayApi(transport = fetchTransport) {
 
   async function loadContainers() {
     const c = COL.it;
-    const fields = `id name group { id } column_values(ids:[${gqlList([c.location, c.eta, c.etd, c.packingList, c.isProcess])}]) { id text }
+    const fields = `id name group { id } column_values(ids:[${gqlList([c.location, c.eta, c.etd, c.packingList, c.isProcess, c.deletion])}]) { id text }
       subitems { id name column_values(ids:[${gqlList([c.subSku, c.subQty, c.subPoRef, c.subPo, c.subStatus])}]) { id text ... on BoardRelationValue { linked_item_ids } } }`;
     // All groups: "topics" is the in-transit supply; Archive holds landed ("Done") containers whose
     // reservations are checked against their PO's arrivals. Archived/deleted items are not returned by monday.
@@ -285,6 +285,7 @@ export function createMondayApi(transport = fetchTransport) {
       eta: date(cv(it, c.eta)),
       etd: date(cv(it, c.etd)), // departure (In-Transit Shipments screen)
       packingList: cv(it, c.packingList),
+      deletionStatus: cv(it, c.deletion), // set while monday's deletion runs (Pending Deletion → … → Deleting In Transit Shipment)
       lines: (it.subitems || []).map((sub) => ({
         id: sub.id, name: sub.name || "", sku: cv(sub, c.subSku).trim(), qty: num(cv(sub, c.subQty)), poRef: cv(sub, c.subPoRef).trim(),
         poId: poOf(sub) ? String(poOf(sub)) : null, status: cv(sub, c.subStatus),
@@ -344,7 +345,7 @@ export function createMondayApi(transport = fetchTransport) {
       [BOARDS.wholesaleSub]: { name: "Wholesale Allocation (subitems)", cols: [COL.saleSub.skuId, COL.saleSub.outstanding, COL.saleSub.ledgerRel, COL.saleSub.lastProcessed, "board_relation_mm7pd15e", "multiple_person_mm7pdm50"] },
       [BOARDS.warehouse]: { name: "Master SKU Inventory", cols: [COL.wh.sku, COL.wh.usQty] },
       "18402981518": { name: "Master SKU Inventory (subitems)", cols: Object.values(COL.whSub) },
-      [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.etd, COL.it.packingList, COL.it.isProcess] },
+      [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.etd, COL.it.packingList, COL.it.isProcess, COL.it.deletion] },
       [BOARDS.inTransitSub]: { name: "In-Transit Shipments (subitems)", cols: [COL.it.subSku, COL.it.subQty, COL.it.subPoRef, COL.it.subPo, COL.it.subStatus] },
       [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta] },
       [IMPORTER_BOARD]: { name: "In-Transit Importer", cols: Object.values(IMP) },

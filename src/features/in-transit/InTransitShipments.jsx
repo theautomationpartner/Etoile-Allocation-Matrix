@@ -6,8 +6,11 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 
 // In-Transit Shipments (mockup vTransit): one row per active container, soonest ETA first. Read-only. A row opens
 // the container's side panel, a PO chip the PO's, a customer chip the order's; ▸ shows its subitems (SKU × PO),
-// with a total row when a SKU comes from more than one PO, and a subitem opens the SKU's panel.
+// with a total row when a SKU comes from more than one PO (its Committed, Free and Promised to live on that row,
+// requirements §5.2), and a subitem opens the SKU's panel. A container monday is deleting is dimmed with its step.
 const LABELS = ["Still on the water", `Arriving in ${SOON_DAYS} days`, "Unclaimed units in transit", "Draft packing lists"];
+
+const SPLIT_UNKNOWN = "Monday does not record which PO the promised units come from: see the SKU total above";
 
 const Chip = ({ c, children }) => <span className={`chip ${c}`}>{c !== "mut" && <span className="sq" />}{children}</span>;
 
@@ -133,13 +136,14 @@ export function InTransitShipments({ data, model, status, error, onRefresh, ship
                   const op = Boolean(expanded[r.id]);
                   return (
                     <Fragment key={r.id}>
-                      <tr className="clickable" onClick={() => openRecord("ship", r.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openRecord("ship", r.id)}>
+                      <tr className={`clickable ${r.deletionStatus ? "gone" : ""}`} onClick={() => openRecord("ship", r.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openRecord("ship", r.id)}>
                         <td className="tr-ship">
                           <div className="tr-o">
                             <button type="button" className="exp" aria-expanded={op} aria-label={`${op ? "Hide" : "Show"} the subitems of ${r.code}`}
                               onClick={(e) => { e.stopPropagation(); toggle(r.id); }}>{op ? "▾" : "▸"}</button>
                             <div>
                               <span className="strong">{r.code}</span>
+                              {r.deletionStatus && <span className="chip gap tr-del" title="Monday is deleting this shipment"><span className="sq" />{r.deletionStatus}</span>}
                               <div className="muted tr-meta">
                                 {[plural(r.skus, "SKU", "SKUs"), plural(r.subitems, "subitem", "subitems"), r.etd ? `departed ${dayMonth(r.etd)}` : ""].filter(Boolean).join(" · ")}
                               </div>
@@ -184,7 +188,14 @@ export function InTransitShipments({ data, model, status, error, onRefresh, ship
                                     <td className="r strong">{fmt(g.onBoard)}</td>
                                     <td className="r strong tr-it">{fmt(g.committed)}</td>
                                     <td className="r strong">{fmt(g.free)}</td>
-                                    <td colSpan={4} className="muted">total of the rows below</td>
+                                    <td className="muted">total of the rows below</td>
+                                    <td colSpan={3} className="tr-chips">
+                                      {g.promised.length ? g.promised.map((p) => (
+                                        <button key={p.orderId} type="button" className="chip it" title={p.number} onClick={(e) => openFrom(e, "so", p.orderId)}>
+                                          <span className="sq" />{p.retailerShort || p.number} · {fmt(p.qty)}
+                                        </button>
+                                      )) : <span className="muted">free to sell</span>}
+                                    </td>
                                   </tr>
                                 )}
                                 {g.subs.map((s) => (
@@ -192,12 +203,13 @@ export function InTransitShipments({ data, model, status, error, onRefresh, ship
                                     <td>{multi && <span className="tree">└</span>}{s.name}</td>
                                     <td className={multi ? "muted" : "strong"}>{s.sku}</td>
                                     <td className="r">{fmt(s.onBoard)}</td>
-                                    <td className="r tr-it">{fmt(s.committed)}</td>
-                                    <td className="r">{fmt(s.free)}</td>
+                                    {/* Several POs of one SKU: Monday does not record which PO the promised units come from (TBD-13). */}
+                                    <td className="r tr-it">{multi ? <span className="muted" title={SPLIT_UNKNOWN}>—</span> : fmt(s.committed)}</td>
+                                    <td className="r">{multi ? <span className="muted" title={SPLIT_UNKNOWN}>—</span> : fmt(s.free)}</td>
                                     <td>{s.poId ? <button type="button" className="chip po" onClick={(e) => openFrom(e, "po", s.poId)}><span className="sq" />{s.poName}</button>
                                       : s.poName ? <Chip c="po">{s.poName}</Chip> : <span className="muted">—</span>}</td>
                                     <td colSpan={3} className="tr-chips">
-                                      {s.promised.length ? s.promised.map((p) => (
+                                      {multi ? <span className="muted">see the SKU total above</span> : s.promised.length ? s.promised.map((p) => (
                                         <button key={p.orderId} type="button" className="chip it" title={p.number} onClick={(e) => openFrom(e, "so", p.orderId)}>
                                           <span className="sq" />{p.retailerShort || p.number} · {fmt(p.qty)}
                                         </button>

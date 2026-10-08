@@ -56,3 +56,20 @@ test("customers waiting: the retailers holding units on the container, once each
   assert.deepEqual(row(setup(data), "FLEX-4119719").customers.slice().sort(), ["ANTHROPOLOGIE", "MACY'S"]);
   assert.deepEqual(row(setup(data), "FLEX-4170234").customers, ["REVOLVE"]); // EIVR132
 });
+
+test("requirements §5.2 / §9 example FLEX-4188610: 700 on board, 480 promised, 220 free; EC0450 from 2 POs promised on its total row", () => {
+  const data = mockupData();
+  for (const o of data.orders) o.retailer = { EIVR121: "Anthropologie", EIVR124: "Macy's" }[o.id] || "Revolve";
+  const r = row(setup(data), "FLEX-4188610");
+  assert.deepEqual([r.total, r.committed, r.free], [700, 480, 220]);
+  assert.deepEqual(r.pos.map((p) => `${p.name}·${p.qty}`), ["PO-00450·300", "PO-00458·400"]); // PO-00458 ships only its own 400
+  const g = r.groups.find((x) => x.sku === "EC0450");
+  assert.deepEqual([g.onBoard, g.committed, g.free, g.subs.length], [550, 480, 70, 2]);
+  assert.deepEqual(g.promised.map((p) => [p.retailerShort, p.qty]).sort(), [["ANTHROPOLOGIE", 150], ["MACY'S", 180], ["REVOLVE", 150]]);
+});
+
+test("a container monday is deleting carries its Deletion Status", () => {
+  const data = mockupData();
+  data.containers.find((c) => c.id === "US / FLEX-4151882 / 40HC").deletionStatus = "Searching Master SKU Records";
+  assert.equal(row(setup(data), "FLEX-4151882").deletionStatus, "Searching Master SKU Records");
+});

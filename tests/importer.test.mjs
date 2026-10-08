@@ -42,3 +42,12 @@ test("US uploads only: Location US, or no Location and a name starting with US",
   assert.equal(isUsImport({ location: "", name: "AU / EC93 / 20GP" }), false);
   assert.equal(isUsImport({ location: "AU", name: "AU / EC101" }), false);
 });
+
+test("requirements §6.1: Reverted = any Import Status other than Imported; uploaded this month = on or after today − 30", () => {
+  const data = mockupData();
+  data.imports.push({ id: "e", name: "US / FLEX-1", uploaded: "2026-08-17", files: ["x.pdf"], type: "In-Transit", status: "Error - See update", location: "US", eta: "", shipmentId: null });
+  const t = setup(data);
+  const err = t.rows.find((r) => r.id === "e");
+  assert.deepEqual([err.status.t, t.is.deleted(err), err.reverted, err.recent], ["Error", true, false, true]); // 30 days ago: still this month
+  assert.equal(t.cards.reverted, 3);
+});

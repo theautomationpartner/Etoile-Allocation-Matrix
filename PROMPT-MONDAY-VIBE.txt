@@ -943,8 +943,14 @@ Show: All shipments · Not arrived · Arriving ≤ 30 days · Has free units · 
 Fila → panel del contenedor; chip de PO → panel de la PO. ▸ → subitems (SKU × PO; nombre del subitem en monday):
   On board · Committed · Free · From PO · Promised to (retailer · qty, abre la orden; "free to sell" si nada). Si
   un SKU viene de más de una PO, una fila de total ("same SKU from N POs") y debajo cada subitem (└).
-  Las reservas nombran el contenedor, no el subitem: se reparten entre los subitems del SKU, la PO más temprana
-  primero y la cancel date más temprana primero (el mismo criterio del panel lateral, paths.js §8.1).
+  Las reservas nombran el contenedor, no el subitem (TBD-13): si un SKU viene de varias POs, Committed, Free y
+  Promised to van solo en la fila de total del SKU (requerimientos §5.2); las filas de cada subitem muestran "—" y
+  "see the SKU total above". El reparto interno (PO más temprana y cancel date más temprana primero, paths.js §8.1)
+  solo lo usa Purchase Orders.
+Deletion Status (color_mm3y67m8): mientras monday elimina un contenedor, la fila se ve atenuada con el paso y el
+  panel muestra "Deletion status" con los pasos. Panel del contenedor: "Departed <ETD> · arrives <ETA>"; sección
+  "Delete this shipment" (§8): Final → texto; Draft → recuadro con lo que se deshace y el aviso de unidades
+  prometidas; el botón "Delete shipment" queda desactivado hasta confirmar cómo la app dispara el borrado de monday.
 Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("Draft packing list"); matriz "See
   where it sits" ("Has free units").
 
@@ -985,7 +991,8 @@ creación del item (Creation log).
   "deleted" si se revirtió, "not linked" si está Imported sin conexión) · Packing list, Arrives, Units = del
   contenedor · Promised = reservas abiertas sobre ese contenedor (las de la matriz).
 Tarjetas: Shipments created (Live; unidades de sus contenedores) · Still reversible (Live con contenedor activo en
-  Draft) · Reverted · Uploaded this month (últimos 30 días; no filtra). Nota del mockup sobre el borrado.
+  Draft) · Reverted (todo Import Status distinto de Imported, §6.1) · Uploaded this month (cargados desde hoy − 30;
+  no filtra). Nota del mockup sobre el borrado.
 Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del menú = All uploads. El buscador filtra
   por archivo, item o contenedor.
 "Upload packing list" abre el tablero del Importer en monday en otra pestaña (ahí se sube el archivo). "Open" y el
@@ -1045,3 +1052,4 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 2026-10-08  Menú lateral claro en el tema claro; botón de tema con sol / luna. Prueba final: 192 chequeos + cruce de cifras.
 2026-10-08  MASTER SKU revisado contra sus requerimientos: registros unidos por SKU + PO Reference; secciones de panel nuevas.
 2026-10-08  WHOLESALE revisado contra sus requerimientos (ver sección 17).
+2026-10-08  IN-TRANSIT (Shipments e Importer) revisado contra sus requerimientos (secciones 18 y 20).

@@ -3,8 +3,10 @@
 // and how much is still free to sell. Read-only. Every figure comes from the Allocation Matrix model (engine.js):
 //   On board = Σ Qty of its subitems · Free = units nobody holds (freeOf) · Committed = On board − Free (every open
 //   reservation on the container, also the ones already counted as warehouse stock) · Claimed = Committed ÷ On board.
-// A container's reservations name the container, not its PO subitem: they are split over the subitems of the SKU,
-// earliest PO first and earliest cancel date first — the same bookkeeping as the side panel (paths.js, §8.1).
+// A container's reservations name the container, not its PO subitem (TBD-13 of the matrix). On screen, when a SKU
+// comes from more than one PO, Committed / Free / Promised to are shown on the SKU's total row only (requirements
+// §5.2); the per-subitem split below (earliest PO first, earliest cancel date first — the side panel's bookkeeping,
+// paths.js §8.1) is kept for the Purchase Orders screen.
 // Arrived / "landed" follows the ETA, as in the mockup and the Control center.
 import { SOURCE } from "./engine.js";
 import { containerCode, orderParts, retailerShort } from "./matrix.js";
@@ -76,7 +78,12 @@ export function buildTransit(model, data, { today = localToday() } = {}) {
       }
       const out = subs.map((s) => ({ ...s, free: Math.max(0, s.onBoard - s.committed), promised: [...s.promised.values()] }));
       const onBoard = sum(out, (s) => s.onBoard), res = sum(out, (s) => s.committed);
-      return { sku, name: product(sku), onBoard, committed: res, free: Math.max(0, onBoard - res), subs: out };
+      const byOrder = new Map(); // the SKU's promises, whatever PO they come from
+      for (const p of out.flatMap((s) => s.promised)) {
+        if (!byOrder.has(p.orderId)) byOrder.set(p.orderId, { ...p, qty: 0 });
+        byOrder.get(p.orderId).qty += p.qty;
+      }
+      return { sku, name: product(sku), onBoard, committed: res, free: Math.max(0, onBoard - res), promised: [...byOrder.values()], subs: out };
     });
 
     const poMap = new Map();
@@ -89,7 +96,7 @@ export function buildTransit(model, data, { today = localToday() } = {}) {
     const customers = [...new Set(groups.flatMap((g) => g.subs.flatMap((s) => s.promised.map((p) => p.retailerShort))))];
     return {
       id: String(c.id), code: containerCode(c.name), name: c.name, eta: c.eta || "", etd: c.etd || "", days,
-      arrived: days !== null && days <= 0, packingList: c.packingList || "", skus: skus.length, subitems: c.lines.length,
+      arrived: days !== null && days <= 0, packingList: c.packingList || "", deletionStatus: c.deletionStatus || "", skus: skus.length, subitems: c.lines.length,
       total, committed, free, pct: total ? Math.round((committed / total) * 100) : 0,
       pos: [...poMap.values()], customers, groups,
     };

@@ -466,3 +466,15 @@ npm test 98/98 · npm run ui-check 192/192.
        difieren EIVR121 (monday "Attention Required", app sin faltante → Partially allocated) y EIVR114 (monday
        "Allocated 100%", app 93% con 1,917 sin asignar). La app no escribe esas columnas (decisión del cliente) ..... A DEFINIR
 npm test 100/100 · npm run ui-check 194/194.
+
+--------------------------------------------------------------------------------
+ 21. IN-TRANSIT — revisión contra "In-Transit (Shipments e Importer) — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  N-01 Ejemplo del documento FLEX-4188610: 700 a bordo · 480 prometidas · 220 libres; PO-00450 · 300, PO-00458 · 400;
+       EC0450 (2 POs) 550 · 480 · 70 con Anthropologie 150, Macy's 180, Revolve 150 en la fila de total .............. PASA
+  N-02 SKU de varias POs: Promised to, Committed y Free solo en la fila de total; los subitems muestran "—" (§5.2) .. PASA
+  N-03 Contenedor que monday está eliminando: fila atenuada con el paso; panel con "Deletion status" (§8.3) ......... PASA
+  N-04 Panel del contenedor: "Departed <ETD> · arrives <ETA>"; "Delete this shipment": Final → texto, Draft →
+       recuadro con lo que se deshace y aviso de unidades prometidas (botón desactivado, pendiente de confirmar) .... PASA
+  N-05 Importer: Reverted = todo Import Status distinto de Imported; "Uploaded this month" = desde hoy − 30 .......... PASA
+npm test 103/103 · npm run ui-check 194/194.

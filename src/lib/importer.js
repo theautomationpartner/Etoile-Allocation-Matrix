@@ -1,9 +1,9 @@
 // In-Transit Importer screen (mockup vImporter): every packing list uploaded to In-Transit / Wholesale Importer
 // (18404604646) for the US, and the shipment it created. Read-only: uploading and deleting stay in monday.
 //   US = Location US, or no Location and an item name starting with "US" (the older uploads have no Location) ·
-//   Uploaded = the item's creation date · Live = Import Status "Imported" · Reverted = "Deleted in In-Transit
-//   Shipments" · Shipment created = the In-Transit item of its "In-Transit Shipment" connection (active or already
-//   in Archive) · Units = units on board · Promised = units open orders hold on it (the matrix's reservations).
+//   Uploaded = the item's creation date · Live = Import Status "Imported" · Reverted (card and filter) = any other
+//   Import Status; its chip says Reverted for "Deleted in In-Transit Shipments", else Error or the status itself ·
+//   Shipment created = the In-Transit item of its "In-Transit Shipment" connection (active or already in Archive) · Units = units on board · Promised = units open orders hold on it (the matrix's reservations).
 // Still reversible = live uploads whose shipment is active with a Draft packing list.
 import { SOURCE } from "./engine.js";
 import { containerCode } from "./matrix.js";
@@ -42,7 +42,7 @@ export function buildImporter(model, data, { today = localToday() } = {}) {
         id: String(c.id), code: containerCode(c.name), packingList: c.packingList || "", eta: c.eta || "", active: active.has(String(c.id)),
         units: sum(c.lines, (l) => l.qty), promised: sum(skus, (s) => model.usedOf(SOURCE.IN_TRANSIT, c.id, s)),
       } : null,
-      recent: Boolean(r.uploaded) && daysBetween(r.uploaded, today) < RECENT_DAYS,
+      recent: Boolean(r.uploaded) && daysBetween(r.uploaded, today) <= RECENT_DAYS, // uploaded on or after today − 30
     };
   }).sort((a, b) => (b.uploaded || "").localeCompare(a.uploaded || "") || b.id.localeCompare(a.id)); // newest first
 
@@ -50,7 +50,7 @@ export function buildImporter(model, data, { today = localToday() } = {}) {
     all: () => true,
     imported: (r) => r.live,
     draft: (r) => r.live && Boolean(r.ship?.active) && r.ship.packingList === "Draft",
-    deleted: (r) => r.reverted,
+    deleted: (r) => !r.live, // requirements §6.1: Import Status other than Imported
   };
   const counts = Object.fromEntries(Object.keys(IMPORT_FILTERS).map((k) => [k, rows.filter(is[k]).length]));
   return {

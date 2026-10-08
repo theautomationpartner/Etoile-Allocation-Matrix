@@ -324,10 +324,13 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
   return (
     <>
       <div className="rail-h"><h3>{containerCode(c.name)}</h3></div>
-      <p className="rail-sub">{c.name}<br />{c.eta ? `Arrives ${dayMonthYear(c.eta)} (${days > 0 ? `in ${plural(days, "day", "days")}` : "already landed"})` : "No ETA"}</p>
+      <p className="rail-sub">{c.name}<br />
+        {[c.etd ? `Departed ${dayMonthYear(c.etd)}` : "", c.eta ? `${c.etd ? "arrives" : "Arrives"} ${dayMonthYear(c.eta)} (${days > 0 ? `in ${plural(days, "day", "days")}` : "already landed"})` : "No ETA"].filter(Boolean).join(" · ")}
+      </p>
       <div style={{ marginBottom: 12 }}>
         <span className={`chip ${c.packingList === "Final" || c.packingList === "Done" ? "wh" : "po"}`}><span className="sq" />Packing list {c.packingList || "—"}</span>
         {pos.length > 1 && <span className="chip mut" style={{ marginLeft: 4 }}>Consolidated · {pos.length} POs</span>}
+        {c.deletionStatus && <span className="chip gap" style={{ marginLeft: 4 }}><span className="sq" />{c.deletionStatus}</span>}
       </div>
       <div className="facts">
         <div className="fact"><div className="l">On board</div><div className="v">{fmt(tot)}</div></div>
@@ -374,7 +377,54 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
       </div>
 
       <div className="sec"><h4>Who gets what</h4><PathTable type="ship" id={String(id)} ctx={ctx} onOpen={onOpen} hl={prev} /></div>
+
+      {c.deletionStatus ? <DeletionSteps status={c.deletionStatus} /> : <DeleteSection c={c} model={model} pos={pos} res={res} />}
     </>
+  );
+}
+
+// §8.3 — while monday deletes the shipment, its Deletion Status steps (read from the board).
+const DEL_STEPS = ["Pending Deletion", "Searching Master SKU Records", "Deleting Master SKU Records", "Deleting In Transit Shipment"];
+function DeletionSteps({ status }) {
+  const at = DEL_STEPS.indexOf(status);
+  return (
+    <div className="sec">
+      <h4>Deletion status</h4>
+      {at < 0 ? <div className="note warn"><b>{status}.</b> The deletion stopped in Monday — see the update on the In-Transit item.</div> : (
+        <ul className="steps">
+          {DEL_STEPS.map((t, j) => <li key={t} className={j < at ? "done" : j === at ? "doing" : ""}><span className="b">{j < at ? "✓" : ""}</span>{t}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// §8.1–8.2 — what deleting this shipment would undo. Only shipments created from a Draft packing list can be deleted.
+// The button is not connected yet: how the app should start Monday's deletion is pending confirmation.
+function DeleteSection({ c, model, pos, res }) {
+  const draft = c.packingList === "Draft";
+  const orders = new Set(model.allLines.filter((x) => x.entries.some((e) => e.source === SOURCE.IN_TRANSIT && String(e.sourceId) === String(c.id))).map((x) => String(x.order.id)));
+  const skus = [...new Set(c.lines.map((l) => l.sku))];
+  return (
+    <div className="sec">
+      <h4>Delete this shipment</h4>
+      {!draft ? (
+        <div className="empty-note">The packing list is <b>{c.packingList || "not set"}</b>. Only shipments created from a <b>Draft</b> file can be deleted. Switch it back to Draft first if it really needs to be removed.</div>
+      ) : (
+        <div className="danger-box">
+          <h5>What gets undone</h5>
+          <p>This shipment came from a Draft packing list, so everything that file created can be reversed.</p>
+          <ul className="cascade">
+            <li><span className="s">1</span><span><span className="n">In-Transit</span> — the {containerCode(c.name)} item, its {plural(c.lines.length, "subitem", "subitems")} and its Process twin are removed.</span></li>
+            <li><span className="s">2</span><span><span className="n">Master SKU</span> — the incoming records of {skus.join(", ")} lose this shipment; records with no other container go back to <b>Estimated</b>.</span></li>
+            <li><span className="s">3</span><span><span className="n">Purchase Orders</span> — {pos.map((ref) => `${ref || "no PO"} gets ${fmt(sumBy(c.lines.filter((l) => l.poRef === ref), (l) => l.qty))} back`).join(", ")} as still-to-ship. Each PO only recovers its own units.</span></li>
+            <li><span className="s">4</span><span><span className="n">Importer</span> — the file is marked <b>Deleted in In-Transit</b>. The file stays, the shipment doesn't.</span></li>
+          </ul>
+          {res > 0 && <p style={{ color: "var(--gap)", fontWeight: 600 }}>Careful: {fmt(res)} units are already promised to {plural(orders.size, "wholesale order", "wholesale orders")}. Those reservations will be orphaned and have to be redone.</p>}
+          <button type="button" className="btn danger" disabled aria-disabled="true" title="Not available yet: deleting from the app is pending confirmation. Use the Delete In-Transit Item button in Monday.">Delete shipment</button>
+        </div>
+      )}
+    </div>
   );
 }
 
