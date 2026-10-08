@@ -208,7 +208,7 @@ async function run() {
       const draftRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Draft"));
       if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .btn.danger").find(x=>x.textContent==="Delete shipment");
         r.delBox=!!q(".rail.on .danger-box .cascade") && !!del && !del.disabled; del?.click(); await wait(250);
-        r.delAsk=/^Delete .+\?$/.test(q(".ua-dlg h3")?.textContent||""); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
+        r.delAsk=/Are you sure you want to delete .+\?$/.test(q(".ua-dlg.del-warn h3")?.textContent||"") && /unlinks several associated items/.test(q(".ua-dlg.del-warn p")?.textContent||"") && !!all(".ua-dlg .btn.danger").find(x=>x.textContent==="Yes, delete it"); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
         r.delCancel=!q(".ua-dlg") && !!q(".rail.on"); q(".rail-x")?.click(); await wait(200); } else { r.delBox=r.delAsk=r.delCancel=true; r.noDraft=true; }
       const finalRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Final"));
       if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
