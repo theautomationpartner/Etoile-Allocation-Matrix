@@ -306,9 +306,12 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   .nav-h "BOARDS" → "Wholesale Allocation" (.cnt items del board) · "In-Transit
   Shipments" (.cnt contenedores en tránsito) · "Purchase Orders" · "Master SKU
   Inventory" · "In-Transit Importer" (.cnt items de cada board).
-  Solo "Allocation matrix" está habilitado; el resto a.off (42 % opacidad, not-allowed,
-  tooltip "<nombre> — not available yet").
-  .side-foot: "Monday synced HH:MM AM/PM" + botón "Theme" (claro/oscuro, se recuerda).
+  Todas las pantallas están habilitadas (Users & access solo para Admin). Un ítem sin `open` se vería a.off (42 %
+  opacidad, not-allowed, tooltip "<nombre> — not available yet").
+  .side-foot: "Monday synced HH:MM AM/PM" + botón de tema (pastilla con sol "Light" / luna "Dark" según el tema en
+  uso; cambia claro/oscuro y se recuerda; sin elegir, sigue al sistema).
+  El menú lateral sigue al tema (pedido del cliente, 2026-10-08; el mockup lo tenía siempre oscuro): blanco en
+  claro (ítem activo oscuro) y el oscuro del mockup en oscuro (ítem activo blanco). Tokens --nav-* en app.css.
 
 5.2 Barra superior (.topbar, sticky): .crumb "Etoile · US › Allocation matrix" ·
   .search (lupa + input "Search a SKU, PO, shipment or order…"; Esc limpia) · .sync
@@ -324,7 +327,7 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   1 "Units to allocate"   .act → filtro Needs allocation; cta "Show these →" / "Showing these →"
   2 "Impossible to cover" .act → filtro Cannot be covered. Valor > 0 → .warn (rojo);
                           valor 0 → .ok (verde: nada bloqueado).
-  3 "Free inventory to draw on" · cta "See where it sits →" deshabilitado (.soon)
+  3 "Free inventory to draw on" · cta "See where it sits →" → In-Transit Shipments "Has free units"
   4 "Already allocated"
   Activa: .on. Clic otra vez → Everything.
 
@@ -848,6 +851,164 @@ persona decide con un botón.
   18402783956). Las etiquetas se escriben con create_labels_if_missing:false.
 
 
+
+--------------------------------------------------------------------------------
+ 15. CONTROL CENTER (pantalla de inicio, 2026-10-08)
+--------------------------------------------------------------------------------
+Requerimientos: "Control center — Requerimientos funcionales y técnicos" (1 oct 2026) + mockup vHome.
+Solo lectura. Es la primera pantalla (menú OVERVIEW → Control center; badge rojo = SKUs con faltante).
+Todas las cifras salen del modelo de la matriz (src/lib/control.js sobre engine.js), nunca de fórmulas propias:
+  Sales at risk = Impossible to cover · Waiting to be allocated = Units to allocate · Committed to wholesale =
+  Already allocated (dividido por la etapa actual, como la matriz; TBD-C01) · Landing in 30 days = contenedores
+  activos con ETA de mañana a +30 días (unidades a bordo y libres).
+Bloques: Needs a buying decision (SKUs con faltante, mayor primero) · Waiting on an allocation (líneas con Left
+  y sin faltante, por cancel date; 6 filas + "N more lines waiting · see them all in the matrix") · Draft packing
+  lists (solo si hay) · What is coming in (contenedores activos y POs con unidades sin embarcar, por fecha;
+  "in N days" / "N days late") · Where committed units come from (barra + 4 filas).
+Aviso: "<n> committed units lost their source" cuando hay reservas sin fuente válida (no se marcan en la matriz).
+Clic en una fila → panel lateral del registro (SKU, venta, contenedor o PO), el mismo de la matriz.
+Botones: Review SKUs / Open in Master SKU → Master SKU "Sold short" · Open matrix / Allocate now → matriz
+  "Needs allocation" · See orders → Wholesale Allocation "Fully allocated" · See shipments → In-Transit
+  Shipments "Arriving ≤ 30 days" · Review (Draft packing lists) → In-Transit Shipments "Draft packing list".
+Escribir en el buscador de arriba abre la matriz con esa búsqueda. Refresh igual que en la matriz.
+Los shipments (useShipments) viven en App.jsx y los comparten la matriz y el panel del Control center.
+
+
+--------------------------------------------------------------------------------
+ 16. MASTER SKU INVENTORY (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vSKU. Solo lectura. Una fila por item de 👜💄 Master SKU Inventory (18402981515), con las cifras del
+modelo de la matriz (src/lib/skuInventory.js):
+  On hand = 🇺🇸 US qty · In transit = unidades a bordo de contenedores en tránsito (US, sin Done) · On order =
+  Qty Outstanding de las líneas de POs US (lo no recibido, incluye lo que viaja) · Sold = To ship de ventas
+  abiertas · Unassigned = Left · Free to sell = warehouse libre + tránsito libre · Cover = (Sold − faltante) / Sold
+  · Status: Short <faltante> / Needs assigning / Covered / No demand. Orden: faltante, luego Unassigned, luego SKU.
+Tarjetas (cada una filtra; segundo clic vuelve a All products): SKUs sold short · Out of stock, still selling ·
+  Sellable right now (+ en tránsito libre) · Committed to wholesale (= Already allocated; "See what's unassigned").
+Show: All products · Sold short · No warehouse stock · Has unassigned demand · Free stock available · No wholesale
+  demand, con su cantidad. El buscador filtra por SKU, producto, PO o contenedor.
+Fila → panel lateral del SKU. ▸ → Incoming records: subitems de Master SKU (board 18402981518) de región US,
+  agrupados por PurchaseID (PO × SKU): Incoming record (Name) · Purchase order (board_relation_mm19zsyp) ·
+  Shipment = contenedores en tránsito de la matriz con una línea del mismo SKU y PO Reference (o conexión a la PO)
+  de ese registro (requerimientos §6 y §8; antes se usaba In Transit ID, que apuntaba a contenedores AU y repetía) ·
+  ETA = la del primer contenedor, si no la de la PO · Arrival = Confirmed si algún contenedor lo trae, si no
+  Estimated · Travelling = Σ de esos contenedores · Still to ship = US Qty Outstanding − Travelling · Packing list
+  de cada contenedor. Clic en el registro → panel de la PO; en un contenedor → su panel.
+Panel de SKU: sección "Incoming records" (los mismos registros). Panel de contenedor: sección "Packing list that
+  created it" (la subida del Importer conectada: archivo, Import Status, fecha).
+El Control center ("Review SKUs", "Open in Master SKU") abre esta pantalla con "Sold short".
+
+--------------------------------------------------------------------------------
+ 17. WHOLESALE ALLOCATION (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vWholesale. Solo lectura. Todas las órdenes US de 🛍️ Wholesale Allocation: Orders (topics) y Pending
+(group_mm1730xq) con las cifras del modelo de la matriz, y Fulfilled (group_mm17q5pm), que se carga aparte
+(loadFulfilledOrders → data.fulfilledOrders) y nunca entra en la demanda (src/lib/wholesale.js):
+  Ordered / Fulfilled = US Qty Ordered / Fulfilled de los subitems · Unallocated = Σ Left · impossible = Σ faltante
+  de la línea (§7.1, el mismo de la matriz) · % covered = (allocated + fulfilled) ÷ ordered, hacia abajo, 100 solo
+  sin faltante (igual que el panel de la orden) · Status: Shipped (Fulfilled) / Ready to ship (Unallocated 0) /
+  Cannot be covered (faltante) / Partially allocated · Covered by: tipos de fuente de lo asignado (Warehouse, In
+  transit, On order; un contenedor ya llegado cuenta como Warehouse).
+Tarjetas: Orders that can't be covered (filtra) · Units waiting on allocation (filtra; "across N orders") · SKUs
+  blocking these orders (abre Master SKU "Sold short") · Cancel date within 45 days (abiertas con Unallocated > 0).
+Show: All orders · Not fully allocated · Cannot be covered · Cancel date ≤ 45 days · Fully allocated, con su
+  cantidad. El buscador filtra por número, SO, retailer, SKU o producto. Badge del menú = All orders.
+Una tarjeta por grupo (Orders, Pending, Fulfilled) con "N orders · M line items". Fila de una orden abierta → panel
+  lateral de la orden; ▸ → líneas: Product · SKU · Ordered · Fulfilled · Outstanding · Unallocated · Source
+  (Shipped / Unallocated / Warehouse Stock / In-Transit / PO Pending / Mixed) · Coming from (chips "<contenedor o
+  PO> ← <PO de origen> · qty"; en rojo "(orphaned)" las reservas del Ledger cuya fuente ya no tiene ese SKU).
+  Una línea → panel del SKU. Una orden Fulfilled también abre su panel, con el chip "Shipped".
+Revisión contra "Wholesale Allocation — Requerimientos" (2026-10-08): Outstanding = US Qty Outstanding de monday;
+  debajo de la orden "<n> SKUs" = subitems; "past due" solo si la Cancel Date ya pasó (hoy = "0 days left"); SKUs
+  blocking = SKUs con faltante del SKU en las órdenes que no se pueden cubrir (como Master SKU "Sold short"); el
+  panel de la orden avisa "<n> units lost their source". Allocated Status / Allocated % de monday no se escriben
+  (decisión del cliente, 13.1): los valores de monday son los de la Allocation Queue anterior y pueden diferir.
+
+--------------------------------------------------------------------------------
+ 18. IN-TRANSIT SHIPMENTS (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vTransit. Solo lectura. Una fila por contenedor activo de 🚢 In-Transit Shipments (grupo topics, Location
+US, Packing List distinto de Done: la oferta en tránsito de la matriz), ETA más cercana primero
+(src/lib/transit.js):
+  On board = Σ Qty de sus subitems · Free = unidades que nadie tiene (freeOf) · Committed = On board − Free (todas
+  las reservas abiertas del contenedor, también las que ya cuentan como warehouse) · Claimed = Committed ÷ On board
+  · Arrives = ETA (date4) con "in N days" o "landed" (ETA ya pasada, como el mockup y el Control center) · departed
+  = ETD (date_mm15dw6, nueva lectura) · From PO = POs de sus subitems con sus unidades · Customers waiting =
+  retailers con reservas en el contenedor.
+Tarjetas (cada una filtra): Still on the water (ETA futura o sin ETA; unidades a bordo) · Arriving in 30 days (lo
+  prometido) · Unclaimed units in transit (Σ Free; contenedores con Free) · Draft packing lists (lo prometido que
+  depende de un packing list sin confirmar; rojo si hay).
+Show: All shipments · Not arrived · Arriving ≤ 30 days · Has free units · Customers depend on it · Draft packing list.
+  El buscador filtra por contenedor, PO, SKU, producto, retailer u orden. Badge del menú = All shipments.
+Fila → panel del contenedor; chip de PO → panel de la PO. ▸ → subitems (SKU × PO; nombre del subitem en monday):
+  On board · Committed · Free · From PO · Promised to (retailer · qty, abre la orden; "free to sell" si nada). Si
+  un SKU viene de más de una PO, una fila de total ("same SKU from N POs") y debajo cada subitem (└).
+  Las reservas nombran el contenedor, no el subitem (TBD-13): si un SKU viene de varias POs, Committed, Free y
+  Promised to van solo en la fila de total del SKU (requerimientos §5.2); las filas de cada subitem muestran "—" y
+  "see the SKU total above". El reparto interno (PO más temprana y cancel date más temprana primero, paths.js §8.1)
+  solo lo usa Purchase Orders.
+Deletion Status (color_mm3y67m8): mientras monday elimina un contenedor, la fila se ve atenuada con el paso y el
+  panel muestra "Deletion status" con los pasos. Panel del contenedor: "Departed <ETD> · arrives <ETA>"; sección
+  "Delete this shipment" (§8): Final → texto; Draft → recuadro con lo que se deshace y el aviso de unidades
+  prometidas, y el botón "Delete shipment" → diálogo de confirmación → POST /api/delete-shipment, que valida en
+  monday (In-Transit Shipments, grupo topics, US, Packing List Draft, sin borrado en curso) y llama al webhook de la
+  variable de Vercel DELETE_SHIPMENT_WEBHOOK (el escenario de Make del borrado, 5290661). Cuerpo:
+  { event: { type: "delete_shipment", boardId, pulseId, pulseName, columnId: "button_mm3yn17e", userId }, itemId,
+  itemName, boardId, requestedBy: { userId, name, email }, at }. Sin la variable, la app avisa que no está configurado.
+  La app no borra nada por sí misma; los pasos se ven después por Deletion Status.
+Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("Draft packing list"); matriz "See
+  where it sits" ("Has free units").
+
+--------------------------------------------------------------------------------
+ 19. PURCHASE ORDERS (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vPO. Solo lectura. Una fila por PO de 📦 Purchase Orders (PO) con Destination Region US (como la matriz;
+las Voided son todas AU). Orden: abiertas primero (ETA más cercana), luego las que no tienen pendiente (ETA más
+reciente) — el mockup ordena por nombre, pero con los datos reales las 28 ya llegadas tapaban las abiertas
+(src/lib/purchaseOrders.js):
+  Ordered / Arrived = Σ Qty Ordered / Qty Arrived de los subitems (Arrived puede superar Ordered: así viene de Cin7)
+  · Shipped = unidades de la PO en contenedores activos (línea con PO Reference = la PO; model.poShipped) · Still
+  to ship = Qty Outstanding − Shipped (lo que la PO todavía ofrece a la matriz) · Progress = Arrived + Shipped
+  sobre Ordered, tope 100 ("N% on the move") · Shipments = esos contenedores con sus unidades de la PO · Sold to
+  = retailers con unidades de la PO.
+Tarjetas (cada una filtra): Open purchase orders (Qty Outstanding > 0; "N units not shipped by suppliers yet" =
+  Σ Still to ship) · Nothing shipped yet (abiertas sin contenedor) · Already sold to customers · Arrives after a
+  cancel date (una reserva hecha en la PO para una orden cuya cancel date es anterior a la ETA de la PO).
+Show: All POs · Still open · Nothing shipped · Partially shipped · Sold to customers · Lands too late. Badge del
+  menú = All POs. El buscador filtra por PO, referencia, proveedor, SKU, contenedor, retailer u orden.
+Fila → panel de la PO; chip de contenedor → su panel. ▸ → una línea por SKU: Product · SKU · Status (el Status del
+  subitem: Fully Arrived / Partially Arrived / Ordered) · Ordered · Arrived · Shipped · Still to ship · Reserved
+  on PO (reservas hechas en la PO) · Sold to (direct + via containers: retailer · qty, abre la orden; lo que viaja
+  en contenedores sale del mismo reparto de In-Transit Shipments). Una línea → panel del SKU.
+Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ordered − Outstanding, calculado);
+  subtítulo con "raised <Date>" (date_mm15edcy).
+
+--------------------------------------------------------------------------------
+ 20. IN-TRANSIT IMPORTER (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vImporter. Solo lectura: subir un packing list y borrar un shipment se siguen haciendo en monday. Una fila
+por item de In-Transit / Wholesale Importer (18404604646) de US, la subida más nueva primero (src/lib/importer.js).
+Columnas leídas: File (file_mm1kn5sf, nombre del archivo) · Type Import (color_mm1kk5v5) · Import Status (status)
+· Location (color_mm4etbyd) · ETA (date_mm4ee89a) · In-Transit Shipment (board_relation_mm1kx7v4) · fecha de
+creación del item (Creation log).
+  US = Location US, o sin Location y nombre que empieza con "US" (las subidas viejas no tienen Location) ·
+  Uploaded = creación del item · Status: Live (Imported) / Reverted (Deleted in In-Transit Shipments; fila
+  tachada) / Error / el estado que tenga · Shipment created = el item In-Transit conectado (activo o ya en Archive;
+  "deleted" si se revirtió, "not linked" si está Imported sin conexión) · Packing list, Arrives, Units = del
+  contenedor · Promised = reservas abiertas sobre ese contenedor (las de la matriz).
+Tarjetas: Shipments created (Live; unidades de sus contenedores) · Still reversible (Live con contenedor activo en
+  Draft) · Reverted (todo Import Status distinto de Imported, §6.1) · Uploaded this month (cargados desde hoy − 30;
+  no filtra). Nota del mockup sobre el borrado.
+Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del menú = All uploads. El buscador filtra
+  por archivo, item o contenedor.
+"Upload packing list" abre una ventana con los campos del Importer Form del tablero (Name, File, Type Import,
+  Location, ETD, ETA, People; People = quien sube, se pueden sumar otros usuarios de monday). POST multipart a
+  /api/importer-upload: crea el item (grupo topics) con sus columnas, adjunta el archivo (máx. 4 MB, límite de
+  Vercel) y recién después pone Import Status = Import, que dispara la importación de monday. ?dry=1 valida sin
+  escribir. El formulario de monday (pide login de monday, por eso no se muestra embebido) queda como enlace. Al
+  cerrar la ventana después de enviar, la app vuelve a leer monday. "Open" y el chip del contenedor → panel lateral.
+Colores de tarjetas: como el mockup (rojo), aunque el documento diga ámbar (decisión del cliente, 2026-10-08).
+
 --------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
@@ -892,3 +1053,15 @@ persona decide con un botón.
             PO al contenedor; llegada confirmada por Qty Arrived de la PO (reemplaza Done → warehouse
             por el 50 % del warehouse); Is Process nunca cuenta; Status Allocation por cantidades;
             Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+2026-10-08  Llegada por PO: lo recibido se cuenta primero contra los contenedores Done de esa PO + SKU.
+2026-10-08  CONTROL CENTER — pantalla de inicio (sección 15), con las cifras de la matriz.
+2026-10-08  MASTER SKU INVENTORY — sección 16; Incoming records desde los subitems de Master SKU.
+2026-10-08  WHOLESALE ALLOCATION — sección 17; el grupo Fulfilled se lee aparte, sin tocar la demanda.
+2026-10-08  IN-TRANSIT SHIPMENTS — sección 18; se lee el ETD del contenedor y el nombre de sus subitems.
+2026-10-08  PURCHASE ORDERS — sección 19; Arrived y Status de la línea salen de monday (también en el panel).
+2026-10-08  IN-TRANSIT IMPORTER — sección 20; se lee el tablero del Importer. Todas las pantallas del menú habilitadas.
+2026-10-08  Menú lateral claro en el tema claro; botón de tema con sol / luna. Prueba final: 192 chequeos + cruce de cifras.
+2026-10-08  MASTER SKU revisado contra sus requerimientos: registros unidos por SKU + PO Reference; secciones de panel nuevas.
+2026-10-08  WHOLESALE revisado contra sus requerimientos (ver sección 17).
+2026-10-08  IN-TRANSIT (Shipments e Importer) revisado contra sus requerimientos (secciones 18 y 20).
+2026-10-08  Delete shipment (webhook DELETE_SHIPMENT_WEBHOOK), Upload packing list (formulario propio → Importer), PO "raised". Merge a main.

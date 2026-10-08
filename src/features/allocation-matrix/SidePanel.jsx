@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, plural, dayMonth, dayMonthYear } from "../../lib/format.js";
 import { containerCode, orderParts, retailerShort } from "../../lib/matrix.js";
 import { SOURCE } from "../../lib/engine.js";
 import { pathMatch, pathsFor, sortPaths, sumQ, unitPaths } from "../../lib/paths.js";
 import { localToday } from "../../lib/shipments.js";
+import { incomingRecords } from "../../lib/skuInventory.js";
+import { FULFILLED_GROUP } from "../../lib/monday.js";
+import { requestShipmentDeletion, useAppActions } from "../../lib/appActions.js";
 
 // Side panel (PDF §8.3, mockup "rail"): opened from an order, a SKU or a source. Each record shows its
 // allocation paths <container, PO or warehouse> → <order> with units; a container also shows its split by
@@ -35,7 +38,8 @@ export function SidePanel({ stack, onOpen, onTrail, onClose, model, data, shipme
     const containerById = new Map((data.containers || []).map((c) => [String(c.id), c]));
     const poById = new Map((data.pos || []).map((p) => [String(p.id), p]));
     const poByName = new Map((data.pos || []).map((p) => [p.name, p]));
-    const orderById = new Map((data.orders || []).map((o) => [String(o.id), o]));
+    // Open orders, plus the Fulfilled ones (Wholesale Allocation lists them and their row opens this panel).
+    const orderById = new Map([...(data.orders || []), ...(data.fulfilledOrders || [])].map((o) => [String(o.id), o]));
     const paths = unitPaths(model, data);
     const stageDate = (p) => (p.k === "it" ? containerById.get(p.ship)?.eta || "" : p.k === "po" ? poById.get(p.po)?.eta || "" : "");
     const orderLabel = (id) => {
@@ -209,12 +213,16 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
   const lines = model.lines.filter((l) => String(l.orderId) === String(id));
   const raw = o.lines || [];
   const m = {
-    ord: sumBy(raw, (l) => l.ordered), ful: sumBy(raw, (l) => l.fulfilled), outstanding: sumBy(lines, (l) => l.toShip),
+    ord: sumBy(raw, (l) => l.ordered), ful: sumBy(raw, (l) => l.fulfilled), outstanding: o.group === FULFILLED_GROUP ? sumBy(raw, (l) => l.outstanding) : sumBy(lines, (l) => l.toShip),
     al: sumBy(lines, (l) => l.allocated), rem: sumBy(lines, (l) => l.left), gap: sumBy(lines, (l) => l.impossible),
+    // Reserved on a source that no longer exists (any line of the order, also the fully shipped ones).
+    orph: sumBy(model.allLines.filter((x) => String(x.order.id) === String(id)), (x) => x.orphan),
   };
   // §14.2 formula: (fulfilled + allocated) ÷ ordered, rounded down; 100 only when nothing is missing.
   const pct = m.ord ? (m.rem === 0 ? 100 : Math.min(99, Math.floor(((m.ful + m.al) / m.ord) * 100))) : 0;
-  const chip = m.rem === 0 ? <span className="chip wh"><span className="sq" />Fully allocated</span>
+  const shipped = o.group === FULFILLED_GROUP; // Fulfilled group: shipped, no longer part of the matrix
+  const chip = shipped ? <span className="chip mut">Shipped</span>
+    : m.rem === 0 ? <span className="chip wh"><span className="sq" />Fully allocated</span>
     : m.gap > 0 ? <span className="chip gap"><span className="sq" />Cannot be covered</span>
     : <span className="chip po"><span className="sq" />Partially allocated</span>;
   const ps = pathsFor(ctx.paths, "so", String(id));
@@ -249,6 +257,7 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
       </div>
       <ContextStrip prev={prev} cur={{ type: "so", id: String(id) }} ctx={ctx} />
       {m.gap > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.gap)} units cannot be covered.</b> Not enough stock in the warehouse, in transit, or on order. This part of the sale needs a purchase decision.</div>}
+      {m.orph > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.orph)} units lost their source.</b> They were reserved against a shipment that was deleted and need to be reallocated.</div>}
       {late.length > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(sumQ(late))} units land after the {dayMonthYear(o.cancelDate)} cancel date.</b> They come from {lateSrc.join(", ")}. Move them to an earlier source or ask the retailer to extend the date.</div>}
 
       <div className="sec">
@@ -311,13 +320,18 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
   const pct = tot ? Math.min(100, Math.round((res / tot) * 100)) : 0;
   const pos = [...new Set(c.lines.map((l) => l.poRef))];
   const days = c.eta ? daysTo(c.eta) : null;
+  // The Importer upload that created it (In-Transit / Wholesale Importer, its "In-Transit Shipment" connection).
+  const imp = (data.imports || []).find((x) => String(x.shipmentId) === String(c.id));
   return (
     <>
       <div className="rail-h"><h3>{containerCode(c.name)}</h3></div>
-      <p className="rail-sub">{c.name}<br />{c.eta ? `Arrives ${dayMonthYear(c.eta)} (${days > 0 ? `in ${plural(days, "day", "days")}` : "already landed"})` : "No ETA"}</p>
+      <p className="rail-sub">{c.name}<br />
+        {[c.etd ? `Departed ${dayMonthYear(c.etd)}` : "", c.eta ? `${c.etd ? "arrives" : "Arrives"} ${dayMonthYear(c.eta)} (${days > 0 ? `in ${plural(days, "day", "days")}` : "already landed"})` : "No ETA"].filter(Boolean).join(" · ")}
+      </p>
       <div style={{ marginBottom: 12 }}>
         <span className={`chip ${c.packingList === "Final" || c.packingList === "Done" ? "wh" : "po"}`}><span className="sq" />Packing list {c.packingList || "—"}</span>
         {pos.length > 1 && <span className="chip mut" style={{ marginLeft: 4 }}>Consolidated · {pos.length} POs</span>}
+        {c.deletionStatus && <span className="chip gap" style={{ marginLeft: 4 }}><span className="sq" />{c.deletionStatus}</span>}
       </div>
       <div className="facts">
         <div className="fact"><div className="l">On board</div><div className="v">{fmt(tot)}</div></div>
@@ -341,6 +355,15 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
         </div>
       </div>
 
+      {imp && (
+        <div className="sec">
+          <h4>Packing list that created it</h4>
+          <div className="rel">
+            <RelRow kind="mut" title={imp.files[0] || imp.name} meta={["Importer", imp.status, imp.uploaded ? `uploaded ${dayMonthYear(imp.uploaded)}` : ""].filter(Boolean).join(" · ")} qty="" />
+          </div>
+        </div>
+      )}
+
       <div className="sec">
         <h4>SKUs on board <span className="c">{plural(skus.length, "SKU", "SKUs")} · {plural(c.lines.length, "subitem", "subitems")}</span></h4>
         <div className="rel">
@@ -355,7 +378,92 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
       </div>
 
       <div className="sec"><h4>Who gets what</h4><PathTable type="ship" id={String(id)} ctx={ctx} onOpen={onOpen} hl={prev} /></div>
+
+      {c.deletionStatus ? <DeletionSteps status={c.deletionStatus} /> : <DeleteSection c={c} model={model} pos={pos} res={res} />}
     </>
+  );
+}
+
+// §8.3 — while monday deletes the shipment, its Deletion Status steps (read from the board).
+const DEL_STEPS = ["Pending Deletion", "Searching Master SKU Records", "Deleting Master SKU Records", "Deleting In Transit Shipment"];
+function DeletionSteps({ status }) {
+  const at = DEL_STEPS.indexOf(status);
+  return (
+    <div className="sec">
+      <h4>Deletion status</h4>
+      {at < 0 ? <div className="note warn"><b>{status}.</b> The deletion stopped in Monday — see the update on the In-Transit item.</div> : (
+        <ul className="steps">
+          {DEL_STEPS.map((t, j) => <li key={t} className={j < at ? "done" : j === at ? "doing" : ""}><span className="b">{j < at ? "✓" : ""}</span>{t}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// §8.1–8.2 — what deleting this shipment undoes. Only shipments created from a Draft packing list can be deleted.
+// "Delete shipment" asks first (TBD-I07), then starts monday's deletion through the server (api/delete-shipment.js);
+// the steps then show from the container's Deletion Status.
+function DeleteSection({ c, model, pos, res }) {
+  const { toast, refresh } = useAppActions();
+  const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+  const draft = c.packingList === "Draft";
+  const code = containerCode(c.name);
+  const start = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await requestShipmentDeletion(c.id);
+      setSent(true);
+      setAsk(false);
+      toast(`Deletion of ${code} started in Monday. It disappears from the app once Monday finishes.`);
+      setTimeout(() => refresh(), 6000); // Deletion Status shows the steps after the next read
+    } catch (e) {
+      setError(e.message || "The deletion could not be started.");
+      setAsk(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const orders = new Set(model.allLines.filter((x) => x.entries.some((e) => e.source === SOURCE.IN_TRANSIT && String(e.sourceId) === String(c.id))).map((x) => String(x.order.id)));
+  const skus = [...new Set(c.lines.map((l) => l.sku))];
+  return (
+    <div className="sec">
+      <h4>Delete this shipment</h4>
+      {!draft ? (
+        <div className="empty-note">The packing list is <b>{c.packingList || "not set"}</b>. Only shipments created from a <b>Draft</b> file can be deleted. Switch it back to Draft first if it really needs to be removed.</div>
+      ) : (
+        <div className="danger-box">
+          <h5>What gets undone</h5>
+          <p>This shipment came from a Draft packing list, so everything that file created can be reversed.</p>
+          <ul className="cascade">
+            <li><span className="s">1</span><span><span className="n">In-Transit</span> — the {containerCode(c.name)} item, its {plural(c.lines.length, "subitem", "subitems")} and its Process twin are removed.</span></li>
+            <li><span className="s">2</span><span><span className="n">Master SKU</span> — the incoming records of {skus.join(", ")} lose this shipment; records with no other container go back to <b>Estimated</b>.</span></li>
+            <li><span className="s">3</span><span><span className="n">Purchase Orders</span> — {pos.map((ref) => `${ref || "no PO"} gets ${fmt(sumBy(c.lines.filter((l) => l.poRef === ref), (l) => l.qty))} back`).join(", ")} as still-to-ship. Each PO only recovers its own units.</span></li>
+            <li><span className="s">4</span><span><span className="n">Importer</span> — the file is marked <b>Deleted in In-Transit</b>. The file stays, the shipment doesn't.</span></li>
+          </ul>
+          {res > 0 && <p style={{ color: "var(--gap)", fontWeight: 600 }}>Careful: {fmt(res)} units are already promised to {plural(orders.size, "wholesale order", "wholesale orders")}. Those reservations will be orphaned and have to be redone.</p>}
+          {error && <p style={{ color: "var(--gap)" }} role="alert">{error}</p>}
+          {sent ? <p style={{ fontWeight: 600 }}>Deletion requested. Monday is processing it — refresh to follow its steps.</p>
+            : <button type="button" className="btn danger" onClick={() => setAsk(true)} disabled={busy}>Delete shipment</button>}
+        </div>
+      )}
+      {ask && (
+        <>
+          <div className="scrim on del-scrim" onClick={() => !busy && setAsk(false)} />
+          <div className="ua-dlg" role="alertdialog" aria-modal="true" aria-labelledby="del-dlg-t">
+            <h3 id="del-dlg-t">Delete {code}?</h3>
+            <p>Monday removes the shipment and everything its Draft packing list created.{res > 0 ? ` ${fmt(res)} promised units will lose their source and have to be reallocated.` : ""} This can't be undone from the app.</p>
+            <div className="ua-dlg-b">
+              <button type="button" className="btn" onClick={() => setAsk(false)} disabled={busy}>Cancel</button>
+              <button type="button" className="btn danger" onClick={start} disabled={busy}>{busy ? "Starting…" : "Delete shipment"}</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -365,8 +473,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
   if (!p) return <div className="empty-note">This purchase order is no longer in Monday.</div>;
   const skus = [...new Set(p.lines.map((l) => l.sku))];
   const ord = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyOrdered);
-  const outst = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyOutstanding);
-  const arrived = (k) => Math.max(0, ord(k) - outst(k));
+  const arrived = (k) => sumBy(p.lines.filter((l) => l.sku === k), (l) => l.qtyArrived); // Qty Arrived (may exceed Qty Ordered)
   const shipped = (k) => model.poShipped(p, k);
   const left = (k) => model.poTotal(p, k);
   const ships = model.containers.filter((c) => c.lines.some((l) => l.poRef === p.name));
@@ -376,7 +483,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
       <div className="rail-h"><h3>{p.name}</h3></div>
       <p className="rail-sub">
         {[p.reference ? `Reference ${p.reference}` : "", supplier].filter(Boolean).join(" · ")}<br />
-        {[p.status, p.region ? `destination ${p.region}` : "", `ETA ${dayMonthYear(p.eta) || "—"}`].filter(Boolean).join(" · ")}
+        {[p.status, p.region ? `destination ${p.region}` : "", p.date ? `raised ${dayMonthYear(p.date)}` : "", `ETA ${dayMonthYear(p.eta) || "—"}`].filter(Boolean).join(" · ")}
       </p>
       <div className="flow">
         <div className="s-po"><div className="fl">Ordered</div><div className="fv">{fmt(sumBy(skus, ord))}</div></div>
@@ -391,7 +498,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
         <h4>Line items <span className="c">{plural(skus.length, "SKU", "SKUs")}</span></h4>
         <div className="rel">
           {skus.map((k) => {
-            const st = arrived(k) >= ord(k) && ord(k) > 0 ? "Fully Arrived" : arrived(k) > 0 ? "Partially Arrived" : "Ordered";
+            const st = p.lines.find((l) => l.sku === k && l.status)?.status || (arrived(k) >= ord(k) && ord(k) > 0 ? "Fully Arrived" : arrived(k) > 0 ? "Partially Arrived" : "Ordered");
             const on = ships.map((c) => [c, sumBy(c.lines.filter((l) => l.sku === k && l.poRef === p.name), (l) => l.qty)]).filter(([, q]) => q > 0);
             return <RelRow key={k} kind="po" title={`${k} · ${data.warehouse?.[k]?.name || k}`}
               meta={`${st} · ordered ${fmt(ord(k))} · arrived ${fmt(arrived(k))} · shipped ${fmt(shipped(k))}${on.length ? ` (${on.map(([c, q]) => `${containerCode(c.name)} ${fmt(q)}`).join(", ")})` : ""}`}
@@ -434,6 +541,7 @@ function SkuPanel({ id, prev, ctx, model, data, onOpen }) {
   const nPO = new Set(ps.filter((p) => p.po || p.poRef).map((p) => p.po || p.poRef)).size;
   const nShip = new Set(ps.filter((p) => p.ship && p.k === "it").map((p) => p.ship)).size;
   const nSO = new Set(ps.filter((p) => p.order).map((p) => p.order)).size;
+  const incoming = incomingRecords(model, data, id);
   return (
     <>
       <div className="rail-h"><h3>{id}</h3></div>
@@ -456,6 +564,17 @@ function SkuPanel({ id, prev, ctx, model, data, onOpen }) {
       <div className="sec">
         <h4>Where every unit goes <span className="c">{plural(nPO, "PO", "POs")} · {plural(nShip, "container", "containers")} · {plural(nSO, "order", "orders")}</span></h4>
         <PathTable type="sku" id={id} ctx={ctx} onOpen={onOpen} hl={prev} rollup />
+      </div>
+      <div className="sec">
+        <h4>Incoming records <span className="c">one per PO, as in Master SKU</span></h4>
+        <div className="rel">
+          {incoming.length ? incoming.map((x) => (
+            <RelRow key={x.key} kind={x.ships.length ? "it" : "po"} title={x.name}
+              meta={[x.poName || "No PO", x.ships.length ? `on ${x.ships.map((y) => `${y.code || "a container not found"} (${fmt(y.qty)})`).join(" + ")}` : "no shipment yet", x.arrival,
+                x.ships.length && x.toShip ? `${fmt(x.toShip)} still estimated${x.poEta ? ` for ${dayMonth(x.poEta)}` : ""}` : ""].filter(Boolean).join(" · ")}
+              qty={x.ships.length ? `${fmt(x.travelling)} travelling` : `${fmt(x.toShip)} to ship`} onOpen={x.poId ? () => onOpen("po", x.poId) : undefined} />
+          )) : <div className="empty-note">No open purchase orders for this SKU.</div>}
+        </div>
       </div>
     </>
   );

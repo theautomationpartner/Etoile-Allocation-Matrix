@@ -23,20 +23,27 @@ export const COL = {
   sale: { retailer: "dropdown_mm17we0j", region: "color_mm17q217", status: "color_mm17bttk", orderDate: "date_mm1s15v9", cancelDate: "date_mm5bxkpz", saleCin7: "link_mm26kvdr", allocStatus: "color_mm7146kz", allocPct: "numeric_mm71h5ps" },
   saleSub: { skuId: "text_mm251am5", ordered: "numeric_mm17ttsn", fulfilled: "numeric_mm19rrnv", outstanding: "numeric_mm19gkqq", allocJson: "long_text_mm4kee9f", allocSource: "dropdown_mm4fwfk7", poRel: "board_relation_mm3hna2c", itRel: "board_relation_mm342hhx", ledgerRel: "board_relation_mm7pqf7j", lastProcessed: "numeric_mm7x8pp1" },
   wh: { sku: "text_mm17625z", usQty: "numeric_mm1765fq" },
+  // Master SKU subitems ("Incoming records"): one per PO × SKU (PurchaseID = Cin7 OrderID|SKU), one per container.
+  whSub: { po: "board_relation_mm19zsyp", region: "lookup_mm1hgwz5", eta: "date_mm2vrt3q", arrival: "color_mm2vzyxm", usInTransit: "numeric_mm293ds6",
+    usOutstanding: "numeric_mm19bvcx", usOnOrder: "numeric_mm19v320", purchaseId: "text_mm1cnjfs", transitId: "text_mm34kmb5" },
   // isProcess: "Is Process" checkbox — copies made while importing, never counted.
   // subPo: the PO item of each container line · subStatus: Arrived – Pending Receiving / Received (written by the app)
-  it: { location: "color_mm3bhhys", eta: "date4", packingList: "color_mm1c7w2a", isProcess: "boolean_mm7xhwt8", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76", subPo: "board_relation_mm2ef1zr", subStatus: "color_mm3kvr2h" },
-  po: { reference: "text_mm14nxap", region: "color_mm1hmv7r", eta: "date4", status: "status", supplier: "dropdown_mm17rsxm", subSku: "text_mm1598d7", subQtyOrdered: "numeric_mm15va7p", subQtyOutstanding: "numeric_mm1g5z37", subQtyArrived: "numeric_mm1593d3", subStatus: "status" },
+  it: { location: "color_mm3bhhys", eta: "date4", etd: "date_mm15dw6", deletion: "color_mm3y67m8", packingList: "color_mm1c7w2a", isProcess: "boolean_mm7xhwt8", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76", subPo: "board_relation_mm2ef1zr", subStatus: "color_mm3kvr2h" },
+  po: { reference: "text_mm14nxap", region: "color_mm1hmv7r", eta: "date4", date: "date_mm15edcy", status: "status", supplier: "dropdown_mm17rsxm", subSku: "text_mm1598d7", subQtyOrdered: "numeric_mm15va7p", subQtyOutstanding: "numeric_mm1g5z37", subQtyArrived: "numeric_mm1593d3", subStatus: "status" },
   ledger: { key: "text_mm76g12x", saleRel: "board_relation_mm76cxt5", saleId: "text_mm76t66a", sku: "text_mm76wfw4", fulfilled: "numeric_mm76ebf5", allocatedQty: "numeric_mm76s5dm", status: "color_mm76q1fj", json: "long_text_mm764vdq", shipmentsRel: "board_relation_mm7p81dk" },
   // Ledger subitems: one per source that feeds the sale line (the structured record of the allocation).
   ledgerSub: { type: "color_mm76ffrx", sourceId: "text_mm768syf", ref: "text_mm76r4a3", qty: "numeric_mm76x8g", total: "numeric_mm76pg3t", eta: "date_mm76m9nh", packingDone: "boolean_mm76nhw6", arrival: "color_mm7xe2mp" },
 };
 
 export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
+export const FULFILLED_GROUP = "group_mm17q5pm"; // Wholesale: Fulfilled (only listed on the Wholesale Allocation screen)
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active
 export const LEDGER_FULFILLED_GROUP = "group_mm76zg9t"; // Ledger: Fulfilled — still the line's record while its order is open
 export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero (holds no units)
-export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer (only its item count, for the side nav)
+export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer: one item per uploaded packing list (In-Transit Importer screen)
+// Importer columns (read only): the uploaded file, Type Import (In-Transit / In-Transit Draft), Import Status, Location and
+// the In-Transit item it created.
+const IMP = { file: "file_mm1kn5sf", type: "color_mm1kk5v5", status: "status", location: "color_mm4etbyd", eta: "date_mm4ee89a", shipment: "board_relation_mm1kx7v4" };
 const LEDGER_SOURCE_TYPE = { "Warehouse Stock": "warehouse", "In-Transit": "intransit", "Purchase Order": "po" };
 
 // Where confirmed allocations are read from. Pending the client's decision (see PROMPT txt, open points).
@@ -164,6 +171,40 @@ export function createMondayApi(transport = fetchTransport) {
     }));
   }
 
+  // Wholesale Allocation screen only: the orders of the Fulfilled group (shipped). They are never demand and hold
+  // no units — just their quantities, so the screen lists every order synced from Cin7, as the mockup does.
+  // In-Transit Importer: every uploaded packing list. Uploaded = the item's creation date (Creation log).
+  async function loadImports() {
+    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(IMP))}]) { id text value ... on BoardRelationValue { linked_item_ids } }`;
+    const items = await allItems(IMPORTER_BOARD, fields);
+    const files = (it) => {
+      try { return (JSON.parse(it.column_values.find((c) => c.id === IMP.file)?.value || "{}").files || []).map((f) => f.name).filter(Boolean); } catch { return []; }
+    };
+    return items.map((it) => ({
+      id: it.id, name: it.name, uploaded: date(it.created_at), files: files(it),
+      type: cv(it, IMP.type), status: cv(it, IMP.status), location: cv(it, IMP.location), eta: date(cv(it, IMP.eta)),
+      shipmentId: String((it.column_values.find((c) => c.id === IMP.shipment)?.linked_item_ids || [])[0] || "") || null,
+    }));
+  }
+
+  async function loadFulfilledOrders() {
+    const s = COL.sale, sc = COL.saleSub;
+    const fields = `id name group { id }
+      column_values(ids:[${gqlList([s.retailer, s.region, s.status, s.orderDate, s.cancelDate])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList([sc.skuId, sc.ordered, sc.fulfilled, sc.outstanding])}]) { id text } }`;
+    const items = await allItems(BOARDS.wholesale, fields, { groups: [FULFILLED_GROUP] });
+    return items.map((it) => ({
+      id: it.id, name: it.name, group: it.group?.id || FULFILLED_GROUP,
+      retailer: cv(it, s.retailer), region: cv(it, s.region), saleStatus: cv(it, s.status),
+      orderDate: date(cv(it, s.orderDate)), cancelDate: date(cv(it, s.cancelDate)),
+      lines: (it.subitems || []).map((sub) => {
+        const skuId = cv(sub, sc.skuId);
+        return { id: sub.id, name: sub.name, sku: (skuId.includes("|") ? skuId.split("|").pop() : skuId).trim(),
+          ordered: num(cv(sub, sc.ordered)), fulfilled: num(cv(sub, sc.fulfilled)), outstanding: num(cv(sub, sc.outstanding)), entries: [] };
+      }),
+    }));
+  }
+
   // One Ledger item per sale line (groups Active and Fulfilled), one subitem per source feeding it.
   // As in the Allocation Queue, what decides is the ORDER's group (Orders + Pending): a line of an open
   // order keeps the units of its Ledger item even if that item sits in Fulfilled. Released holds none.
@@ -199,20 +240,38 @@ export function createMondayApi(transport = fetchTransport) {
     return Object.fromEntries((d?.boards || []).map((b) => [String(b.id), b.items_count]));
   }
 
+  // Master SKU items, with their subitems: the "Incoming records" (one per PO × SKU, split per container that
+  // carries it), written by the PO sync and the In-Transit importer (Proceso-In-Transit.md).
   async function loadWarehouse() {
-    const items = await allItems(BOARDS.warehouse, `id name column_values(ids:[${gqlList([COL.wh.sku, COL.wh.usQty])}]) { id text }`);
+    const r = COL.whSub;
+    const items = await allItems(BOARDS.warehouse, `id name column_values(ids:[${gqlList([COL.wh.sku, COL.wh.usQty])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList(Object.values(r))}]) { id text ... on BoardRelationValue { linked_item_ids } ... on MirrorValue { display_value } } }`);
     const out = {};
     for (const it of items) {
       const sku = cv(it, COL.wh.sku).trim();
-      if (sku && !out[sku]) out[sku] = { itemId: it.id, name: it.name, usQty: num(cv(it, COL.wh.usQty)) };
+      if (!sku || out[sku]) continue;
+      out[sku] = {
+        itemId: it.id, name: it.name, usQty: num(cv(it, COL.wh.usQty)),
+        incoming: (it.subitems || []).map((s) => {
+          const col = (id) => s.column_values.find((c) => c.id === id);
+          return {
+            id: String(s.id), name: s.name,
+            poId: (col(r.po)?.linked_item_ids || [])[0] ? String(col(r.po).linked_item_ids[0]) : null,
+            region: col(r.region)?.display_value || col(r.region)?.text || "",
+            eta: date(cv(s, r.eta)), arrival: cv(s, r.arrival), // Estimated / Confirmed
+            inTransit: num(cv(s, r.usInTransit)), outstanding: num(cv(s, r.usOutstanding)), onOrder: num(cv(s, r.usOnOrder)),
+            purchaseId: cv(s, r.purchaseId).trim(), transitLineId: cv(s, r.transitId).trim(), // In-Transit subitem carrying it
+          };
+        }),
+      };
     }
     return out;
   }
 
   async function loadContainers() {
     const c = COL.it;
-    const fields = `id name group { id } column_values(ids:[${gqlList([c.location, c.eta, c.packingList, c.isProcess])}]) { id text }
-      subitems { id column_values(ids:[${gqlList([c.subSku, c.subQty, c.subPoRef, c.subPo, c.subStatus])}]) { id text ... on BoardRelationValue { linked_item_ids } } }`;
+    const fields = `id name group { id } column_values(ids:[${gqlList([c.location, c.eta, c.etd, c.packingList, c.isProcess, c.deletion])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList([c.subSku, c.subQty, c.subPoRef, c.subPo, c.subStatus])}]) { id text ... on BoardRelationValue { linked_item_ids } } }`;
     // All groups: "topics" is the in-transit supply; Archive holds landed ("Done") containers whose
     // reservations are checked against their PO's arrivals. Archived/deleted items are not returned by monday.
     // "Is Process" items are copies made while importing: never counted.
@@ -224,9 +283,11 @@ export function createMondayApi(transport = fetchTransport) {
       group: it.group?.id || "",
       location: cv(it, c.location),
       eta: date(cv(it, c.eta)),
+      etd: date(cv(it, c.etd)), // departure (In-Transit Shipments screen)
       packingList: cv(it, c.packingList),
+      deletionStatus: cv(it, c.deletion), // set while monday's deletion runs (Pending Deletion → … → Deleting In Transit Shipment)
       lines: (it.subitems || []).map((sub) => ({
-        id: sub.id, sku: cv(sub, c.subSku).trim(), qty: num(cv(sub, c.subQty)), poRef: cv(sub, c.subPoRef).trim(),
+        id: sub.id, name: sub.name || "", sku: cv(sub, c.subSku).trim(), qty: num(cv(sub, c.subQty)), poRef: cv(sub, c.subPoRef).trim(),
         poId: poOf(sub) ? String(poOf(sub)) : null, status: cv(sub, c.subStatus),
       })),
     }));
@@ -234,7 +295,7 @@ export function createMondayApi(transport = fetchTransport) {
 
   async function loadPOs() {
     const p = COL.po;
-    const fields = `id name column_values(ids:[${gqlList([p.reference, p.region, p.eta, p.status, p.supplier])}]) { id text }
+    const fields = `id name column_values(ids:[${gqlList([p.reference, p.region, p.eta, p.date, p.status, p.supplier])}]) { id text }
       subitems { id column_values(ids:[${gqlList([p.subSku, p.subQtyOrdered, p.subQtyOutstanding, p.subQtyArrived, p.subStatus])}]) { id text } }`;
     const items = await allItems(BOARDS.po, fields);
     return items.map((it) => ({
@@ -243,6 +304,7 @@ export function createMondayApi(transport = fetchTransport) {
       reference: cv(it, p.reference),
       region: cv(it, p.region),
       eta: date(cv(it, p.eta)),
+      date: date(cv(it, p.date)), // raised (PO panel)
       status: cv(it, p.status),
       supplier: cv(it, p.supplier),
       lines: (it.subitems || []).map((sub) => ({
@@ -283,9 +345,11 @@ export function createMondayApi(transport = fetchTransport) {
       [BOARDS.wholesale]: { name: "Wholesale Allocation", cols: [COL.sale.region, COL.sale.cancelDate] },
       [BOARDS.wholesaleSub]: { name: "Wholesale Allocation (subitems)", cols: [COL.saleSub.skuId, COL.saleSub.outstanding, COL.saleSub.ledgerRel, COL.saleSub.lastProcessed, "board_relation_mm7pd15e", "multiple_person_mm7pdm50"] },
       [BOARDS.warehouse]: { name: "Master SKU Inventory", cols: [COL.wh.sku, COL.wh.usQty] },
-      [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.packingList, COL.it.isProcess] },
+      "18402981518": { name: "Master SKU Inventory (subitems)", cols: Object.values(COL.whSub) },
+      [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.etd, COL.it.packingList, COL.it.isProcess, COL.it.deletion] },
       [BOARDS.inTransitSub]: { name: "In-Transit Shipments (subitems)", cols: [COL.it.subSku, COL.it.subQty, COL.it.subPoRef, COL.it.subPo, COL.it.subStatus] },
-      [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta] },
+      [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta, COL.po.date] },
+      [IMPORTER_BOARD]: { name: "In-Transit Importer", cols: Object.values(IMP) },
       "18402780137": { name: "Purchase Orders (subitems)", cols: [COL.po.subSku, COL.po.subQtyOutstanding, COL.po.subQtyArrived, COL.po.subStatus] },
       [BOARDS.ledger]: { name: "Allocation Ledger", cols: [COL.ledger.key, COL.ledger.json, COL.ledger.shipmentsRel, COL.ledger.fulfilled, COL.ledger.status] },
       [BOARDS.ledgerSub]: { name: "Allocation Ledger (subitems)", cols: [COL.ledgerSub.type, COL.ledgerSub.sourceId, COL.ledgerSub.qty, COL.ledgerSub.arrival] },
@@ -322,10 +386,11 @@ export function createMondayApi(transport = fetchTransport) {
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     await checkSchema();
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments] = await Promise.all([
+    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments, fulfilledOrders, imports] = await Promise.all([
       loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
+      loadFulfilledOrders(), loadImports(),
     ]);
-    const data = { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
+    const data = { orders, warehouse, containers, pos, boardCounts, shipments, fulfilledOrders, imports, allocationSource, loadedAt: new Date() };
     return useLedger ? withLedger(data, ledger) : data;
   }
 

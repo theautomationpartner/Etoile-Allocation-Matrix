@@ -7,7 +7,7 @@ import { containerCode, orderParts, retailerShort } from "./matrix.js";
 import { LEDGER } from "./mondayWrites.js";
 import { fmt, plural, dayMonthYear } from "./format.js";
 import { localToday } from "./shipments.js";
-import { arrivalLabel } from "./arrival.js";
+import { arrivalIndex, arrivalLabel } from "./arrival.js";
 
 const KIND = { [SOURCE.WAREHOUSE]: "wh", [SOURCE.IN_TRANSIT]: "it", [SOURCE.PO]: "po" };
 const RANK = { wh: 0, it: 1, po: 2 };
@@ -214,7 +214,7 @@ export function ledgerRecord({ order, raw, sku, entries, data, now = new Date() 
   const refs = (arr) => [...new Set(arr.map((p) => p.ref).filter(Boolean))].join(", ");
   const total = (arr, f) => String(sum(arr, f));
   const ids = (arr) => [...new Set(arr.map((p) => numericId(p.sourceId)).filter(Boolean))];
-  const where = { containerById: new Map((data.containers || []).map((c) => [String(c.id), c])), poById: new Map((data.pos || []).map((p) => [String(p.id), p])) };
+  const where = { containerById: new Map((data.containers || []).map((c) => [String(c.id), c])), ix: arrivalIndex(data.containers, data.pos) };
   const etas = parts.filter((p) => p.source !== SOURCE.WAREHOUSE && p.eta).map((p) => p.eta).sort();
   const po = of(SOURCE.PO), it = of(SOURCE.IN_TRANSIT), wh = of(SOURCE.WAREHOUSE);
   const iso = now.toISOString();

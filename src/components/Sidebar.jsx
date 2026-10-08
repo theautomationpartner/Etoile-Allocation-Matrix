@@ -1,23 +1,24 @@
 import { Icon } from "./Icon.jsx";
 import { clock } from "../lib/format.js";
 
-// Same markup as the mockup's side nav. Built so far: "Allocation matrix" and, for admins only,
-// "Users & access"; the rest are shown (with their counts) but cannot be opened.
+// Same markup as the mockup's side nav. Every screen is built (plus "Users & access", for admins only); an item without
+// `open` would be shown with its count but could not be opened.
 const NAV = [
   { section: "OVERVIEW" },
-  { id: "home", label: "Control center", icon: "grid" },
+  { id: "home", label: "Control center", icon: "grid", open: true },
   { id: "matrix", label: "Allocation matrix", icon: "table", open: true },
   { section: "BOARDS" },
-  { id: "wholesale", label: "Wholesale Allocation", icon: "bag" },
-  { id: "transit", label: "In-Transit Shipments", icon: "ship" },
-  { id: "po", label: "Purchase Orders", icon: "box" },
-  { id: "sku", label: "Master SKU Inventory", icon: "tag" },
-  { id: "importer", label: "In-Transit Importer", icon: "up" },
+  { id: "wholesale", label: "Wholesale Allocation", icon: "bag", open: true },
+  { id: "transit", label: "In-Transit Shipments", icon: "ship", open: true },
+  { id: "po", label: "Purchase Orders", icon: "box", open: true },
+  { id: "sku", label: "Master SKU Inventory", icon: "tag", open: true },
+  { id: "importer", label: "In-Transit Importer", icon: "up", open: true },
 ];
 const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];
 
 // counts: { home (SKUs that cannot be covered, shown as an alert), wholesale, transit, po, sku, importer }
-export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt, view = "matrix", onView, isAdmin = false }) {
+// dark: the theme in use (chosen or the system's); the Theme button shows it (sun = light, moon = dark) and switches it.
+export function Sidebar({ collapsed, onToggle, onToggleTheme, dark = false, counts = {}, loadedAt, view = "home", onView, isAdmin = false }) {
   return (
     <aside className="side">
       <div className="brand">
@@ -49,7 +50,10 @@ export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loade
       </nav>
       <div className="side-foot">
         <span>{loadedAt ? `Monday synced ${clock(loadedAt)}` : "Monday · US"}</span>
-        <button type="button" onClick={onToggleTheme}>Theme</button>
+        <button type="button" className="theme-tg" onClick={onToggleTheme} aria-pressed={dark}
+          aria-label={dark ? "Dark mode on — switch to light mode" : "Light mode on — switch to dark mode"} title={dark ? "Switch to light mode" : "Switch to dark mode"}>
+          <Icon name={dark ? "moon" : "sun"} className="" size={14} /><span className="theme-l">{dark ? "Dark" : "Light"}</span>
+        </button>
       </div>
     </aside>
   );

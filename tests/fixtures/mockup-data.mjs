@@ -38,6 +38,13 @@ const POS = [
   { id: "PO-00458", ref: "PO260705US", region: "US", eta: "2026-10-30", lines: { EC0450: [800, 0], EC0451: [300, 0] } },
 ];
 
+// The mockup's PO Status and Supplier.
+const PO_INFO = {
+  "PO-00385": ["COMPLETED", "Guangzhou Tinlee Leather Co., Ltd"], "PO-00432": ["AUTHORISED", "KONCAI Aluminum Cases Ltd."],
+  "PO-00441": ["ORDERED", "UNI Leather Co.,Ltd"], "PO-00445": ["ORDERED", "Guangzhou Fiedle Leather Bag Co.,Ltd"],
+  "PO-00450": ["AUTHORISED", "Dongguan Hengli Leather Goods Co., Ltd"], "PO-00458": ["AUTHORISED", "Dongguan Hengli Leather Goods Co., Ltd"],
+};
+
 const SHIPS = [
   { id: "US / FLEX-4084548 / 40HC", eta: "2026-09-03", packing: "Final",
     lines: [["EC0394", "PO-00432", 600], ["EC0395", "PO-00432", 800], ["EC0389", "PO-00432", 408], ["EC0385", "PO-00432", 408]] },
@@ -88,23 +95,47 @@ const ORDERS = [
 
 const SRC = { wh: "warehouse", it: "intransit", po: "po" };
 
+// In-Transit Importer: [item, file, Import Status, uploaded, shipment created]
+const IMPORTS = [
+  ["US / FLEX-4084548 / 40HC", "FLEX-4084548 final.xlsx", "Imported", "2026-08-11", "US / FLEX-4084548 / 40HC"],
+  ["US / FLEX-4119719 / 40HC", "FLEX-4119719 final.xlsx", "Imported", "2026-08-28", "US / FLEX-4119719 / 40HC"],
+  ["US / FLEX-4132795 / 40HC", "FLEX-4132795 final.xlsx", "Imported", "2026-09-01", "US / FLEX-4132795 / 40HC"],
+  ["US / FLEX-4151882 / 40HC", "FLEX-4151882 draft.xlsx", "Imported", "2026-09-10", "US / FLEX-4151882 / 40HC"],
+  ["US / FLEX-4170234 / 40HC", "FLEX-4170234 final.xlsx", "Imported", "2026-09-04", "US / FLEX-4170234 / 40HC"],
+  ["US / FLEX-4188610 / 40HC", "FLEX-4188610 final.xlsx", "Imported", "2026-09-15", "US / FLEX-4188610 / 40HC"],
+  ["US / FLEX-3987237 / 40HC", "FLEX-3987237 draft.xlsx", "Deleted in In-Transit Shipments", "2026-06-18", null],
+  ["US / FLEX-TBD", "packing list TBD.xlsx", "Deleted in In-Transit Shipments", "2026-06-11", null],
+];
+
 export function mockupData() {
   return {
     warehouse: Object.fromEntries(Object.entries(SKUS).map(([sku, s]) => [sku, { itemId: `wh-${sku}`, name: s.n, usQty: s.us }])),
     pos: POS.map((p) => ({
-      id: p.id, name: p.id, reference: p.ref, region: p.region, eta: p.eta,
-      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({ id: `${p.id}-${sku}`, sku, qtyOrdered: ord, qtyOutstanding: ord - arr })),
+      id: p.id, name: p.id, reference: p.ref, region: p.region, eta: p.eta, status: PO_INFO[p.id][0], supplier: PO_INFO[p.id][1],
+      lines: Object.entries(p.lines).map(([sku, [ord, arr]]) => ({
+        id: `${p.id}-${sku}`, sku, qtyOrdered: ord, qtyOutstanding: ord - arr, qtyArrived: arr,
+        status: arr >= ord ? "Fully Arrived" : arr > 0 ? "Partially Arrived" : "Ordered",
+      })),
     })),
     containers: SHIPS.map((s) => ({
       id: s.id, name: s.id, group: "topics", location: "US", eta: s.eta, packingList: s.packing,
       lines: s.lines.map(([sku, po, qty], i) => ({ id: `${s.id}-${i}`, sku, poRef: po, qty })),
     })),
-    orders: ORDERS.map(([id, grp, cancel, lines]) => ({
-      id, name: id, group: GROUP[grp], region: "US", cancelDate: cancel,
-      lines: lines.map(([sku, ord, ful, alloc]) => ({
-        id: `${id}-${sku}`, sku, outstanding: ord - ful,
-        entries: alloc.map(([s, ref, qty]) => ({ source: SRC[s], sourceId: s === "wh" ? `wh-${sku}` : ref, qty })),
-      })),
+    // As loadMatrixData: data.orders = Orders + Pending (the demand), data.fulfilledOrders = the Fulfilled group.
+    orders: ORDERS.filter(([, grp]) => grp !== "Fulfilled").map(order),
+    fulfilledOrders: ORDERS.filter(([, grp]) => grp === "Fulfilled").map(order),
+    imports: IMPORTS.map(([name, file, status, uploaded, ship], i) => ({
+      id: `imp-${i}`, name, uploaded, files: [file], type: "In-Transit", status, location: "US", eta: "", shipmentId: ship,
+    })),
+  };
+}
+
+function order([id, grp, cancel, lines]) {
+  return {
+    id, name: id, group: GROUP[grp], region: "US", cancelDate: cancel,
+    lines: lines.map(([sku, ord, ful, alloc]) => ({
+      id: `${id}-${sku}`, sku, ordered: ord, fulfilled: ful, outstanding: ord - ful,
+      entries: alloc.map(([s, ref, qty]) => ({ source: SRC[s], sourceId: s === "wh" ? `wh-${sku}` : ref, qty })),
     })),
   };
 }

@@ -331,3 +331,174 @@ Prueba en vivo (después del merge a main, con un item de prueba):
      próxima corrida: el dato real lo manda Cin7).
   6. Daily check: Make (o curl) → POST /api/daily-check?dry=1 con el header x-daily-secret → ver
      "writes" y "items"; sin ?dry=1 escribe.
+
+
+--------------------------------------------------------------------------------
+ 12. CONTROL CENTER — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 73 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  C-01 Tarjetas = mockup: 864 · 1,645 (8 order lines) · 12,254 (464/7,801/3,989) · 5,040 (2 shipments · 538) .. PASA
+  C-02 Iguales a la matriz: Impossible, Units to allocate, Already allocated ............................. PASA
+  C-03 Needs a buying decision: EC0388 short 543, EC0384 short 321 (mayor primero) ...................... PASA
+  C-04 Waiting on an allocation: EC0400 EIVR121 520 (45 days left), EC0398 148, EC0386 28; nunca un SKU con faltante PASA
+  C-05 Draft packing lists: FLEX-4151882 · What is coming in ordenado por fecha (FLEX-4119719 in 12 days) .. PASA
+Chequeo visual (npm run ui-check, 111): es la primera pantalla; 4 tarjetas y CTAs del mockup; bloques en orden;
+textos sin cortar; sin scroll horizontal (1200, 1440 y 390 px, una columna en celular); botones a pantallas no
+construidas atenuados con el motivo; una fila abre el panel lateral y × lo cierra; "Open matrix" abre la matriz
+con "Needs allocation". Encabezados de bloque: título y botón nunca se parten (corregido en 1200 px).
+
+
+--------------------------------------------------------------------------------
+ 13. MASTER SKU INVENTORY — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 76 en total, todos pasan) con los datos del mockup:
+  S-01 Filas = mockup: EC0388 57·0·0·600·543·—·10% Short 543; EC0400 8·700·980·520·520·708; EC0387 120·1,832·2,600 . PASA
+  S-02 Tarjetas = mockup: 2 (864) · 7 · 653 + 2,367 · 12,254 (8 SKUs); chips 21·2·7·8·13·2 ......................... PASA
+  S-03 Incoming records: solo US, uno por PurchaseID con sus contenedores; Estimated sin contenedor ................ PASA
+Chequeo visual (npm run ui-check, 122): "Open in Master SKU" del Control center abre esta pantalla con "Sold short";
+tarjetas, chips y columnas del mockup; ▸ muestra los registros sin abrir el panel y ▾ los oculta; una fila abre el
+panel del SKU; la cantidad de un chip = filas mostradas; las 10 columnas entran sin scroll lateral en 1200 y 1440 px
+(antes Status quedaba cortado); en celular la tabla se desplaza dentro de su tarjeta. Menú lateral: el nombre ya no
+se parte en dos renglones por el contador.
+
+--------------------------------------------------------------------------------
+ 14. WHOLESALE ALLOCATION — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 82 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  W-01 Tarjetas = mockup: 2 órdenes (864 u) · 2,509 u en 4 órdenes · EC0388, EC0384 · 1; chips 7·4·2·1·2 ........ PASA
+  W-02 Filas: EIVR118 Ready to ship 100% · EIVR121 Partially allocated 80% (520) · EIVR127 / EIVR129 Cannot be covered PASA
+  W-03 EIVR117 (Fulfilled): Shipped, nunca cuenta como demanda ni como Fully allocated ........................... PASA
+  W-04 Líneas: Unallocated / Mixed / In-Transit y de dónde vienen las unidades (contenedor · cantidad) ............ PASA
+  W-05 Reserva en un contenedor que ya no existe → chip rojo "(orphaned)" ........................................ PASA
+  W-06 Solo órdenes US; "Cancel date ≤ 45 days" solo con unidades sin asignar ..................................... PASA
+Chequeo visual (npm run ui-check, 141): "See orders" del Control center abre esta pantalla con "Fully allocated";
+tarjetas, chips y columnas del mockup; una tarjeta por grupo en orden con "N orders · M line items"; All orders =
+filas = badge del menú; ▸ muestra las líneas sin abrir el panel, una línea abre su SKU, ▾ las oculta; una orden abre
+su panel; la cantidad de cada chip = órdenes listadas; "SKUs blocking these orders" abre Master SKU "Sold short";
+las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: un número largo como #ECUS28341 /
+ANTHROPOLOGIE ahora parte después de la barra); en celular las tablas se desplazan dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 15. IN-TRANSIT SHIPMENTS — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 87 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  T-01 Tarjetas = mockup: 5 (7,952 u) · 2 (4,502 prometidas) · 2,367 en 5 contenedores · 1 (100); chips 6·5·2·5·6·1 PASA
+  T-02 Filas por ETA: FLEX-4084548 2,216·1,758·458 79% landed · FLEX-4119719 3,910·3,372·538 86% (PO-00432·3,609,
+       PO-00441·301) · FLEX-4151882 Draft 920·100·820 11% ......................................................... PASA
+  T-03 Committed y Free = lo que la matriz tiene y ofrece en cada contenedor; los subitems suman lo mismo ......... PASA
+  T-04 EC0387 de 2 POs: fila de total 1,000; PO-00432 699 primero, luego PO-00441 301; "free to sell" si nada ..... PASA
+  T-05 Customers waiting: un retailer por contenedor, sin repetir ................................................ PASA
+Chequeo visual (npm run ui-check, 158): "See shipments" del Control center abre esta pantalla con "Arriving ≤ 30
+days" y "See where it sits" de la matriz con "Has free units"; ya no queda ningún botón atenuado en el Control
+center; tarjetas, chips y columnas del mockup; All shipments = filas = badge del menú; ▸ muestra los subitems sin
+abrir el panel, un subitem abre su SKU, ▾ los oculta; una fila abre el contenedor y un chip de PO la PO; la cantidad
+de cada chip = contenedores listados; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido en
+1200: la columna Shipment se achicó 22 px); en celular la tabla se desplaza dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 16. PURCHASE ORDERS — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 92 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  P-01 Tarjetas = mockup: 5 (6,922 sin embarcar) · 1 · 5 · 0; chips 6·5·1·4·5·0 ................................ PASA
+  P-02 Filas = mockup: PO-00432 7,490·0·6,586·904 88% con 4 contenedores · PO-00441 3,700·0·1,752·1,948 47% ...... PASA
+  P-03 Líneas = mockup: PO-00441 EC0387 1,400·0·632·768, reservado 600, vendido 901 (EIVR118 600, EIVR121 301) ... PASA
+  P-04 Solo POs US; Arrived = Qty Arrived de monday aunque supere lo pedido ........................................ PASA
+  P-05 Reserva en una PO que llega después de la cancel date → "Lands too late" ..................................... PASA
+Nota: en lo que viaja en contenedores, el reparto por orden entre 2 POs del mismo SKU puede diferir del mockup (el
+mockup trae la PO en cada reserva; monday no). Los totales por PO y SKU son iguales.
+Chequeo visual (npm run ui-check, 173): se abre desde el menú; tarjetas, chips y columnas del mockup; All POs =
+filas = badge del menú; ▸ muestra las líneas sin abrir el panel, una línea abre su SKU, ▾ las oculta; una fila abre
+la PO y un chip de contenedor el contenedor; la cantidad de cada chip = POs listadas; una tarjeta filtra y un segundo
+clic vuelve; las 10 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: anchos y márgenes); en celular
+la tabla se desplaza dentro de su tarjeta.
+Dato real a revisar: PO-00432 tiene 16,788 unidades en contenedores con PO Reference PO-00432 y 13,812 pedidas.
+
+--------------------------------------------------------------------------------
+ 17. IN-TRANSIT IMPORTER — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 96 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  I-01 Tarjetas = mockup: 6 (10,168 u) · 1 · 2 · 5; chips 8·6·1·2 ................................................. PASA
+  I-02 Filas = mockup (la más nueva primero): FLEX-4119719 Live Final 28 Sep 3,910 · 3,372; FLEX-4151882 Draft
+       920 · 100 reversible; "packing list TBD" Reverted, sin shipment ............................................ PASA
+  I-03 Subida Live cuyo contenedor ya está en Archive (Done): se muestra, nunca como reversible ..................... PASA
+  I-04 Solo US: Location US, o sin Location y nombre que empieza con US ............................................ PASA
+Chequeo visual (npm run ui-check, 188): se abre desde el menú; tarjetas, nota, chips y columnas del mockup; All
+uploads = filas = badge del menú; "Upload packing list" abre el tablero del Importer en monday en otra pestaña;
+"Open" abre el panel del contenedor; las revertidas se ven tachadas; la cantidad de cada chip = subidas listadas; una
+tarjeta filtra y un segundo clic vuelve; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: la
+columna File se achicó); en celular la tabla se desplaza dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 18. TEMA, MENÚ Y PRUEBA FINAL DEL SISTEMA (2026-10-08)
+--------------------------------------------------------------------------------
+  F-01 Botón de tema: claro ↔ oscuro; el menú lateral sigue (blanco / oscuro), sol "Light" o luna "Dark" .......... PASA
+  F-02 Menú colapsado: solo el ícono del tema; celular (390 px): sin scroll horizontal ........................... PASA
+  F-03 Cada ítem del menú abre su pantalla (miga y título); ninguno deshabilitado ................................. PASA
+  F-04 Cifras compartidas iguales en todas las pantallas (datos reales de monday):
+       Waiting to be allocated = Units to allocate = Units waiting on allocation (3,728) · Committed to wholesale =
+       Already allocated = Master SKU (22,074) · libre en tránsito = Unclaimed units in transit (25,504) · libre en
+       mano = Sellable right now (13,048) · Landing in 30 days = Arriving in 30 days (6) · on order de la matriz =
+       Still to ship de las POs (45,323) · sin faltantes en ninguna (0) ............................................ PASA
+  F-05 Consola del navegador sin errores ni avisos recorriendo las 8 pantallas .................................... PASA
+npm test 96/96 · npm run ui-check 192/192 (1200, 1440 y 390 px) · build sin errores.
+
+--------------------------------------------------------------------------------
+ 19. MASTER SKU — revisión contra "Master SKU Inventory — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  R-01 Registros de entrada unidos a los contenedores por SKU + PO Reference (§6, §8): ejemplo del documento EC0450
+       → PO260620US 500 en viaje (200 + 300) · PO260705US 600 en viaje + 200 por embarcar; un contenedor AU nunca
+       cuenta ........................................................................................................ PASA
+  R-02 Dato real: PO-00430 · EC0357 mostraba "EC103 (456) + EC103 (456)" (contenedor AU, repetido, vía In Transit ID);
+       ahora "FLEX-4132795 (456) · 144 still estimated", igual que Purchase Orders ..................................... PASA
+  R-03 Panel de SKU: "Incoming records" = los registros de la fila desplegada ....................................... PASA
+  R-04 Panel de contenedor: "Packing list that created it" (archivo, Import Status, fecha de subida) ................ PASA
+npm test 98/98 · npm run ui-check 192/192.
+
+--------------------------------------------------------------------------------
+ 20. WHOLESALE — revisión contra "Wholesale Allocation — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  V-01 SKUs blocking = SKUs con faltante (del SKU) en órdenes que no se pueden cubrir, aunque esa línea sola entre . PASA
+  V-02 Outstanding = US Qty Outstanding de monday; "<n> SKUs" debajo de la orden = subitems .......................... PASA
+  V-03 Una orden Fulfilled abre su panel con "Shipped" (antes solo se desplegaba) ................................... PASA
+  V-04 Panel de la orden: aviso "<n> units lost their source" (§7.2) ................................................ PASA
+  V-05 "past due" solo cuando la Cancel Date ya pasó; el mismo día dice "0 days left" ................................ PASA
+  V-06 Allocated Status / Allocated % de monday vs pantalla (datos reales): coinciden EIVR118, EIVR117, #ECUS28341;
+       difieren EIVR121 (monday "Attention Required", app sin faltante → Partially allocated) y EIVR114 (monday
+       "Allocated 100%", app 93% con 1,917 sin asignar). La app no escribe esas columnas (decisión del cliente) ..... A DEFINIR
+npm test 100/100 · npm run ui-check 194/194.
+
+--------------------------------------------------------------------------------
+ 21. IN-TRANSIT — revisión contra "In-Transit (Shipments e Importer) — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  N-01 Ejemplo del documento FLEX-4188610: 700 a bordo · 480 prometidas · 220 libres; PO-00450 · 300, PO-00458 · 400;
+       EC0450 (2 POs) 550 · 480 · 70 con Anthropologie 150, Macy's 180, Revolve 150 en la fila de total .............. PASA
+  N-02 SKU de varias POs: Promised to, Committed y Free solo en la fila de total; los subitems muestran "—" (§5.2) .. PASA
+  N-03 Contenedor que monday está eliminando: fila atenuada con el paso; panel con "Deletion status" (§8.3) ......... PASA
+  N-04 Panel del contenedor: "Departed <ETD> · arrives <ETA>"; "Delete this shipment": Final → texto, Draft →
+       recuadro con lo que se deshace y aviso de unidades prometidas (botón desactivado, pendiente de confirmar) .... PASA
+  N-05 Importer: Reverted = todo Import Status distinto de Imported; "Uploaded this month" = desde hoy − 30 .......... PASA
+npm test 103/103 · npm run ui-check 194/194.
+
+--------------------------------------------------------------------------------
+ 22. PURCHASE ORDERS (requerimientos), DELETE SHIPMENT, UPLOAD PACKING LIST (2026-10-08)
+--------------------------------------------------------------------------------
+  Q-01 Purchase Orders contra su documento: todo aplicado; agregado "raised <Date>" en el panel de la PO ........... PASA
+  Q-02 /api/delete-shipment (receptor local en lugar de Make, nada real borrado): Final → 409 "Only shipments created
+       from a Draft file"; contenedor AU → 409; id inexistente → 404; id inválido / cuerpo no JSON → 400; Draft US
+       (FLEX-4169490) → 200 y el webhook recibe { event…, itemId, itemName, requestedBy… }; sin variable → 503 ........ PASA
+  Q-03 Pantalla: Draft → "Delete shipment" → diálogo "Delete FLEX-…?" con las unidades prometidas → Cancel no envía;
+       confirmar → aviso + "Deletion requested"; Final → solo el texto, sin botón ..................................... PASA
+  Q-04 /api/importer-upload: GET trae las 6 personas del formulario; ?dry=1 arma las columnas (Type Import, Location,
+       ETD, ETA, People) y deja Import Status = Import para el final; faltantes → 400 con la lista ................... PASA
+  Q-05 Adjuntar archivo por la API de monday: probado en un tablero temporal (creado y borrado) ....................... PASA
+  Q-06 Ventana "Upload packing list": campos del formulario, yo marcado en People, valida faltantes, selector de
+       archivo y fechas en inglés, Esc / Cancel cierran, envío (en modo prueba) → aviso y cierre ..................... PASA
+  Q-07 El formulario de monday embebido pide login de monday → no se usa embebido (queda como enlace) ................ INFO
+  Q-08 QA senior — buscador en Wholesale, In-Transit, Purchase Orders, Master SKU e Importer: filtra, muestra "N of M
+       match" y el mensaje sin resultados; Enter abre el panel y Esc lo cierra; el filtro elegido se mantiene al
+       cambiar de pantalla; Refresh vuelve a leer monday (15–20 s) ............................................. PASA
+  Q-09 HALLAZGO y arreglo: cada tecla del buscador tardaba ~400 ms en Master SKU (se redibujaban todas las
+       pantallas, también la matriz oculta). Ahora el campo guarda el texto y la app lo recibe como actualización de
+       baja prioridad: 15–53 ms por tecla; la tabla se filtra enseguida después ................................... PASA
+  Q-10 Ventanas nuevas a 390 px y en oscuro: entran en pantalla, sin scroll horizontal, botones visibles ........... PASA
+npm test 103/103 · npm run ui-check 196/196.

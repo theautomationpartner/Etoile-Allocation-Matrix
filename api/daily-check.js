@@ -24,7 +24,7 @@ import { createMondayApi } from "../src/lib/monday.js";
 import { buildModel, SOURCE } from "../src/lib/engine.js";
 import { BASELINE, LEDGER, WRITE_OPS, checkWrite, chunks } from "../src/lib/mondayWrites.js";
 import { allocationStatus, ledgerRecord } from "../src/lib/allocation.js";
-import { arrivalLabel } from "../src/lib/arrival.js";
+import { arrivalIndex, arrivalLabel } from "../src/lib/arrival.js";
 import { transitUpdates, writeLedgerLine, writeTransitLines } from "../src/lib/allocationSync.js";
 import { APP_LINK, buildReview, reviewMail } from "../src/lib/review.js";
 
@@ -80,7 +80,7 @@ export async function POST(request) {
     const api = createMondayApi(monday);
     const data = await api.loadMatrixData();
     const model = buildModel(data);
-    const where = { containerById: new Map(data.containers.map((c) => [String(c.id), c])), poById: new Map(data.pos.map((p) => [String(p.id), p])) };
+    const where = { containerById: new Map(data.containers.map((c) => [String(c.id), c])), ix: arrivalIndex(data.containers, data.pos) };
 
     // 1 — Last Fulfilled Processed where it is still empty (every line of the open orders; a new line from
     // Make gets it on the next run).

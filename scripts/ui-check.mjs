@@ -74,6 +74,250 @@ async function run() {
     // A headless window never has the system focus, so focus events would not fire; behave like a real, focused window.
     await send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await send("Page.navigate", { url: APP_URL });
+    // The app opens on the Control center (the home screen).
+    for (let i = 0; i < 120 && !(await ev(`return !!document.querySelector(".two .card")`).catch(() => false)); i++) await sleep(500);
+    const home = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const r={ crumb: q(".crumb b")?.textContent, title: q(".page-h h2")?.textContent, navOn: q('[data-nav="home"]')?.classList.contains("on"),
+        cards: [...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .lab")].map(x=>x.textContent),
+        blocks: [...document.querySelectorAll(".two .card-h h3")].map(x=>x.textContent),
+        noScroll: document.documentElement.scrollWidth <= innerWidth + 1,
+        textsFit: [...document.querySelectorAll(".two .att .t, .two .att .m, .tl-i .t, .tl-i .m")].every(x=>x.scrollWidth<=x.clientWidth+1),
+        noDimmed: !document.querySelector(".view:not([hidden]) .btn[disabled], .view:not([hidden]) .kpi .cta.soon"),
+        cta: [...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .cta")].map(x=>x.textContent.replace("→","").trim()) };
+      const row=q(".two .att"); if(row){ row.click(); await wait(300); r.rail = q(".rail.on .rail-trail .cur")?.textContent || ""; q(".rail-x")?.click(); await wait(200); r.railClosed = !q(".rail.on"); }
+      return JSON.stringify(r)`));
+    check(`Control center is the first screen (crumb, title, side nav) ${tag}`, home.crumb === "Control center" && home.title === "Control center" && home.navOn, JSON.stringify(home));
+    check(`Control center: the 4 cards of the mockup ${tag}`, home.cards.join("|") === "Sales at risk|Waiting to be allocated|Committed to wholesale|Landing in 30 days"
+      && home.cta.join("|") === "Review SKUs|Open matrix|See orders|See shipments", JSON.stringify(home.cards) + JSON.stringify(home.cta));
+    check(`Control center: blocks in the mockup's order, texts not cut ${tag}`, home.blocks[0] === "Needs a buying decision" && home.blocks[1] === "Waiting on an allocation"
+      && home.blocks.includes("What is coming in") && home.blocks.includes("Where committed units come from") && home.textsFit, JSON.stringify(home.blocks));
+    check(`Control center: no horizontal page scroll ${tag}`, home.noScroll);
+    check(`Control center: every button and card opens its screen (none dimmed) ${tag}`, home.noDimmed);
+    check(`Control center: a row opens its record in the side panel, × closes it ${tag}`, home.rail && home.railClosed, JSON.stringify({ rail: home.rail, closed: home.railClosed }));
+    // Side nav: every item opens its screen (crumb and page title); none is disabled.
+    const nav = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const out=[];
+      const items=[...document.querySelectorAll(".nav a")]; const off=items.filter(a=>a.classList.contains("off")).map(a=>a.textContent);
+      for (const id of items.map(a=>a.dataset.nav).filter(Boolean)) {
+        const a=document.querySelector('[data-nav="'+id+'"]'); const label=a.querySelector(".lb").textContent; a.click(); await wait(350);
+        const crumb=document.querySelector(".crumb b")?.textContent; const title=document.querySelector(".view:not([hidden]) .page-h h2, .view:not([hidden]) h2")?.textContent;
+        out.push({ id, label, ok: crumb === label && a.classList.contains("on") && (id === "users" || title === label), crumb, title });
+      }
+      document.querySelector('[data-nav="home"]').click(); await wait(300);
+      return JSON.stringify({ off, out })`));
+    check(`side nav: every item opens its screen, none disabled ${tag}`, nav.off.length === 0 && nav.out.length >= 7 && nav.out.every((x) => x.ok), JSON.stringify(nav));
+    // Theme button: light ↔ dark; the side nav follows (white in light, the mockup's dark in dark); sun / moon icon.
+    const theme = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=()=>document.querySelector(".theme-tg");
+      const state=()=>({ theme: document.documentElement.getAttribute("data-theme")||"system", nav: getComputedStyle(document.querySelector(".side")).backgroundColor,
+        on: getComputedStyle(document.querySelector(".nav a.on")).backgroundColor, label: b().textContent, pressed: b().getAttribute("aria-pressed") });
+      const r=[state()]; b().click(); await wait(250); r.push(state()); b().click(); await wait(250); r.push(state()); return JSON.stringify(r)`));
+    const looks = (x) => (x.label === "Light" ? x.nav === "rgb(255, 255, 255)" && x.on === "rgb(21, 23, 28)" && x.pressed === "false"
+      : x.label === "Dark" && x.nav === "rgb(10, 12, 15)" && x.on === "rgb(255, 255, 255)" && x.pressed === "true");
+    check(`Theme button switches light ↔ dark and the side nav follows (sun / moon) ${tag}`, theme.every(looks) && theme[0].label !== theme[1].label && theme[0].label === theme[2].label, JSON.stringify(theme));
+    // Master SKU Inventory: from the Control center ("Open in Master SKU" → "Sold short"), then its own checks.
+    const sku = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const b=[...document.querySelectorAll(".view:not([hidden]) .card-h .btn")].find(x=>x.textContent==="Open in Master SKU"); const r={ enabled: !!b && !b.disabled };
+      b?.click(); await wait(400);
+      r.crumb=q(".crumb b")?.textContent; r.chipOn=q(".view:not([hidden]) .fchip.on")?.textContent||""; r.navOn=q('[data-nav="sku"]')?.classList.contains("on");
+      [...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^All products/.test(x.textContent))?.click(); await wait(300);
+      r.cards=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .lab")].map(x=>x.textContent);
+      r.chips=[...document.querySelectorAll(".view:not([hidden]) .fchip")].map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...document.querySelectorAll(".skt thead th")].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(".skt tbody tr.clickable").length;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".skt").offsetWidth <= q(".tw").clientWidth + 1; // all 10 columns visible without scrolling sideways
+      const exp=q(".skt button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".skt tr.sub").length; r.subhead=!!q(".skt tr.subhead"); r.railStayedClosed=!q(".rail.on"); exp.click(); await wait(200); r.collapsed=!q(".skt tr.subhead"); }
+      q(".skt tbody tr.clickable")?.click(); await wait(300); r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200);
+      const chip=[...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^Has unassigned demand/.test(x.textContent)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+      chip?.click(); await wait(250); r.filtered = document.querySelectorAll(".skt tbody tr.clickable").length === n;
+      [...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^All products/.test(x.textContent))?.click(); await wait(200);
+      return JSON.stringify(r)`));
+    check(`"Open in Master SKU" opens Master SKU Inventory with "Sold short" on ${tag}`, sku.enabled && sku.crumb === "Master SKU Inventory" && /^Sold short/.test(sku.chipOn) && sku.navOn, JSON.stringify(sku));
+    check(`Master SKU: cards, Show chips and columns of the mockup ${tag}`, sku.cards.join("|") === "SKUs sold short|Out of stock, still selling|Sellable right now|Committed to wholesale"
+      && sku.chips.join("|") === "All products|Sold short|No warehouse stock|Has unassigned demand|Free stock available|No wholesale demand"
+      && sku.head.join("|") === "Product|SKU|On hand|In transit|On order|Sold|Unassigned|Free to sell|Cover|Status" && sku.rows > 0, JSON.stringify(sku));
+    check(`Master SKU: ▸ shows the incoming records (without opening the panel), ▾ hides them ${tag}`, sku.sub > 0 && sku.subhead && sku.railStayedClosed && sku.collapsed, JSON.stringify(sku));
+    check(`Master SKU: a row opens the SKU's side panel; a chip's count = rows shown ${tag}`, sku.rail && sku.filtered, JSON.stringify(sku));
+    check(`Master SKU: no horizontal page scroll, every column visible (Status not cut) ${tag}`, sku.noScroll && sku.fits, JSON.stringify({ noScroll: sku.noScroll, fits: sku.fits }));
+    await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
+    // Wholesale Allocation: from the Control center ("See orders" → "Fully allocated"), then its own checks.
+    const wh = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".wht tbody tr.clickable:not(.sub)";
+      all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Committed to wholesale")?.click(); await wait(400);
+      const r={ crumb: q(".crumb b")?.textContent, chipOn: q(".view:not([hidden]) .fchip.on")?.textContent||"", navOn: q('[data-nav="wholesale"]')?.classList.contains("on") };
+      all(".view:not([hidden]) .fchip").find(x=>/^All orders/.test(x.textContent))?.click(); await wait(300);
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.cta=all(".view:not([hidden]) .kpis .kpi .cta").map(x=>x.textContent.replace("→","").trim());
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=all(".wht")[0] ? [...all(".wht")[0].querySelectorAll("thead th")].map(x=>x.textContent) : [];
+      r.groups=all(".wh-group .card-h h3").map(x=>x.textContent);
+      r.subs=all(".wh-group .card-h .sub").every(x=>/^[0-9,]+ orders? · [0-9,]+ line items?$/.test(x.textContent));
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All orders/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="wholesale"] .cnt')?.textContent||allN) === allN;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=all(".wht").every(t=>t.offsetWidth <= t.closest(".tw").clientWidth + 1);
+      const exp=q(".wht button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".wht tr.sub").length; r.subhead=all(".wht tr.subhead")[0]?.textContent||""; r.railStayedClosed=!q(".rail.on");
+        q(".wht tr.sub")?.click(); await wait(300); r.skuRail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200); exp.click(); await wait(200); r.collapsed=!q(".wht tr.subhead"); }
+      const openRow=all(ROWS).find(tr=>!tr.closest(".wh-group").querySelector("h3").textContent.includes("Fulfilled")); openRow?.click(); await wait(300);
+      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!openRow && openRow.querySelector(".eivr")?.textContent === r.rail;
+      r.secs=[...document.querySelectorAll(".rail.on .sec h4")].map(h=>h.childNodes[0].textContent.trim()); q(".rail-x")?.click(); await wait(200);
+      const fulRow=all(ROWS).find(tr=>tr.closest(".wh-group").querySelector("h3").textContent.includes("Fulfilled"));
+      if(fulRow){ fulRow.click(); await wait(300); r.fulRail = (q(".rail.on .rail-trail .cur")?.textContent||"") === fulRow.querySelector(".eivr").textContent && /Shipped/.test(q(".rail.on .chip.mut")?.textContent||""); q(".rail-x")?.click(); await wait(200); } else r.fulRail = true;
+      r.filtered={}; for (const name of ["Not fully allocated","Cannot be covered","Fully allocated"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="SKUs blocking these orders"); card?.click(); await wait(400);
+      r.toSku = q(".crumb b")?.textContent === "Master SKU Inventory" && /^Sold short/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
+      all(".view:not([hidden]) .fchip").find(x=>/^All products/.test(x.textContent))?.click(); await wait(200);
+      return JSON.stringify(r)`));
+    check(`"See orders" opens Wholesale Allocation with "Fully allocated" on ${tag}`, wh.crumb === "Wholesale Allocation" && /^Fully allocated/.test(wh.chipOn) && wh.navOn, JSON.stringify(wh));
+    check(`Wholesale: cards, Show chips and columns of the mockup ${tag}`, wh.cards.join("|") === "Orders that can't be covered|Units waiting on allocation|SKUs blocking these orders|Cancel date within 45 days"
+      && wh.chips.join("|") === "All orders|Not fully allocated|Cannot be covered|Cancel date ≤ 45 days|Fully allocated"
+      && wh.head.join("|") === "Order|Retailer|Cancel date|Status|Allocation|Ordered|Fulfilled|Unallocated|Covered by" && wh.rows > 0, JSON.stringify(wh));
+    check(`Wholesale: one card per group (Orders, Pending, Fulfilled) with "N orders · M line items" ${tag}`, wh.groups.length > 0 && wh.groups.every((g, i) => ["Orders", "Pending", "Fulfilled"].includes(g) && (i === 0 || ["Orders", "Pending", "Fulfilled"].indexOf(g) > ["Orders", "Pending", "Fulfilled"].indexOf(wh.groups[i - 1]))) && wh.subs, JSON.stringify(wh.groups));
+    check(`Wholesale: "All orders" count = rows listed = side nav badge ${tag}`, wh.allCount, JSON.stringify(wh));
+    check(`Wholesale: ▸ shows the line items (without opening the panel), a line opens its SKU, ▾ hides them ${tag}`, wh.sub > 0 && /^ProductSKUOrderedFulfilledOutstandingUnallocatedSourceComing from$/.test(wh.subhead) && wh.railStayedClosed && wh.skuRail && wh.collapsed, JSON.stringify(wh));
+    check(`Wholesale: an order row opens the order's side panel with its sections (requirements §7.2) ${tag}`, wh.railMatches
+      && ["Outbound shipments", "Where every unit comes from"].every((h) => wh.secs.includes(h)), JSON.stringify({ rail: wh.rail, secs: wh.secs }));
+    check(`Wholesale: a Fulfilled order's row opens its panel as "Shipped" ${tag}`, wh.fulRail, JSON.stringify({ fulRail: wh.fulRail }));
+    check(`Wholesale: each Show chip's count = orders listed ${tag}`, Object.values(wh.filtered).every(Boolean), JSON.stringify(wh.filtered));
+    check(`Wholesale: no horizontal page scroll, every column visible ${tag}`, wh.noScroll && wh.fits, JSON.stringify({ noScroll: wh.noScroll, fits: wh.fits }));
+    check(`Wholesale: "SKUs blocking these orders" opens Master SKU with "Sold short" ${tag}`, wh.toSku, JSON.stringify(wh));
+    await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
+    // In-Transit Shipments: from the Control center ("See shipments" → "Arriving ≤ 30 days"), then its own checks.
+    const tr = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".trt tbody tr.clickable:not(.sub)";
+      all(".view:not([hidden]) .kpis .kpi").find(k=>/^Landing in/.test(k.querySelector(".lab")?.textContent||""))?.click(); await wait(400);
+      const r={ crumb: q(".crumb b")?.textContent, chipOn: q(".view:not([hidden]) .fchip.on")?.textContent||"", navOn: q('[data-nav="transit"]')?.classList.contains("on") };
+      all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.click(); await wait(300);
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...(q(".trt")?.querySelectorAll("thead th")||[])].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="transit"] .cnt')?.textContent||allN) === allN;
+      const etas=all(ROWS).map(tr=>tr.children[1].textContent); r.etas=etas;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".trt").offsetWidth <= q(".trt").closest(".tw").clientWidth + 1;
+      const exp=q(".trt button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".trt tr.sub").length; r.subhead=q(".trt tr.subhead")?.textContent||""; r.railStayedClosed=!q(".rail.on");
+        q(".trt tr.sub")?.click(); await wait(300); r.skuRail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200); exp.click(); await wait(200); r.collapsed=!q(".trt tr.subhead"); }
+      const first=q(ROWS); first?.click(); await wait(300);
+      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!first && first.querySelector(".tr-ship .strong")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
+      const poChip=q(ROWS+" button.chip.po"); if(poChip){ poChip.click(); await wait(300); r.poRail=q(".rail.on .rail-trail .cur")?.textContent||""; r.poMatches=poChip.textContent.startsWith(r.poRail); q(".rail-x")?.click(); await wait(200); } else r.poMatches=true;
+      const draftRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Draft"));
+      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .btn.danger").find(x=>x.textContent==="Delete shipment");
+        r.delBox=!!q(".rail.on .danger-box .cascade") && !!del && !del.disabled; del?.click(); await wait(250);
+        r.delAsk=/^Delete .+\?$/.test(q(".ua-dlg h3")?.textContent||""); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
+        r.delCancel=!q(".ua-dlg") && !!q(".rail.on"); q(".rail-x")?.click(); await wait(200); } else { r.delBox=r.delAsk=r.delCancel=true; r.noDraft=true; }
+      const finalRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Final"));
+      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
+      r.filtered={}; for (const name of ["Not arrived","Arriving ≤ 30 days","Has free units","Customers depend on it","Draft packing list"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.click(); await wait(200);
+      return JSON.stringify(r)`));
+    check(`"See shipments" opens In-Transit Shipments with "Arriving ≤ 30 days" on ${tag}`, tr.crumb === "In-Transit Shipments" && /^Arriving ≤ 30 days/.test(tr.chipOn) && tr.navOn, JSON.stringify(tr));
+    check(`In-Transit: cards, Show chips and columns of the mockup ${tag}`, tr.cards.join("|") === "Still on the water|Arriving in 30 days|Unclaimed units in transit|Draft packing lists"
+      && tr.chips.join("|") === "All shipments|Not arrived|Arriving ≤ 30 days|Has free units|Customers depend on it|Draft packing list"
+      && tr.head.join("|") === "Shipment|Arrives|From PO|Packing list|On board|Committed|Free|Claimed|Customers waiting" && tr.rows > 0, JSON.stringify(tr));
+    check(`In-Transit: "All shipments" count = rows listed = side nav badge ${tag}`, tr.allCount, JSON.stringify(tr));
+    check(`In-Transit: ▸ shows the subitems (without opening the panel), a subitem opens its SKU, ▾ hides them ${tag}`, tr.sub > 0 && /^Subitem · productSKUOn boardCommittedFreeFrom POPromised to$/.test(tr.subhead) && tr.railStayedClosed && tr.skuRail && tr.collapsed, JSON.stringify(tr));
+    check(`In-Transit: a row opens the container's side panel; a PO chip opens the PO's ${tag}`, tr.railMatches && tr.poMatches, JSON.stringify({ rail: tr.rail, po: tr.poRail }));
+    check(`In-Transit: "Delete this shipment" — Draft: what gets undone + confirmation (Cancel sends nothing); Final: only the explanation ${tag}`,
+      tr.delBox && tr.delAsk && tr.delCancel && tr.finalText, JSON.stringify({ box: tr.delBox, ask: tr.delAsk, cancel: tr.delCancel, final: tr.finalText, noDraft: tr.noDraft }));
+    check(`In-Transit: each Show chip's count = shipments listed ${tag}`, Object.values(tr.filtered).every(Boolean), JSON.stringify(tr.filtered));
+    check(`In-Transit: no horizontal page scroll, every column visible ${tag}`, tr.noScroll && tr.fits, JSON.stringify({ noScroll: tr.noScroll, fits: tr.fits }));
+    // Purchase Orders (side nav): its own checks.
+    await ev(`document.querySelector('[data-nav="po"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".pot tbody tr")`)); i++) await sleep(250);
+    const po = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".pot tbody tr.clickable:not(.sub)";
+      const r={ crumb: q(".crumb b")?.textContent, navOn: q('[data-nav="po"]')?.classList.contains("on") };
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...(q(".pot")?.querySelectorAll("thead th")||[])].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All POs/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="po"] .cnt')?.textContent||allN) === allN;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".pot").offsetWidth <= q(".pot").closest(".tw").clientWidth + 1;
+      const exp=q(".pot button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".pot tr.sub").length; r.subhead=q(".pot tr.subhead")?.textContent||""; r.railStayedClosed=!q(".rail.on");
+        q(".pot tr.sub")?.click(); await wait(300); r.skuRail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200); exp.click(); await wait(200); r.collapsed=!q(".pot tr.subhead"); }
+      const first=q(ROWS); first?.click(); await wait(300);
+      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!first && first.querySelector(".po-name .strong")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
+      const ship=q(ROWS+" button.chip.it"); if(ship){ ship.click(); await wait(300); r.shipRail=q(".rail.on .rail-trail .cur")?.textContent||""; r.shipMatches=ship.textContent.startsWith(r.shipRail); q(".rail-x")?.click(); await wait(200); } else r.shipMatches=true;
+      r.filtered={}; for (const name of ["Still open","Nothing shipped","Partially shipped","Sold to customers","Lands too late"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Open purchase orders"); card?.click(); await wait(250);
+      r.cardFilter=/^Still open/.test(q(".view:not([hidden]) .fchip.on")?.textContent||""); card?.click(); await wait(250);
+      r.cardBack=/^All POs/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
+      return JSON.stringify(r)`));
+    check(`Purchase Orders opens from the side nav ${tag}`, po.crumb === "Purchase Orders" && po.navOn, JSON.stringify(po));
+    check(`Purchase Orders: cards, Show chips and columns of the mockup ${tag}`, po.cards.join("|") === "Open purchase orders|Nothing shipped yet|Already sold to customers|Arrives after a cancel date"
+      && po.chips.join("|") === "All POs|Still open|Nothing shipped|Partially shipped|Sold to customers|Lands too late"
+      && po.head.join("|") === "Purchase order|Supplier|ETA|Ordered|Arrived|Shipped|Still to ship|Progress|Shipments|Sold to" && po.rows > 0, JSON.stringify(po));
+    check(`Purchase Orders: "All POs" count = rows listed = side nav badge ${tag}`, po.allCount, JSON.stringify(po));
+    check(`Purchase Orders: ▸ shows the line items (without opening the panel), a line opens its SKU, ▾ hides them ${tag}`, po.sub > 0 && /^ProductSKUStatusOrderedArrivedShippedStill to shipReserved on POSold to \(direct \+ via containers\)$/.test(po.subhead) && po.railStayedClosed && po.skuRail && po.collapsed, JSON.stringify(po));
+    check(`Purchase Orders: a row opens the PO's side panel; a shipment chip opens the container's ${tag}`, po.railMatches && po.shipMatches, JSON.stringify({ rail: po.rail, ship: po.shipRail }));
+    check(`Purchase Orders: each Show chip's count = POs listed; a card filters and a second click goes back ${tag}`, Object.values(po.filtered).every(Boolean) && po.cardFilter && po.cardBack, JSON.stringify(po.filtered));
+    check(`Purchase Orders: no horizontal page scroll, every column visible ${tag}`, po.noScroll && po.fits, JSON.stringify({ noScroll: po.noScroll, fits: po.fits }));
+    // In-Transit Importer (side nav): its own checks.
+    await ev(`document.querySelector('[data-nav="importer"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".imt tbody tr")`)); i++) await sleep(250);
+    const im = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".imt tbody tr";
+      const r={ crumb: q(".crumb b")?.textContent, navOn: q('[data-nav="importer"]')?.classList.contains("on") };
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...(q(".imt")?.querySelectorAll("thead th")||[])].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All uploads/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="importer"] .cnt')?.textContent||allN) === allN;
+      r.note = /^Deleting a shipment undoes the whole chain\./.test(q(".view:not([hidden]) .note:not(.warn)")?.textContent||"");
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".imt").offsetWidth <= q(".imt").closest(".tw").clientWidth + 1;
+      const open=all(ROWS+" .btn").find(b=>b.textContent==="Open"); const code=open?.closest("tr").querySelector(".chip.it")?.textContent;
+      open?.click(); await wait(300); r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!open && code === r.rail; q(".rail-x")?.click(); await wait(200);
+      r.reverted = all(ROWS).filter(tr=>tr.textContent.includes("Reverted")).every(tr=>tr.classList.contains("gone"));
+      r.filtered={}; for (const name of ["Live shipments","Draft, reversible","Reverted"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const upBtn=all(".view:not([hidden]) .page-h .btn").find(x=>x.textContent==="Upload packing list"); upBtn?.click(); for (let t=0; t<40 && !document.querySelector(".up-dlg .up-p"); t++) await wait(250);
+      const dlg=q(".up-dlg"); r.upFields = dlg ? [...dlg.querySelectorAll(".up-l")].map(l=>(l.querySelector("legend")||l).childNodes[0].textContent.trim()) : [];
+      r.upPeople = dlg ? dlg.querySelectorAll(".up-p input").length : 0; r.upMe = dlg ? dlg.querySelectorAll(".up-p input:checked").length === 1 : false;
+      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import, ETD\.$/.test(q(".up-dlg .note.warn")?.textContent||"");
+      r.upEnglish = !!dlg && ![...dlg.querySelectorAll("input[type=file], input[type=date]")].some(i=>i.offsetWidth>2) && /Choose file/.test(dlg.textContent) && /Choose a date/.test(dlg.textContent);
+      document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250); r.upEsc = !q(".up-dlg");
+      if(!r.upEsc){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); }
+      const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Shipments created"); card?.click(); await wait(250);
+      r.cardFilter=/^Live shipments/.test(q(".view:not([hidden]) .fchip.on")?.textContent||""); card?.click(); await wait(250);
+      r.cardBack=/^All uploads/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
+      return JSON.stringify(r)`));
+    check(`In-Transit Importer opens from the side nav ${tag}`, im.crumb === "In-Transit Importer" && im.navOn, JSON.stringify(im));
+    check(`In-Transit Importer: cards, note, Show chips and columns of the mockup ${tag}`, im.cards.join("|") === "Shipments created|Still reversible|Reverted|Uploaded this month" && im.note
+      && im.chips.join("|") === "All uploads|Live shipments|Draft, reversible|Reverted"
+      && im.head.join("|") === "File|Uploaded|Status|Shipment created|Packing list|Arrives|Units|Promised|" && im.rows > 0, JSON.stringify(im));
+    check(`In-Transit Importer: "All uploads" count = rows listed = side nav badge ${tag}`, im.allCount, JSON.stringify(im));
+    check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
+    check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
+    check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
+    check(`In-Transit Importer: "Upload packing list" opens the form (the Importer Form's fields, monday people, me checked), validates, Esc closes ${tag}`,
+      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upValidates && im.upEnglish && im.upEsc,
+      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
+    // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
+    await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
+    await sleep(300);
+    const toFree = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const card=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi")].find(k=>k.querySelector(".lab")?.textContent==="Free inventory to draw on");
+      card?.click(); await wait(400); return JSON.stringify({ crumb: document.querySelector(".crumb b")?.textContent, chip: document.querySelector(".view:not([hidden]) .fchip.on")?.textContent || "" })`));
+    check(`matrix "See where it sits" opens In-Transit with "Has free units" ${tag}`, toFree.crumb === "In-Transit Shipments" && /^Has free units/.test(toFree.chip), JSON.stringify(toFree));
+    await ev(`[...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^All shipments/.test(x.textContent))?.click()`);
+    await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
+    // "Open matrix" opens the matrix with the "Needs allocation" filter on.
+    const toMatrix = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const card=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi")].find(k=>k.querySelector(".lab")?.textContent==="Waiting to be allocated");
+      card.click(); await wait(400); return JSON.stringify({ crumb: document.querySelector(".crumb b")?.textContent, chip: document.querySelector(".fchip.on")?.textContent || "" })`));
+    check(`"Open matrix" opens the matrix with "Needs allocation" on ${tag}`, toMatrix.crumb === "Allocation matrix" && /Needs allocation/.test(toMatrix.chip), JSON.stringify(toMatrix));
+    await ev(`[...document.querySelectorAll(".view:not([hidden]) .fchip")].find(b=>/Everything/.test(b.textContent))?.click()`);
+    await sleep(200);
     for (let i = 0; i < 120 && !(await ev(`return !!document.querySelector("tr.g")`).catch(() => false)); i++) await sleep(500);
     if (!(await ev(`return !!document.querySelector("tr.g")`))) { check(`matrix loads ${tag}`, false, "no order rows (is the app running and are you authorized?)"); continue; }
     await ev(`document.querySelector(".mx-wrap").scrollIntoView({block:"start"})`);
@@ -220,6 +464,28 @@ async function run() {
   await ev(`document.querySelector('[data-nav="users"]')?.click()`);
   for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".ua-t tr[data-item]")`)); t++) await sleep(250);
   check("Users & access: no horizontal page scroll @390px", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1`));
+  // Control center at phone width: one column, nothing wider than the screen, texts not cut.
+  await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); t++) await sleep(250);
+  const phone = JSON.parse(await ev(`const two=document.querySelector(".two"); return JSON.stringify({ noScroll: document.documentElement.scrollWidth <= innerWidth + 1,
+    oneCol: getComputedStyle(two).gridTemplateColumns.split(" ").length === 1,
+    fit: [...document.querySelectorAll(".two .card")].every(c=>c.getBoundingClientRect().right <= innerWidth + 1) })`));
+  check("Control center: one column, no horizontal page scroll @390px", phone.noScroll && phone.oneCol && phone.fit, JSON.stringify(phone));
+  await ev(`document.querySelector('[data-nav="sku"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".skt tbody tr")`)); t++) await sleep(250);
+  check("Master SKU: no horizontal page scroll @390px (the table scrolls inside)", await ev(`const tw=document.querySelector(".tw"); return document.documentElement.scrollWidth <= innerWidth + 1 && tw.getBoundingClientRect().right <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="wholesale"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".wht tbody tr")`)); t++) await sleep(250);
+  check("Wholesale: no horizontal page scroll @390px (the tables scroll inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll(".wht")].every(t=>t.closest(".tw").getBoundingClientRect().right <= innerWidth + 1)`));
+  await ev(`document.querySelector('[data-nav="transit"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".trt tbody tr")`)); t++) await sleep(250);
+  check("In-Transit: no horizontal page scroll @390px (the table scrolls inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector(".trt").closest(".tw").getBoundingClientRect().right <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="po"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".pot tbody tr")`)); t++) await sleep(250);
+  check("Purchase Orders: no horizontal page scroll @390px (the table scrolls inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector(".pot").closest(".tw").getBoundingClientRect().right <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="importer"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".imt tbody tr")`)); t++) await sleep(250);
+  check("In-Transit Importer: no horizontal page scroll @390px (the table scrolls inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector(".imt").closest(".tw").getBoundingClientRect().right <= innerWidth + 1`));
   await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
 }
 
