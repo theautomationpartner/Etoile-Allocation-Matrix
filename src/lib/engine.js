@@ -8,7 +8,7 @@
 //   warehouse:  { [sku]: { itemId, name, usQty } }
 //   containers: [{ id, name, group, location, eta, packingList, lines: [{ id, sku, qty, poRef, poId }] }]   (all groups, no "Is Process")
 //   pos:        [{ id, name, reference, region, eta, lines: [{ id, sku, qtyOrdered, qtyOutstanding, qtyArrived, status }] }]
-import { containerArrival, inWarehouse } from "./arrival.js";
+import { arrivalIndex, containerArrival, inWarehouse } from "./arrival.js";
 
 export const OPEN_ORDER_GROUPS = new Set(["topics", "group_mm1730xq"]); // Orders + Pending (§5.1)
 export const ACTIVE_CONTAINER_GROUP = "topics"; // In-Transit Shipments (Items) (§6.2)
@@ -45,7 +45,8 @@ export function buildModel(data, { poRefKey = (po) => po.name } = {}) {
   const containerById = new Map(containers.map((c) => [String(c.id), c]));
   const poById = new Map(pos.map((p) => [String(p.id), p]));
   const poAllById = new Map((data.pos || []).map((p) => [String(p.id), p])); // every line: arrivals of landed units
-  const arrivalOf = (c, sku) => containerArrival(c, sku, poAllById);
+  const arrivalIx = arrivalIndex(data.containers || [], data.pos || []);
+  const arrivalOf = (c, sku) => containerArrival(c, sku, arrivalIx);
   const has = (src, sku) => Boolean(src?.lines.some((l) => l.sku === sku));
 
   // ── Source totals (§6) ──

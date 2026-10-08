@@ -16,7 +16,7 @@ import { buildModel } from "./engine.js";
 import { withLedger } from "./monday.js";
 import { BASELINE, LEDGER, TRANSIT_LINES, batchIds, chunks } from "./mondayWrites.js";
 import { editorFor, entriesFrom, ledgerRecord, releasePlan } from "./allocation.js";
-import { transitLineLabel } from "./arrival.js";
+import { arrivalIndex, transitLineLabel } from "./arrival.js";
 import { fmt } from "./format.js";
 
 export class AllocationConflict extends Error {}
@@ -139,14 +139,14 @@ export async function writeLedgerLine(write, api, { lineId, linkId, rec, empty }
 // In-Transit Status of the lines of these containers for these SKUs, only where it changes:
 // [{ id (In-Transit subitem), label }].
 export function transitUpdates(data, used) {
-  const poById = new Map((data.pos || []).map((p) => [String(p.id), p]));
+  const ix = arrivalIndex(data.containers, data.pos);
   const byId = new Map((data.containers || []).map((c) => [String(c.id), c]));
   const out = new Map();
   for (const { sourceId, sku } of used) {
     const c = byId.get(String(sourceId));
     for (const l of c?.lines || []) {
       if (l.sku !== sku) continue;
-      const label = transitLineLabel(c, l, poById);
+      const label = transitLineLabel(c, l, ix);
       if (l.status !== label) out.set(String(l.id), label);
     }
   }

@@ -162,3 +162,19 @@ test("units of a PO already shipped on a container cannot stay reserved on the P
   assert.equal(l.allocated, 0);
   assert.equal(l.left, 150);
 });
+
+// Real case (2026-10-08, FLEX-4084548): what arrived on the PO line is first the units of its Done containers.
+test("PO arrivals that belong to an earlier Done container never confirm a container still travelling", () => {
+  const data = mockupData();
+  const f48 = data.containers.find((c) => c.id === "US / FLEX-4084548 / 40HC"); // Final, 800 of EC0395 (PO-00432)
+  for (const l of f48.lines) l.poId = "PO-00432";
+  data.containers.push({ id: "US / FLEX-OLD / 40HC", name: "US / FLEX-OLD / 40HC", group: "group_mm19tfx0", location: "US", eta: "2026-08-01", packingList: "Done",
+    lines: [{ id: "old-1", sku: "EC0395", qty: 160, poRef: "PO-00432", poId: "PO-00432" }] });
+  const pl = data.pos.find((p) => p.id === "PO-00432").lines.find((l) => l.sku === "EC0395");
+  Object.assign(pl, { qtyArrived: 160, status: "Partially Arrived" }); // exactly what FLEX-OLD brought
+  let l = buildModel(data).lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
+  assert.ok(l.entries.every((e) => e.stage === SOURCE.IN_TRANSIT && e.arrival === "pending" && !e.notDone));
+  pl.qtyArrived = 160 + 400; // now half of FLEX-4084548's line arrived too
+  l = buildModel(data).lines.find((x) => x.orderId === "EIVR124" && x.sku === "EC0395");
+  assert.ok(l.entries.every((e) => e.stage === SOURCE.WAREHOUSE && e.arrival === "partial" && e.notDone));
+});
