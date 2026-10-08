@@ -2,18 +2,20 @@ import { fmt, plural } from "../../lib/format.js";
 
 const LABELS = ["Units to allocate", "Impossible to cover", "Free inventory to draw on", "Already allocated"];
 
-// Same markup as the mockup's metricStrip(): div.kpi (.act when it filters, .on when active).
-function Card({ label, value, sub, tone = "", filterKey, filter, onFilter, cta, ctaSoon }) {
+// Same markup as the mockup's metricStrip(): div.kpi (.act when it filters or opens another screen, .on when
+// its filter is active). onGo + cta: the card opens another screen (mockup data-goto); ctaSoon: that screen is
+// not built yet, so the action is shown dimmed with the reason.
+export function Card({ label, value, sub, tone = "", filterKey, filter, onFilter, cta, ctaSoon, onGo }) {
   const on = filterKey && filter === filterKey;
-  const act = Boolean(filterKey);
-  const activate = () => act && onFilter(filterKey);
+  const act = Boolean(filterKey || onGo);
+  const activate = () => (filterKey ? onFilter(filterKey) : onGo?.());
   return (
     <div className={`kpi ${tone} ${act ? "act" : ""} ${on ? "on" : ""}`}
       {...(act ? { role: "button", tabIndex: 0, "aria-pressed": on, onClick: activate, onKeyDown: (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), activate()) } : {})}>
       <div className="lab">{label}</div>
       <div className="val">{value}</div>
       <div className="sub">{sub}</div>
-      {act && <div className="cta">{on ? "Showing these" : "Show these"} <span>→</span></div>}
+      {act && <div className="cta">{on ? "Showing these" : onGo ? cta : "Show these"} <span>→</span></div>}
       {ctaSoon && <div className="cta soon" title={ctaSoon}>{cta} <span>→</span></div>}
     </div>
   );

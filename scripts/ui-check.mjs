@@ -74,6 +74,32 @@ async function run() {
     // A headless window never has the system focus, so focus events would not fire; behave like a real, focused window.
     await send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await send("Page.navigate", { url: APP_URL });
+    // The app opens on the Control center (the home screen).
+    for (let i = 0; i < 120 && !(await ev(`return !!document.querySelector(".two .card")`).catch(() => false)); i++) await sleep(500);
+    const home = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const r={ crumb: q(".crumb b")?.textContent, title: q(".page-h h2")?.textContent, navOn: q('[data-nav="home"]')?.classList.contains("on"),
+        cards: [...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .lab")].map(x=>x.textContent),
+        blocks: [...document.querySelectorAll(".two .card-h h3")].map(x=>x.textContent),
+        noScroll: document.documentElement.scrollWidth <= innerWidth + 1,
+        textsFit: [...document.querySelectorAll(".two .att .t, .two .att .m, .tl-i .t, .tl-i .m")].every(x=>x.scrollWidth<=x.clientWidth+1),
+        soonDisabled: [...document.querySelectorAll(".card-h .btn[disabled]")].every(b=>b.title.includes("not available yet")),
+        cta: [...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .cta")].map(x=>x.textContent.replace("→","").trim()) };
+      const row=q(".two .att"); if(row){ row.click(); await wait(300); r.rail = q(".rail.on .rail-trail .cur")?.textContent || ""; q(".rail-x")?.click(); await wait(200); r.railClosed = !q(".rail.on"); }
+      return JSON.stringify(r)`));
+    check(`Control center is the first screen (crumb, title, side nav) ${tag}`, home.crumb === "Control center" && home.title === "Control center" && home.navOn, JSON.stringify(home));
+    check(`Control center: the 4 cards of the mockup ${tag}`, home.cards.join("|") === "Sales at risk|Waiting to be allocated|Committed to wholesale|Landing in 30 days"
+      && home.cta.join("|") === "Review SKUs|Open matrix|See orders|See shipments", JSON.stringify(home.cards) + JSON.stringify(home.cta));
+    check(`Control center: blocks in the mockup's order, texts not cut ${tag}`, home.blocks[0] === "Needs a buying decision" && home.blocks[1] === "Waiting on an allocation"
+      && home.blocks.includes("What is coming in") && home.blocks.includes("Where committed units come from") && home.textsFit, JSON.stringify(home.blocks));
+    check(`Control center: no horizontal page scroll ${tag}`, home.noScroll);
+    check(`Control center: buttons to screens not built yet are dimmed with the reason ${tag}`, home.soonDisabled);
+    check(`Control center: a row opens its record in the side panel, × closes it ${tag}`, home.rail && home.railClosed, JSON.stringify({ rail: home.rail, closed: home.railClosed }));
+    // "Open matrix" opens the matrix with the "Needs allocation" filter on.
+    const toMatrix = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const card=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi")].find(k=>k.querySelector(".lab")?.textContent==="Waiting to be allocated");
+      card.click(); await wait(400); return JSON.stringify({ crumb: document.querySelector(".crumb b")?.textContent, chip: document.querySelector(".fchip.on")?.textContent || "" })`));
+    check(`"Open matrix" opens the matrix with "Needs allocation" on ${tag}`, toMatrix.crumb === "Allocation matrix" && /Needs allocation/.test(toMatrix.chip), JSON.stringify(toMatrix));
+    await ev(`[...document.querySelectorAll(".fchip")].find(b=>/Everything/.test(b.textContent))?.click()`);
+    await sleep(200);
     for (let i = 0; i < 120 && !(await ev(`return !!document.querySelector("tr.g")`).catch(() => false)); i++) await sleep(500);
     if (!(await ev(`return !!document.querySelector("tr.g")`))) { check(`matrix loads ${tag}`, false, "no order rows (is the app running and are you authorized?)"); continue; }
     await ev(`document.querySelector(".mx-wrap").scrollIntoView({block:"start"})`);
@@ -220,6 +246,13 @@ async function run() {
   await ev(`document.querySelector('[data-nav="users"]')?.click()`);
   for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".ua-t tr[data-item]")`)); t++) await sleep(250);
   check("Users & access: no horizontal page scroll @390px", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1`));
+  // Control center at phone width: one column, nothing wider than the screen, texts not cut.
+  await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); t++) await sleep(250);
+  const phone = JSON.parse(await ev(`const two=document.querySelector(".two"); return JSON.stringify({ noScroll: document.documentElement.scrollWidth <= innerWidth + 1,
+    oneCol: getComputedStyle(two).gridTemplateColumns.split(" ").length === 1,
+    fit: [...document.querySelectorAll(".two .card")].every(c=>c.getBoundingClientRect().right <= innerWidth + 1) })`));
+  check("Control center: one column, no horizontal page scroll @390px", phone.noScroll && phone.oneCol && phone.fit, JSON.stringify(phone));
   await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
 }
 

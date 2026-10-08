@@ -1,11 +1,11 @@
 import { Icon } from "./Icon.jsx";
 import { clock } from "../lib/format.js";
 
-// Same markup as the mockup's side nav. Built so far: "Allocation matrix" and, for admins only,
+// Same markup as the mockup's side nav. Built so far: "Control center", "Allocation matrix" and, for admins only,
 // "Users & access"; the rest are shown (with their counts) but cannot be opened.
 const NAV = [
   { section: "OVERVIEW" },
-  { id: "home", label: "Control center", icon: "grid" },
+  { id: "home", label: "Control center", icon: "grid", open: true },
   { id: "matrix", label: "Allocation matrix", icon: "table", open: true },
   { section: "BOARDS" },
   { id: "wholesale", label: "Wholesale Allocation", icon: "bag" },
@@ -17,7 +17,7 @@ const NAV = [
 const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];
 
 // counts: { home (SKUs that cannot be covered, shown as an alert), wholesale, transit, po, sku, importer }
-export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt, view = "matrix", onView, isAdmin = false }) {
+export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt, view = "home", onView, isAdmin = false }) {
   return (
     <aside className="side">
       <div className="brand">

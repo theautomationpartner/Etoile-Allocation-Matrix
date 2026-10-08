@@ -848,6 +848,28 @@ persona decide con un botón.
   18402783956). Las etiquetas se escriben con create_labels_if_missing:false.
 
 
+
+--------------------------------------------------------------------------------
+ 15. CONTROL CENTER (pantalla de inicio, 2026-10-08)
+--------------------------------------------------------------------------------
+Requerimientos: "Control center — Requerimientos funcionales y técnicos" (1 oct 2026) + mockup vHome.
+Solo lectura. Es la primera pantalla (menú OVERVIEW → Control center; badge rojo = SKUs con faltante).
+Todas las cifras salen del modelo de la matriz (src/lib/control.js sobre engine.js), nunca de fórmulas propias:
+  Sales at risk = Impossible to cover · Waiting to be allocated = Units to allocate · Committed to wholesale =
+  Already allocated (dividido por la etapa actual, como la matriz; TBD-C01) · Landing in 30 days = contenedores
+  activos con ETA de mañana a +30 días (unidades a bordo y libres).
+Bloques: Needs a buying decision (SKUs con faltante, mayor primero) · Waiting on an allocation (líneas con Left
+  y sin faltante, por cancel date; 6 filas + "N more lines waiting · see them all in the matrix") · Draft packing
+  lists (solo si hay) · What is coming in (contenedores activos y POs con unidades sin embarcar, por fecha;
+  "in N days" / "N days late") · Where committed units come from (barra + 4 filas).
+Aviso: "<n> committed units lost their source" cuando hay reservas sin fuente válida (no se marcan en la matriz).
+Clic en una fila → panel lateral del registro (SKU, venta, contenedor o PO), el mismo de la matriz.
+Botones: Review SKUs → matriz "Cannot be covered" · Open matrix / Allocate now → matriz "Needs allocation".
+  See orders, See shipments, Open in Master SKU y Review van a pantallas todavía no construidas: se ven
+  atenuados con "The ... screen is not available yet".
+Escribir en el buscador de arriba abre la matriz con esa búsqueda. Refresh igual que en la matriz.
+Los shipments (useShipments) viven en App.jsx y los comparten la matriz y el panel del Control center.
+
 --------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
@@ -891,4 +913,6 @@ persona decide con un botón.
 2026-10-07  REVIEW — Last Fulfilled Processed; panel "Needs review" con Release; la reserva sigue de la
             PO al contenedor; llegada confirmada por Qty Arrived de la PO (reemplaza Done → warehouse
             por el 50 % del warehouse); Is Process nunca cuenta; Status Allocation por cantidades;
-            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+2026-10-08  Llegada por PO: lo recibido se cuenta primero contra los contenedores Done de esa PO + SKU.
+2026-10-08  CONTROL CENTER — pantalla de inicio (sección 15), con las cifras de la matriz.

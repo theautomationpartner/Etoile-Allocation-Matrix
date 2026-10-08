@@ -331,3 +331,18 @@ Prueba en vivo (después del merge a main, con un item de prueba):
      próxima corrida: el dato real lo manda Cin7).
   6. Daily check: Make (o curl) → POST /api/daily-check?dry=1 con el header x-daily-secret → ver
      "writes" y "items"; sin ?dry=1 escribe.
+
+
+--------------------------------------------------------------------------------
+ 12. CONTROL CENTER — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 73 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  C-01 Tarjetas = mockup: 864 · 1,645 (8 order lines) · 12,254 (464/7,801/3,989) · 5,040 (2 shipments · 538) .. PASA
+  C-02 Iguales a la matriz: Impossible, Units to allocate, Already allocated ............................. PASA
+  C-03 Needs a buying decision: EC0388 short 543, EC0384 short 321 (mayor primero) ...................... PASA
+  C-04 Waiting on an allocation: EC0400 EIVR121 520 (45 days left), EC0398 148, EC0386 28; nunca un SKU con faltante PASA
+  C-05 Draft packing lists: FLEX-4151882 · What is coming in ordenado por fecha (FLEX-4119719 in 12 days) .. PASA
+Chequeo visual (npm run ui-check, 111): es la primera pantalla; 4 tarjetas y CTAs del mockup; bloques en orden;
+textos sin cortar; sin scroll horizontal (1200, 1440 y 390 px, una columna en celular); botones a pantallas no
+construidas atenuados con el motivo; una fila abre el panel lateral y × lo cierra; "Open matrix" abre la matriz
+con "Needs allocation". Encabezados de bloque: título y botón nunca se parten (corregido en 1200 px).

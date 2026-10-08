@@ -250,3 +250,27 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .rv-x i { display: block; font-style: normal; color: var(--ink-3); font-size: 11.5px; margin-top: 2px; }
 .rv-i .btn { flex: none; }
 @media (max-width: 720px) { .rv-s { display: none; } .rv-i { flex-wrap: wrap; } }
+
+/* Control center (mockup vHome): two columns of blocks; spacing and empty states as in the mockup. */
+.cc-col { display: grid; gap: 14px; min-width: 0; }
+.cc-pad { padding: 14px 16px; }
+.cc-empty-wrap { padding: 22px; }
+.cc-empty-wrap .mx-empty, .cc-empty-in { padding: 18px 12px; }
+.cc-empty-t { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+.cc-bar { height: 10px; border-radius: 5px; }
+.cc-bar i.d { background: var(--ink-3); } /* matches the grey "Not allocated yet" chip below it */
+.cc-rows { display: grid; gap: 7px; margin-top: 12px; }
+.cc-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+.cc-note { margin: 12px 0 0; }
+.cc-more { display: block; width: 100%; padding: 10px 14px; border: 0; border-top: 1px solid var(--line-2); background: none; text-align: left;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.cc-more:hover { background: var(--surface-2); color: var(--ink); }
+.att:focus-visible, .tl-i:focus-visible, .cc-more:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.att .chip { flex: none; }
+.card-h .btn[disabled] { opacity: .55; cursor: default; }
+@media (max-width: 720px) { .card-h { flex-wrap: wrap; } .card-h .sub { order: 3; flex-basis: 100%; } }
+/* Block headers: the title and the action never break; the description gives way (wraps) when the card is narrow. */
+.card-h h3 { white-space: nowrap; }
+.card-h .sub { flex: 1 1 120px; min-width: 0; }
+.card-h .right { flex: none; }
+.card-h .right .btn { white-space: nowrap; }

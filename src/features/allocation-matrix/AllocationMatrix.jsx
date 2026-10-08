@@ -14,14 +14,15 @@ import { ControlsBar } from "./ControlsBar.jsx";
 import { ShowFilters } from "./ShowFilters.jsx";
 import { Legend } from "./Legend.jsx";
 import { MatrixTable } from "./MatrixTable.jsx";
-import { useShipments } from "../../hooks/useShipments.js";
 import { fetchWrite } from "../../lib/mondayWrites.js";
 
 // Allocation matrix screen (§3). Step 1: metrics + Show filters + search. Step 2: the matrix in the
 // Wholesale order view. Step 3: the allocation editor below a row (writes the Allocation Ledger) and the
 // side panel of an order, SKU or source. Step 4: shipments (Shipments tab of each order).
-export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData }) {
-  const shipments = useShipments({ data, model, write: fetchWrite, toast, patchData });
+// shipments: useShipments(...) owned by the workspace (the Control center opens the same records).
+// request: { n, filter?, orderShipments? } from another screen (the Control center): apply a Show filter, or
+// open an order on its Shipments tab. n changes on every request.
+export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request }) {
 
   // Closing or reloading the tab with unsaved shipments: the browser asks first.
   useEffect(() => {
@@ -43,6 +44,18 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
   };
   const [filter, setFilter] = useState("all"); // §15.1: one filter at a time
   const [open, setOpen] = useState({}); // group open/closed, kept while the page is open (§3)
+
+  // A request from another screen (the Control center): a Show filter, or an order opened on its Shipments tab.
+  useEffect(() => {
+    if (!request) return;
+    if (request.filter !== undefined && request.filter !== null) setFilter(request.filter);
+    if (request.orderShipments) {
+      const id = String(request.orderShipments);
+      setFilter("all");
+      setOpen((cur) => ({ ...cur, [id]: true }));
+      shipments.actions.setTab(id, "ships");
+    }
+  }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const ready = Boolean(model);
   const busy = status === "loading" || status === "refreshing";
 
