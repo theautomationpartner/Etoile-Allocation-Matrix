@@ -324,7 +324,10 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
   const imp = (data.imports || []).find((x) => String(x.shipmentId) === String(c.id));
   return (
     <>
-      <div className="rail-h"><h3>{containerCode(c.name)}</h3></div>
+      <div className="rail-h rail-h-act">
+        <h3>{containerCode(c.name)}</h3>
+        {c.packingList === "Draft" && !c.deletionStatus && <DeleteShipment c={c} model={model} pos={pos} res={res} />}
+      </div>
       <p className="rail-sub">{c.name}<br />
         {[c.etd ? `Departed ${dayMonthYear(c.etd)}` : "", c.eta ? `${c.etd ? "arrives" : "Arrives"} ${dayMonthYear(c.eta)} (${days > 0 ? `in ${plural(days, "day", "days")}` : "already landed"})` : "No ETA"].filter(Boolean).join(" · ")}
       </p>
@@ -379,7 +382,12 @@ function ShipPanel({ id, prev, ctx, model, data, onOpen }) {
 
       <div className="sec"><h4>Who gets what</h4><PathTable type="ship" id={String(id)} ctx={ctx} onOpen={onOpen} hl={prev} /></div>
 
-      {c.deletionStatus ? <DeletionSteps status={c.deletionStatus} /> : <DeleteSection c={c} model={model} pos={pos} res={res} />}
+      {c.deletionStatus ? <DeletionSteps status={c.deletionStatus} /> : c.packingList !== "Draft" && (
+        <div className="sec">
+          <h4>Delete this shipment</h4>
+          <div className="empty-note">The packing list is <b>{c.packingList || "not set"}</b>. Only shipments created from a <b>Draft</b> file can be deleted. Switch it back to Draft first if it really needs to be removed.</div>
+        </div>
+      )}
     </>
   );
 }
@@ -400,16 +408,15 @@ function DeletionSteps({ status }) {
   );
 }
 
-// §8.1–8.2 — what deleting this shipment undoes. Only shipments created from a Draft packing list can be deleted.
-// "Delete shipment" asks first (TBD-I07), then starts monday's deletion through the server (api/delete-shipment.js);
-// the steps then show from the container's Deletion Status.
-function DeleteSection({ c, model, pos, res }) {
+// §8 — "Delete shipment", at the top of a Draft shipment's panel. It opens a warning with what gets undone (§8.2);
+// only "Yes, delete it" starts monday's deletion through the server (api/delete-shipment.js → DELETE_SHIPMENT_WEBHOOK).
+// The steps then show from the container's Deletion Status.
+function DeleteShipment({ c, model, pos, res }) {
   const { toast, refresh } = useAppActions();
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-  const draft = c.packingList === "Draft";
   const code = containerCode(c.name);
   const start = async () => {
     setBusy(true);
@@ -422,50 +429,40 @@ function DeleteSection({ c, model, pos, res }) {
       setTimeout(() => refresh(), 6000); // Deletion Status shows the steps after the next read
     } catch (e) {
       setError(e.message || "The deletion could not be started.");
-      setAsk(false);
     } finally {
       setBusy(false);
     }
   };
+  const close = () => { if (!busy) { setAsk(false); setError(""); } };
   const orders = new Set(model.allLines.filter((x) => x.entries.some((e) => e.source === SOURCE.IN_TRANSIT && String(e.sourceId) === String(c.id))).map((x) => String(x.order.id)));
   const skus = [...new Set(c.lines.map((l) => l.sku))];
+  if (sent) return <span className="chip gap" title="Monday is processing it — refresh to follow its steps"><span className="sq" />Deletion requested</span>;
   return (
-    <div className="sec">
-      <h4>Delete this shipment</h4>
-      {!draft ? (
-        <div className="empty-note">The packing list is <b>{c.packingList || "not set"}</b>. Only shipments created from a <b>Draft</b> file can be deleted. Switch it back to Draft first if it really needs to be removed.</div>
-      ) : (
-        <div className="danger-box">
-          <h5>What gets undone</h5>
-          <p>This shipment came from a Draft packing list, so everything that file created can be reversed.</p>
-          <ul className="cascade">
-            <li><span className="s">1</span><span><span className="n">In-Transit</span> — the {containerCode(c.name)} item, its {plural(c.lines.length, "subitem", "subitems")} and its Process twin are removed.</span></li>
-            <li><span className="s">2</span><span><span className="n">Master SKU</span> — the incoming records of {skus.join(", ")} lose this shipment; records with no other container go back to <b>Estimated</b>.</span></li>
-            <li><span className="s">3</span><span><span className="n">Purchase Orders</span> — {pos.map((ref) => `${ref || "no PO"} gets ${fmt(sumBy(c.lines.filter((l) => l.poRef === ref), (l) => l.qty))} back`).join(", ")} as still-to-ship. Each PO only recovers its own units.</span></li>
-            <li><span className="s">4</span><span><span className="n">Importer</span> — the file is marked <b>Deleted in In-Transit</b>. The file stays, the shipment doesn't.</span></li>
-          </ul>
-          {res > 0 && <p style={{ color: "var(--gap)", fontWeight: 600 }}>Careful: {fmt(res)} units are already promised to {plural(orders.size, "wholesale order", "wholesale orders")}. Those reservations will be orphaned and have to be redone.</p>}
-          {error && <p style={{ color: "var(--gap)" }} role="alert">{error}</p>}
-          {sent ? <p style={{ fontWeight: 600 }}>Deletion requested. Monday is processing it — refresh to follow its steps.</p>
-            : <button type="button" className="btn danger" onClick={() => setAsk(true)} disabled={busy}>Delete shipment</button>}
-        </div>
-      )}
+    <>
+      <button type="button" className="btn danger del-btn" onClick={() => setAsk(true)}>Delete shipment</button>
       {ask && (
         <>
-          <div className="scrim on del-scrim" onClick={() => !busy && setAsk(false)} />
-          {/* The warning: only "Yes, delete it" calls the deletion webhook (api/delete-shipment.js). */}
+          <div className="scrim on del-scrim" onClick={close} />
+          {/* The warning: only "Yes, delete it" calls the deletion webhook. */}
           <div className="ua-dlg del-warn" role="alertdialog" aria-modal="true" aria-labelledby="del-dlg-t" aria-describedby="del-dlg-d">
             <h3 id="del-dlg-t"><span aria-hidden="true">⚠</span> Are you sure you want to delete {code}?</h3>
-            <p id="del-dlg-d">This unlinks several associated items: the In-Transit item and its subitems, the Master SKU incoming records,
-              the units on its purchase orders and the Importer file.{res > 0 ? ` ${fmt(res)} promised units will need to be reallocated.` : ""} It can't be undone.</p>
+            <p id="del-dlg-d">This unlinks several associated items. It can't be undone.</p>
+            <ul className="cascade">
+              <li><span className="s">1</span><span><span className="n">In-Transit</span> — the {code} item, its {plural(c.lines.length, "subitem", "subitems")} and its Process twin are removed.</span></li>
+              <li><span className="s">2</span><span><span className="n">Master SKU</span> — the incoming records of {plural(skus.length, "SKU", "SKUs")} lose this shipment; records with no other container go back to <b>Estimated</b>.</span></li>
+              <li><span className="s">3</span><span><span className="n">Purchase Orders</span> — {pos.map((ref) => `${ref || "no PO"} gets ${fmt(sumBy(c.lines.filter((l) => l.poRef === ref), (l) => l.qty))} back`).join(", ")} as still-to-ship.</span></li>
+              <li><span className="s">4</span><span><span className="n">Importer</span> — the file is marked <b>Deleted in In-Transit</b>. The file stays.</span></li>
+            </ul>
+            {res > 0 && <p className="del-careful">Careful: {fmt(res)} units are already promised to {plural(orders.size, "wholesale order", "wholesale orders")}. Those reservations will be orphaned and have to be reallocated.</p>}
+            {error && <div className="note warn" role="alert">{error}</div>}
             <div className="ua-dlg-b">
-              <button type="button" className="btn" onClick={() => setAsk(false)} disabled={busy} autoFocus>Cancel</button>
+              <button type="button" className="btn" onClick={close} disabled={busy} autoFocus>Cancel</button>
               <button type="button" className="btn danger" onClick={start} disabled={busy}>{busy ? "Deleting…" : "Yes, delete it"}</button>
             </div>
           </div>
         </>
       )}
-    </div>
+    </>
   );
 }
 

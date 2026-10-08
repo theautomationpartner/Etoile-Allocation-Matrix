@@ -206,12 +206,12 @@ async function run() {
       r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!first && first.querySelector(".tr-ship .strong")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
       const poChip=q(ROWS+" button.chip.po"); if(poChip){ poChip.click(); await wait(300); r.poRail=q(".rail.on .rail-trail .cur")?.textContent||""; r.poMatches=poChip.textContent.startsWith(r.poRail); q(".rail-x")?.click(); await wait(200); } else r.poMatches=true;
       const draftRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Draft"));
-      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .btn.danger").find(x=>x.textContent==="Delete shipment");
-        r.delBox=!!q(".rail.on .danger-box .cascade") && !!del && !del.disabled; del?.click(); await wait(250);
+      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .rail-h .btn.danger").find(x=>x.textContent==="Delete shipment");
+        r.delBox=!!del && !!del.closest(".rail-h") && !del.disabled; del?.click(); await wait(250); r.delBox = r.delBox && q(".ua-dlg.del-warn .cascade")?.children.length === 4;
         r.delAsk=/Are you sure you want to delete .+\?$/.test(q(".ua-dlg.del-warn h3")?.textContent||"") && /unlinks several associated items/.test(q(".ua-dlg.del-warn p")?.textContent||"") && !!all(".ua-dlg .btn.danger").find(x=>x.textContent==="Yes, delete it"); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
         r.delCancel=!q(".ua-dlg") && !!q(".rail.on"); q(".rail-x")?.click(); await wait(200); } else { r.delBox=r.delAsk=r.delCancel=true; r.noDraft=true; }
       const finalRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Final"));
-      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
+      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .rail-h .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
       r.filtered={}; for (const name of ["Not arrived","Arriving ≤ 30 days","Has free units","Customers depend on it","Draft packing list"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.click(); await wait(200);
@@ -223,7 +223,7 @@ async function run() {
     check(`In-Transit: "All shipments" count = rows listed = side nav badge ${tag}`, tr.allCount, JSON.stringify(tr));
     check(`In-Transit: ▸ shows the subitems (without opening the panel), a subitem opens its SKU, ▾ hides them ${tag}`, tr.sub > 0 && /^Subitem · productSKUOn boardCommittedFreeFrom POPromised to$/.test(tr.subhead) && tr.railStayedClosed && tr.skuRail && tr.collapsed, JSON.stringify(tr));
     check(`In-Transit: a row opens the container's side panel; a PO chip opens the PO's ${tag}`, tr.railMatches && tr.poMatches, JSON.stringify({ rail: tr.rail, po: tr.poRail }));
-    check(`In-Transit: "Delete this shipment" — Draft: what gets undone + confirmation (Cancel sends nothing); Final: only the explanation ${tag}`,
+    check(`In-Transit: "Delete shipment" at the top of a Draft panel → warning with what gets undone (Cancel sends nothing); Final: only the explanation ${tag}`,
       tr.delBox && tr.delAsk && tr.delCancel && tr.finalText, JSON.stringify({ box: tr.delBox, ask: tr.delAsk, cancel: tr.delCancel, final: tr.finalText, noDraft: tr.noDraft }));
     check(`In-Transit: each Show chip's count = shipments listed ${tag}`, Object.values(tr.filtered).every(Boolean), JSON.stringify(tr.filtered));
     check(`In-Transit: no horizontal page scroll, every column visible ${tag}`, tr.noScroll && tr.fits, JSON.stringify({ noScroll: tr.noScroll, fits: tr.fits }));
