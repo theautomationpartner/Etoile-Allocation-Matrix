@@ -40,7 +40,10 @@ export const FULFILLED_GROUP = "group_mm17q5pm"; // Wholesale: Fulfilled (only l
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active
 export const LEDGER_FULFILLED_GROUP = "group_mm76zg9t"; // Ledger: Fulfilled — still the line's record while its order is open
 export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero (holds no units)
-export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer (only its item count, for the side nav)
+export const IMPORTER_BOARD = "18404604646"; // In-Transit / Wholesale Importer: one item per uploaded packing list (In-Transit Importer screen)
+// Importer columns (read only): the uploaded file, Type Import (In-Transit / In-Transit Draft), Import Status, Location and
+// the In-Transit item it created.
+const IMP = { file: "file_mm1kn5sf", type: "color_mm1kk5v5", status: "status", location: "color_mm4etbyd", eta: "date_mm4ee89a", shipment: "board_relation_mm1kx7v4" };
 const LEDGER_SOURCE_TYPE = { "Warehouse Stock": "warehouse", "In-Transit": "intransit", "Purchase Order": "po" };
 
 // Where confirmed allocations are read from. Pending the client's decision (see PROMPT txt, open points).
@@ -170,6 +173,20 @@ export function createMondayApi(transport = fetchTransport) {
 
   // Wholesale Allocation screen only: the orders of the Fulfilled group (shipped). They are never demand and hold
   // no units — just their quantities, so the screen lists every order synced from Cin7, as the mockup does.
+  // In-Transit Importer: every uploaded packing list. Uploaded = the item's creation date (Creation log).
+  async function loadImports() {
+    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(IMP))}]) { id text value ... on BoardRelationValue { linked_item_ids } }`;
+    const items = await allItems(IMPORTER_BOARD, fields);
+    const files = (it) => {
+      try { return (JSON.parse(it.column_values.find((c) => c.id === IMP.file)?.value || "{}").files || []).map((f) => f.name).filter(Boolean); } catch { return []; }
+    };
+    return items.map((it) => ({
+      id: it.id, name: it.name, uploaded: date(it.created_at), files: files(it),
+      type: cv(it, IMP.type), status: cv(it, IMP.status), location: cv(it, IMP.location), eta: date(cv(it, IMP.eta)),
+      shipmentId: String((it.column_values.find((c) => c.id === IMP.shipment)?.linked_item_ids || [])[0] || "") || null,
+    }));
+  }
+
   async function loadFulfilledOrders() {
     const s = COL.sale, sc = COL.saleSub;
     const fields = `id name group { id }
@@ -330,6 +347,7 @@ export function createMondayApi(transport = fetchTransport) {
       [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.etd, COL.it.packingList, COL.it.isProcess] },
       [BOARDS.inTransitSub]: { name: "In-Transit Shipments (subitems)", cols: [COL.it.subSku, COL.it.subQty, COL.it.subPoRef, COL.it.subPo, COL.it.subStatus] },
       [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta] },
+      [IMPORTER_BOARD]: { name: "In-Transit Importer", cols: Object.values(IMP) },
       "18402780137": { name: "Purchase Orders (subitems)", cols: [COL.po.subSku, COL.po.subQtyOutstanding, COL.po.subQtyArrived, COL.po.subStatus] },
       [BOARDS.ledger]: { name: "Allocation Ledger", cols: [COL.ledger.key, COL.ledger.json, COL.ledger.shipmentsRel, COL.ledger.fulfilled, COL.ledger.status] },
       [BOARDS.ledgerSub]: { name: "Allocation Ledger (subitems)", cols: [COL.ledgerSub.type, COL.ledgerSub.sourceId, COL.ledgerSub.qty, COL.ledgerSub.arrival] },
@@ -366,11 +384,11 @@ export function createMondayApi(transport = fetchTransport) {
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     await checkSchema();
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments, fulfilledOrders] = await Promise.all([
+    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments, fulfilledOrders, imports] = await Promise.all([
       loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
-      loadFulfilledOrders(),
+      loadFulfilledOrders(), loadImports(),
     ]);
-    const data = { orders, warehouse, containers, pos, boardCounts, shipments, fulfilledOrders, allocationSource, loadedAt: new Date() };
+    const data = { orders, warehouse, containers, pos, boardCounts, shipments, fulfilledOrders, imports, allocationSource, loadedAt: new Date() };
     return useLedger ? withLedger(data, ledger) : data;
   }
 

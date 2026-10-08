@@ -228,6 +228,41 @@ async function run() {
     check(`Purchase Orders: a row opens the PO's side panel; a shipment chip opens the container's ${tag}`, po.railMatches && po.shipMatches, JSON.stringify({ rail: po.rail, ship: po.shipRail }));
     check(`Purchase Orders: each Show chip's count = POs listed; a card filters and a second click goes back ${tag}`, Object.values(po.filtered).every(Boolean) && po.cardFilter && po.cardBack, JSON.stringify(po.filtered));
     check(`Purchase Orders: no horizontal page scroll, every column visible ${tag}`, po.noScroll && po.fits, JSON.stringify({ noScroll: po.noScroll, fits: po.fits }));
+    // In-Transit Importer (side nav): its own checks.
+    await ev(`document.querySelector('[data-nav="importer"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".imt tbody tr")`)); i++) await sleep(250);
+    const im = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".imt tbody tr";
+      const r={ crumb: q(".crumb b")?.textContent, navOn: q('[data-nav="importer"]')?.classList.contains("on") };
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...(q(".imt")?.querySelectorAll("thead th")||[])].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All uploads/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="importer"] .cnt')?.textContent||allN) === allN;
+      const up=all(".view:not([hidden]) .page-h a.btn").find(a=>a.textContent==="Upload packing list");
+      r.upload = !!up && up.target==="_blank" && up.href.endsWith("monday.com/boards/18404604646");
+      r.note = /^Deleting a shipment undoes the whole chain\./.test(q(".view:not([hidden]) .note:not(.warn)")?.textContent||"");
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".imt").offsetWidth <= q(".imt").closest(".tw").clientWidth + 1;
+      const open=all(ROWS+" .btn").find(b=>b.textContent==="Open"); const code=open?.closest("tr").querySelector(".chip.it")?.textContent;
+      open?.click(); await wait(300); r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!open && code === r.rail; q(".rail-x")?.click(); await wait(200);
+      r.reverted = all(ROWS).filter(tr=>tr.textContent.includes("Reverted")).every(tr=>tr.classList.contains("gone"));
+      r.filtered={}; for (const name of ["Live shipments","Draft, reversible","Reverted"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Shipments created"); card?.click(); await wait(250);
+      r.cardFilter=/^Live shipments/.test(q(".view:not([hidden]) .fchip.on")?.textContent||""); card?.click(); await wait(250);
+      r.cardBack=/^All uploads/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
+      return JSON.stringify(r)`));
+    check(`In-Transit Importer opens from the side nav ${tag}`, im.crumb === "In-Transit Importer" && im.navOn, JSON.stringify(im));
+    check(`In-Transit Importer: cards, note, Show chips and columns of the mockup ${tag}`, im.cards.join("|") === "Shipments created|Still reversible|Reverted|Uploaded this month" && im.note
+      && im.chips.join("|") === "All uploads|Live shipments|Draft, reversible|Reverted"
+      && im.head.join("|") === "File|Uploaded|Status|Shipment created|Packing list|Arrives|Units|Promised|" && im.rows > 0, JSON.stringify(im));
+    check(`In-Transit Importer: "All uploads" count = rows listed = side nav badge ${tag}`, im.allCount, JSON.stringify(im));
+    check(`In-Transit Importer: "Upload packing list" opens the Importer board in monday (new tab) ${tag}`, im.upload, JSON.stringify(im));
+    check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
+    check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
+    check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
     // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
     await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
     await sleep(300);
@@ -408,6 +443,9 @@ async function run() {
   await ev(`document.querySelector('[data-nav="po"]')?.click()`);
   for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".pot tbody tr")`)); t++) await sleep(250);
   check("Purchase Orders: no horizontal page scroll @390px (the table scrolls inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector(".pot").closest(".tw").getBoundingClientRect().right <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="importer"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".imt tbody tr")`)); t++) await sleep(250);
+  check("In-Transit Importer: no horizontal page scroll @390px (the table scrolls inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector(".imt").closest(".tw").getBoundingClientRect().right <= innerWidth + 1`));
   await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
 }
 

@@ -4,6 +4,7 @@ import { SkuInventory } from "./features/sku-inventory/SkuInventory.jsx";
 import { WholesaleAllocation } from "./features/wholesale/WholesaleAllocation.jsx";
 import { InTransitShipments } from "./features/in-transit/InTransitShipments.jsx";
 import { PurchaseOrders } from "./features/purchase-orders/PurchaseOrders.jsx";
+import { InTransitImporter } from "./features/importer/InTransitImporter.jsx";
 import { useShipments } from "./hooks/useShipments.js";
 import { fetchWrite } from "./lib/mondayWrites.js";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -12,14 +13,15 @@ import { Toast, useToast } from "./components/Toast.jsx";
 import { AllocationMatrix } from "./features/allocation-matrix/AllocationMatrix.jsx";
 import { useMatrixData } from "./hooks/useMatrixData.js";
 import { useStoredState } from "./hooks/useStoredState.js";
-import { BOARDS, IMPORTER_BOARD } from "./lib/monday.js";
+import { BOARDS } from "./lib/monday.js";
 import { OPEN_ORDER_GROUPS } from "./lib/engine.js";
+import { isUsImport } from "./lib/importer.js";
 import { AuthGate } from "./components/AuthGate.jsx";
 import { UsersAccess } from "./features/users/UsersAccess.jsx";
 
 // Side nav badges, as in the mockup: SKUs that cannot be covered (alert on Control center), the orders listed
-// on Wholesale Allocation (US: Orders, Pending and Fulfilled), containers in transit, the US purchase orders, and
-// each board's item count.
+// on Wholesale Allocation (US: Orders, Pending and Fulfilled), containers in transit, the US purchase orders, the
+// US packing list uploads, and the Master SKU item count.
 function navCounts({ data, model }) {
   if (!data || !model) return {};
   const b = data.boardCounts || {};
@@ -30,7 +32,7 @@ function navCounts({ data, model }) {
     transit: model.containers.length,
     po: (data.pos || []).filter((p) => p.region === "US").length,
     sku: b[BOARDS.warehouse],
-    importer: b[IMPORTER_BOARD],
+    importer: (data.imports || []).filter(isUsImport).length,
   };
 }
 
@@ -43,11 +45,12 @@ function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
   const isAdmin = user?.role === "admin";
-  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | transit | po | sku | users (admins only)
+  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | transit | po | sku | importer | users (admins only)
   const [skuFilter, setSkuFilter] = useState("all"); // Master SKU Inventory Show filter (kept while the app is open)
   const [whFilter, setWhFilter] = useState("all"); // Wholesale Allocation Show filter
   const [trFilter, setTrFilter] = useState("all"); // In-Transit Shipments Show filter
   const [poFilter, setPoFilter] = useState("all"); // Purchase Orders Show filter
+  const [impFilter, setImpFilter] = useState("all"); // In-Transit Importer Show filter
   const [search, setSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const onUsers = isAdmin && view === "users";
@@ -73,8 +76,8 @@ function Workspace({ user }) {
     setTrFilter(filter || "all");
     setView("transit");
   };
-  const current = onUsers ? "users" : ["home", "wholesale", "transit", "po", "sku"].includes(view) ? view : "matrix";
-  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", transit: "In-Transit Shipments", po: "Purchase Orders", sku: "Master SKU Inventory" };
+  const current = onUsers ? "users" : ["home", "wholesale", "transit", "po", "sku", "importer"].includes(view) ? view : "matrix";
+  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", transit: "In-Transit Shipments", po: "Purchase Orders", sku: "Master SKU Inventory", importer: "In-Transit Importer" };
 
   useEffect(() => {
     if (theme) document.documentElement.setAttribute("data-theme", theme);
@@ -127,6 +130,12 @@ function Workspace({ user }) {
         {current === "sku" && (
           <div className="view">
             <SkuInventory {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
+              onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+          </div>
+        )}
+        {current === "importer" && (
+          <div className="view">
+            <InTransitImporter {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={impFilter} onFilter={setImpFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}

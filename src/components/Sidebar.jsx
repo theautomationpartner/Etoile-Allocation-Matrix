@@ -1,8 +1,8 @@
 import { Icon } from "./Icon.jsx";
 import { clock } from "../lib/format.js";
 
-// Same markup as the mockup's side nav. Built so far: "Control center", "Allocation matrix", "Master SKU Inventory" and, for admins only,
-// "Users & access"; the rest are shown (with their counts) but cannot be opened.
+// Same markup as the mockup's side nav. Every screen is built (plus "Users & access", for admins only); an item without
+// `open` would be shown with its count but could not be opened.
 const NAV = [
   { section: "OVERVIEW" },
   { id: "home", label: "Control center", icon: "grid", open: true },
@@ -12,7 +12,7 @@ const NAV = [
   { id: "transit", label: "In-Transit Shipments", icon: "ship", open: true },
   { id: "po", label: "Purchase Orders", icon: "box", open: true },
   { id: "sku", label: "Master SKU Inventory", icon: "tag", open: true },
-  { id: "importer", label: "In-Transit Importer", icon: "up" },
+  { id: "importer", label: "In-Transit Importer", icon: "up", open: true },
 ];
 const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];
 

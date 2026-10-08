@@ -95,6 +95,18 @@ const ORDERS = [
 
 const SRC = { wh: "warehouse", it: "intransit", po: "po" };
 
+// In-Transit Importer: [item, file, Import Status, uploaded, shipment created]
+const IMPORTS = [
+  ["US / FLEX-4084548 / 40HC", "FLEX-4084548 final.xlsx", "Imported", "2026-08-11", "US / FLEX-4084548 / 40HC"],
+  ["US / FLEX-4119719 / 40HC", "FLEX-4119719 final.xlsx", "Imported", "2026-08-28", "US / FLEX-4119719 / 40HC"],
+  ["US / FLEX-4132795 / 40HC", "FLEX-4132795 final.xlsx", "Imported", "2026-09-01", "US / FLEX-4132795 / 40HC"],
+  ["US / FLEX-4151882 / 40HC", "FLEX-4151882 draft.xlsx", "Imported", "2026-09-10", "US / FLEX-4151882 / 40HC"],
+  ["US / FLEX-4170234 / 40HC", "FLEX-4170234 final.xlsx", "Imported", "2026-09-04", "US / FLEX-4170234 / 40HC"],
+  ["US / FLEX-4188610 / 40HC", "FLEX-4188610 final.xlsx", "Imported", "2026-09-15", "US / FLEX-4188610 / 40HC"],
+  ["US / FLEX-3987237 / 40HC", "FLEX-3987237 draft.xlsx", "Deleted in In-Transit Shipments", "2026-06-18", null],
+  ["US / FLEX-TBD", "packing list TBD.xlsx", "Deleted in In-Transit Shipments", "2026-06-11", null],
+];
+
 export function mockupData() {
   return {
     warehouse: Object.fromEntries(Object.entries(SKUS).map(([sku, s]) => [sku, { itemId: `wh-${sku}`, name: s.n, usQty: s.us }])),
@@ -112,6 +124,9 @@ export function mockupData() {
     // As loadMatrixData: data.orders = Orders + Pending (the demand), data.fulfilledOrders = the Fulfilled group.
     orders: ORDERS.filter(([, grp]) => grp !== "Fulfilled").map(order),
     fulfilledOrders: ORDERS.filter(([, grp]) => grp === "Fulfilled").map(order),
+    imports: IMPORTS.map(([name, file, status, uploaded, ship], i) => ({
+      id: `imp-${i}`, name, uploaded, files: [file], type: "In-Transit", status, location: "US", eta: "", shipmentId: ship,
+    })),
   };
 }
 

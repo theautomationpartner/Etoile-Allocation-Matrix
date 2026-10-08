@@ -306,8 +306,8 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   .nav-h "BOARDS" → "Wholesale Allocation" (.cnt items del board) · "In-Transit
   Shipments" (.cnt contenedores en tránsito) · "Purchase Orders" · "Master SKU
   Inventory" · "In-Transit Importer" (.cnt items de cada board).
-  Habilitados: Control center, Allocation matrix, Wholesale Allocation, In-Transit Shipments, Purchase Orders y
-  Master SKU Inventory; el resto a.off (42 % opacidad, not-allowed, tooltip "<nombre> — not available yet").
+  Todas las pantallas están habilitadas (Users & access solo para Admin). Un ítem sin `open` se vería a.off (42 %
+  opacidad, not-allowed, tooltip "<nombre> — not available yet").
   .side-foot: "Monday synced HH:MM AM/PM" + botón "Theme" (claro/oscuro, se recuerda).
 
 5.2 Barra superior (.topbar, sticky): .crumb "Etoile · US › Allocation matrix" ·
@@ -960,6 +960,26 @@ Fila → panel de la PO; chip de contenedor → su panel. ▸ → una línea por
 Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ordered − Outstanding, calculado).
 
 --------------------------------------------------------------------------------
+ 20. IN-TRANSIT IMPORTER (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vImporter. Solo lectura: subir un packing list y borrar un shipment se siguen haciendo en monday. Una fila
+por item de In-Transit / Wholesale Importer (18404604646) de US, la subida más nueva primero (src/lib/importer.js).
+Columnas leídas: File (file_mm1kn5sf, nombre del archivo) · Type Import (color_mm1kk5v5) · Import Status (status)
+· Location (color_mm4etbyd) · ETA (date_mm4ee89a) · In-Transit Shipment (board_relation_mm1kx7v4) · fecha de
+creación del item (Creation log).
+  US = Location US, o sin Location y nombre que empieza con "US" (las subidas viejas no tienen Location) ·
+  Uploaded = creación del item · Status: Live (Imported) / Reverted (Deleted in In-Transit Shipments; fila
+  tachada) / Error / el estado que tenga · Shipment created = el item In-Transit conectado (activo o ya en Archive;
+  "deleted" si se revirtió, "not linked" si está Imported sin conexión) · Packing list, Arrives, Units = del
+  contenedor · Promised = reservas abiertas sobre ese contenedor (las de la matriz).
+Tarjetas: Shipments created (Live; unidades de sus contenedores) · Still reversible (Live con contenedor activo en
+  Draft) · Reverted · Uploaded this month (últimos 30 días; no filtra). Nota del mockup sobre el borrado.
+Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del menú = All uploads. El buscador filtra
+  por archivo, item o contenedor.
+"Upload packing list" abre el tablero del Importer en monday en otra pestaña (ahí se sube el archivo). "Open" y el
+  chip del contenedor → panel lateral del contenedor.
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -1009,3 +1029,4 @@ Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ord
 2026-10-08  WHOLESALE ALLOCATION — sección 17; el grupo Fulfilled se lee aparte, sin tocar la demanda.
 2026-10-08  IN-TRANSIT SHIPMENTS — sección 18; se lee el ETD del contenedor y el nombre de sus subitems.
 2026-10-08  PURCHASE ORDERS — sección 19; Arrived y Status de la línea salen de monday (también en el panel).
+2026-10-08  IN-TRANSIT IMPORTER — sección 20; se lee el tablero del Importer. Todas las pantallas del menú habilitadas.

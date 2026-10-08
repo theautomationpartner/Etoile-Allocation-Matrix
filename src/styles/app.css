@@ -378,3 +378,14 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .pot tr.sub td:first-child { padding-left: 30px; }
 .pot tr.clickable:focus-visible td { background: var(--surface-2); }
 .pot tr.clickable:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--focus); }
+
+/* ── In-Transit Importer (mockup vImporter) ── */
+.page-act { margin-left: auto; }
+.page-act a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.imt td.r, .imt th.r { font-variant-numeric: tabular-nums; }
+.imt .im-file { min-width: 172px; }
+.imt th, .imt td { padding-left: 8px; padding-right: 8px; }
+.imt .im-item { font-size: 11.5px; font-weight: 400; }
+.imt .im-date { white-space: nowrap; }
+.imt .im-it { color: var(--it); }
+.imt td .chip { white-space: nowrap; }

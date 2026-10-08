@@ -412,3 +412,18 @@ la PO y un chip de contenedor el contenedor; la cantidad de cada chip = POs list
 clic vuelve; las 10 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: anchos y márgenes); en celular
 la tabla se desplaza dentro de su tarjeta.
 Dato real a revisar: PO-00432 tiene 16,788 unidades en contenedores con PO Reference PO-00432 y 13,812 pedidas.
+
+--------------------------------------------------------------------------------
+ 17. IN-TRANSIT IMPORTER — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 96 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  I-01 Tarjetas = mockup: 6 (10,168 u) · 1 · 2 · 5; chips 8·6·1·2 ................................................. PASA
+  I-02 Filas = mockup (la más nueva primero): FLEX-4119719 Live Final 28 Sep 3,910 · 3,372; FLEX-4151882 Draft
+       920 · 100 reversible; "packing list TBD" Reverted, sin shipment ............................................ PASA
+  I-03 Subida Live cuyo contenedor ya está en Archive (Done): se muestra, nunca como reversible ..................... PASA
+  I-04 Solo US: Location US, o sin Location y nombre que empieza con US ............................................ PASA
+Chequeo visual (npm run ui-check, 188): se abre desde el menú; tarjetas, nota, chips y columnas del mockup; All
+uploads = filas = badge del menú; "Upload packing list" abre el tablero del Importer en monday en otra pestaña;
+"Open" abre el panel del contenedor; las revertidas se ven tachadas; la cantidad de cada chip = subidas listadas; una
+tarjeta filtra y un segundo clic vuelve; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: la
+columna File se achicó); en celular la tabla se desplaza dentro de su tarjeta.
