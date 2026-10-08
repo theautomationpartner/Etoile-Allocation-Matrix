@@ -5,7 +5,7 @@ import { allocationSource, mondayApi } from "../config.js";
 // Every figure is computed in the browser from the raw monday data; only that raw data is cached.
 // Opening the page within CACHE_TTL_MS shows the cached data instantly; after that, or when the
 // user clicks Refresh, everything is read again from monday.com.
-const CACHE_KEY = "etoile-matrix-cache-v4"; // v4: Master SKU incoming records
+const CACHE_KEY = "etoile-matrix-cache-v5"; // v5: Fulfilled orders (Wholesale Allocation screen)
 export const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (client decision); Refresh always reads fresh data
 
 function readCache() {

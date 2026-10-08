@@ -864,9 +864,9 @@ Bloques: Needs a buying decision (SKUs con faltante, mayor primero) · Waiting o
   "in N days" / "N days late") · Where committed units come from (barra + 4 filas).
 Aviso: "<n> committed units lost their source" cuando hay reservas sin fuente válida (no se marcan en la matriz).
 Clic en una fila → panel lateral del registro (SKU, venta, contenedor o PO), el mismo de la matriz.
-Botones: Review SKUs → matriz "Cannot be covered" · Open matrix / Allocate now → matriz "Needs allocation".
-  See orders, See shipments, Open in Master SKU y Review van a pantallas todavía no construidas: se ven
-  atenuados con "The ... screen is not available yet".
+Botones: Review SKUs / Open in Master SKU → Master SKU "Sold short" · Open matrix / Allocate now → matriz
+  "Needs allocation" · See orders → Wholesale Allocation "Fully allocated". See shipments y Review van a
+  In-Transit Shipments, todavía no construida: se ven atenuados con "The ... screen is not available yet".
 Escribir en el buscador de arriba abre la matriz con esa búsqueda. Refresh igual que en la matriz.
 Los shipments (useShipments) viven en App.jsx y los comparten la matriz y el panel del Control center.
 
@@ -890,6 +890,27 @@ Fila → panel lateral del SKU. ▸ → Incoming records: subitems de Master SKU
   Arrival (color_mm2vzyxm Estimated/Confirmed) · Travelling (Σ US In Transit) · Still to ship (US Qty Outstanding
   − Travelling) · Packing list de cada contenedor. Clic en el registro → panel de la PO; en un contenedor → su panel.
 El Control center ("Review SKUs", "Open in Master SKU") abre esta pantalla con "Sold short".
+
+--------------------------------------------------------------------------------
+ 17. WHOLESALE ALLOCATION (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vWholesale. Solo lectura. Todas las órdenes US de 🛍️ Wholesale Allocation: Orders (topics) y Pending
+(group_mm1730xq) con las cifras del modelo de la matriz, y Fulfilled (group_mm17q5pm), que se carga aparte
+(loadFulfilledOrders → data.fulfilledOrders) y nunca entra en la demanda (src/lib/wholesale.js):
+  Ordered / Fulfilled = US Qty Ordered / Fulfilled de los subitems · Unallocated = Σ Left · impossible = Σ faltante
+  de la línea (§7.1, el mismo de la matriz) · % covered = (allocated + fulfilled) ÷ ordered, hacia abajo, 100 solo
+  sin faltante (igual que el panel de la orden) · Status: Shipped (Fulfilled) / Ready to ship (Unallocated 0) /
+  Cannot be covered (faltante) / Partially allocated · Covered by: tipos de fuente de lo asignado (Warehouse, In
+  transit, On order; un contenedor ya llegado cuenta como Warehouse).
+Tarjetas: Orders that can't be covered (filtra) · Units waiting on allocation (filtra; "across N orders") · SKUs
+  blocking these orders (abre Master SKU "Sold short") · Cancel date within 45 days (abiertas con Unallocated > 0).
+Show: All orders · Not fully allocated · Cannot be covered · Cancel date ≤ 45 days · Fully allocated, con su
+  cantidad. El buscador filtra por número, SO, retailer, SKU o producto. Badge del menú = All orders.
+Una tarjeta por grupo (Orders, Pending, Fulfilled) con "N orders · M line items". Fila de una orden abierta → panel
+  lateral de la orden; ▸ → líneas: Product · SKU · Ordered · Fulfilled · Outstanding · Unallocated · Source
+  (Shipped / Unallocated / Warehouse Stock / In-Transit / PO Pending / Mixed) · Coming from (chips "<contenedor o
+  PO> ← <PO de origen> · qty"; en rojo "(orphaned)" las reservas del Ledger cuya fuente ya no tiene ese SKU).
+  Una línea → panel del SKU. Las órdenes Fulfilled solo se expanden (ya no están en la matriz).
 
 --------------------------------------------------------------------------------
  HISTORIAL
@@ -938,3 +959,4 @@ El Control center ("Review SKUs", "Open in Master SKU") abre esta pantalla con "
 2026-10-08  Llegada por PO: lo recibido se cuenta primero contra los contenedores Done de esa PO + SKU.
 2026-10-08  CONTROL CENTER — pantalla de inicio (sección 15), con las cifras de la matriz.
 2026-10-08  MASTER SKU INVENTORY — sección 16; Incoming records desde los subitems de Master SKU.
+2026-10-08  WHOLESALE ALLOCATION — sección 17; el grupo Fulfilled se lee aparte, sin tocar la demanda.

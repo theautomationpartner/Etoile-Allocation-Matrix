@@ -121,6 +121,46 @@ async function run() {
     check(`Master SKU: no horizontal page scroll, every column visible (Status not cut) ${tag}`, sku.noScroll && sku.fits, JSON.stringify({ noScroll: sku.noScroll, fits: sku.fits }));
     await ev(`document.querySelector('[data-nav="home"]')?.click()`);
     for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
+    // Wholesale Allocation: from the Control center ("See orders" → "Fully allocated"), then its own checks.
+    const wh = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const all=(s)=>[...document.querySelectorAll(s)]; const ROWS=".wht tbody tr.clickable:not(.sub)";
+      all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Committed to wholesale")?.click(); await wait(400);
+      const r={ crumb: q(".crumb b")?.textContent, chipOn: q(".view:not([hidden]) .fchip.on")?.textContent||"", navOn: q('[data-nav="wholesale"]')?.classList.contains("on") };
+      all(".view:not([hidden]) .fchip").find(x=>/^All orders/.test(x.textContent))?.click(); await wait(300);
+      r.cards=all(".view:not([hidden]) .kpis .kpi .lab").map(x=>x.textContent);
+      r.cta=all(".view:not([hidden]) .kpis .kpi .cta").map(x=>x.textContent.replace("→","").trim());
+      r.chips=all(".view:not([hidden]) .fchip").map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=all(".wht")[0] ? [...all(".wht")[0].querySelectorAll("thead th")].map(x=>x.textContent) : [];
+      r.groups=all(".wh-group .card-h h3").map(x=>x.textContent);
+      r.subs=all(".wh-group .card-h .sub").every(x=>/^[0-9,]+ orders? · [0-9,]+ line items?$/.test(x.textContent));
+      r.rows=document.querySelectorAll(ROWS).length;
+      const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All orders/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
+      r.allCount = r.rows === allN && +(q('[data-nav="wholesale"] .cnt')?.textContent||allN) === allN;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=all(".wht").every(t=>t.offsetWidth <= t.closest(".tw").clientWidth + 1);
+      const exp=q(".wht button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".wht tr.sub").length; r.subhead=all(".wht tr.subhead")[0]?.textContent||""; r.railStayedClosed=!q(".rail.on");
+        q(".wht tr.sub")?.click(); await wait(300); r.skuRail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200); exp.click(); await wait(200); r.collapsed=!q(".wht tr.subhead"); }
+      const openRow=all(ROWS).find(tr=>!tr.closest(".wh-group").querySelector("h3").textContent.includes("Fulfilled")); openRow?.click(); await wait(300);
+      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!openRow && openRow.querySelector(".eivr")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
+      r.filtered={}; for (const name of ["Not fully allocated","Cannot be covered","Fully allocated"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+        chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="SKUs blocking these orders"); card?.click(); await wait(400);
+      r.toSku = q(".crumb b")?.textContent === "Master SKU Inventory" && /^Sold short/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
+      all(".view:not([hidden]) .fchip").find(x=>/^All products/.test(x.textContent))?.click(); await wait(200);
+      return JSON.stringify(r)`));
+    check(`"See orders" opens Wholesale Allocation with "Fully allocated" on ${tag}`, wh.crumb === "Wholesale Allocation" && /^Fully allocated/.test(wh.chipOn) && wh.navOn, JSON.stringify(wh));
+    check(`Wholesale: cards, Show chips and columns of the mockup ${tag}`, wh.cards.join("|") === "Orders that can't be covered|Units waiting on allocation|SKUs blocking these orders|Cancel date within 45 days"
+      && wh.chips.join("|") === "All orders|Not fully allocated|Cannot be covered|Cancel date ≤ 45 days|Fully allocated"
+      && wh.head.join("|") === "Order|Retailer|Cancel date|Status|Allocation|Ordered|Fulfilled|Unallocated|Covered by" && wh.rows > 0, JSON.stringify(wh));
+    check(`Wholesale: one card per group (Orders, Pending, Fulfilled) with "N orders · M line items" ${tag}`, wh.groups.length > 0 && wh.groups.every((g, i) => ["Orders", "Pending", "Fulfilled"].includes(g) && (i === 0 || ["Orders", "Pending", "Fulfilled"].indexOf(g) > ["Orders", "Pending", "Fulfilled"].indexOf(wh.groups[i - 1]))) && wh.subs, JSON.stringify(wh.groups));
+    check(`Wholesale: "All orders" count = rows listed = side nav badge ${tag}`, wh.allCount, JSON.stringify(wh));
+    check(`Wholesale: ▸ shows the line items (without opening the panel), a line opens its SKU, ▾ hides them ${tag}`, wh.sub > 0 && /^ProductSKUOrderedFulfilledOutstandingUnallocatedSourceComing from$/.test(wh.subhead) && wh.railStayedClosed && wh.skuRail && wh.collapsed, JSON.stringify(wh));
+    check(`Wholesale: an order row opens the order's side panel ${tag}`, wh.railMatches, JSON.stringify({ rail: wh.rail }));
+    check(`Wholesale: each Show chip's count = orders listed ${tag}`, Object.values(wh.filtered).every(Boolean), JSON.stringify(wh.filtered));
+    check(`Wholesale: no horizontal page scroll, every column visible ${tag}`, wh.noScroll && wh.fits, JSON.stringify({ noScroll: wh.noScroll, fits: wh.fits }));
+    check(`Wholesale: "SKUs blocking these orders" opens Master SKU with "Sold short" ${tag}`, wh.toSku, JSON.stringify(wh));
+    await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
     // "Open matrix" opens the matrix with the "Needs allocation" filter on.
     const toMatrix = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const card=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi")].find(k=>k.querySelector(".lab")?.textContent==="Waiting to be allocated");
       card.click(); await wait(400); return JSON.stringify({ crumb: document.querySelector(".crumb b")?.textContent, chip: document.querySelector(".fchip.on")?.textContent || "" })`));
@@ -283,6 +323,9 @@ async function run() {
   await ev(`document.querySelector('[data-nav="sku"]')?.click()`);
   for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".skt tbody tr")`)); t++) await sleep(250);
   check("Master SKU: no horizontal page scroll @390px (the table scrolls inside)", await ev(`const tw=document.querySelector(".tw"); return document.documentElement.scrollWidth <= innerWidth + 1 && tw.getBoundingClientRect().right <= innerWidth + 1`));
+  await ev(`document.querySelector('[data-nav="wholesale"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".wht tbody tr")`)); t++) await sleep(250);
+  check("Wholesale: no horizontal page scroll @390px (the tables scroll inside)", await ev(`return document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll(".wht")].every(t=>t.closest(".tw").getBoundingClientRect().right <= innerWidth + 1)`));
   await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
 }
 

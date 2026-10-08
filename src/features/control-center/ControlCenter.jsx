@@ -7,9 +7,8 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 // Control center (mockup vHome, "Control center — Requerimientos funcionales y técnicos"): the home screen.
 // Read-only: nothing here writes to monday. Every figure comes from the Allocation Matrix model (control.js).
 // Rows open the side panel of their record; buttons open another screen already filtered. Screens that are not
-// built yet (Wholesale Allocation, In-Transit Shipments) show their action dimmed.
+// built yet (In-Transit Shipments) show their action dimmed.
 const SOON = {
-  wholesale: "The Wholesale Allocation screen is not available yet",
   transit: "The In-Transit Shipments screen is not available yet",
 };
 const LABELS = ["Sales at risk", "Waiting to be allocated", "Committed to wholesale", `Landing in ${SOON_DAYS} days`];
@@ -58,7 +57,7 @@ function GoButton({ label, onGo, soon }) {
     : <button type="button" className="btn" onClick={onGo}>{label}</button>;
 }
 
-export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoShipments, shipments, search }) {
+export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoWholesale, onGoShipments, shipments, search }) {
   const cc = useMemo(() => (model && data ? buildControl(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(cc);
@@ -140,7 +139,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
             cta="Open matrix" onGo={() => onGoMatrix("pending")} />
           <Card label="Committed to wholesale" value={fmt(c.committed.total)}
             sub={`${fmt(c.committed.onHand)} on hand · ${fmt(c.committed.inTransit)} in transit · ${fmt(c.committed.onOrder)} on order`}
-            cta="See orders" ctaSoon={SOON.wholesale} />
+            cta="See orders" onGo={() => onGoWholesale("allocated")} />
           <Card label={`Landing in ${SOON_DAYS} days`} value={fmt(c.landing.units)}
             sub={c.landing.shipments ? `${plural(c.landing.shipments, "shipment", "shipments")} · ${fmt(c.landing.free)} units still unclaimed` : "No containers due this month"}
             cta="See shipments" ctaSoon={SOON.transit} />

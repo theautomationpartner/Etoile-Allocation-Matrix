@@ -310,3 +310,30 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .sk-cov-t { white-space: nowrap; }
 .skt .sk-cover { min-width: 0; }
 .skt .sk-prod { min-width: 176px; }
+
+/* ── Wholesale Allocation (mockup vWholesale) ── */
+.wh-group { margin-bottom: 14px; }
+.wht .wh-ord { min-width: 230px; }
+.wht .wh-alloc { min-width: 130px; }
+.wht td.r, .wht th.r { font-variant-numeric: tabular-nums; }
+.wht .wh-o { display: flex; align-items: flex-start; gap: 6px; }
+.wht .wh-o .exp { flex: none; margin-top: 1px; }
+.wht .wh-meta { font-size: 11.5px; }
+.wht .wh-ret { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wht .wh-date { white-space: nowrap; }
+.wht .wh-days, .wht .wh-cov { font-size: 11px; }
+.wht .wh-cov { margin-top: 4px; white-space: nowrap; }
+.wht .wh-none { color: var(--ink-3); }
+.wht .wh-left { color: var(--gap); }
+.wht td .chip { white-space: nowrap; }
+.wht .wh-kinds { line-height: 1.9; }
+.wht .wh-kinds .chip { margin: 2px 4px 2px 0; }
+.wht tr.sub td:first-child { padding-left: 30px; }
+.wht tr.clickable:focus-visible td { background: var(--surface-2); }
+.wht tr.clickable:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--focus); }
+/* Fit the 9 columns without sideways scrolling from 1200px (measured): tighter cells, the order meta may wrap. */
+.wht th, .wht td { padding-left: 7px; padding-right: 7px; }
+.wht .wh-ord { min-width: 158px; }
+.wht .wh-ret { max-width: 112px; }
+.wht .wh-alloc { min-width: 96px; }
+.wht tbody tr:not(.sub) .wh-kinds { min-width: 96px; }

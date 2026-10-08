@@ -36,6 +36,7 @@ export const COL = {
 };
 
 export const OPEN_GROUPS = ["topics", "group_mm1730xq"]; // Wholesale: Orders + Pending
+export const FULFILLED_GROUP = "group_mm17q5pm"; // Wholesale: Fulfilled (only listed on the Wholesale Allocation screen)
 export const LEDGER_ACTIVE_GROUP = "group_mm76c2zx"; // Ledger: Active
 export const LEDGER_FULFILLED_GROUP = "group_mm76zg9t"; // Ledger: Fulfilled — still the line's record while its order is open
 export const LEDGER_RELEASED_GROUP = "group_mm76qvz"; // Ledger: Released — a line allocated back to zero (holds no units)
@@ -163,6 +164,26 @@ export function createMondayApi(transport = fetchTransport) {
           entries: parseAllocationJson(cv(sub, sc.allocJson)),
           ledgerItemId: (sub.column_values.find((c) => c.id === sc.ledgerRel)?.linked_item_ids || [])[0] || null,
         };
+      }),
+    }));
+  }
+
+  // Wholesale Allocation screen only: the orders of the Fulfilled group (shipped). They are never demand and hold
+  // no units — just their quantities, so the screen lists every order synced from Cin7, as the mockup does.
+  async function loadFulfilledOrders() {
+    const s = COL.sale, sc = COL.saleSub;
+    const fields = `id name group { id }
+      column_values(ids:[${gqlList([s.retailer, s.region, s.status, s.orderDate, s.cancelDate])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList([sc.skuId, sc.ordered, sc.fulfilled, sc.outstanding])}]) { id text } }`;
+    const items = await allItems(BOARDS.wholesale, fields, { groups: [FULFILLED_GROUP] });
+    return items.map((it) => ({
+      id: it.id, name: it.name, group: it.group?.id || FULFILLED_GROUP,
+      retailer: cv(it, s.retailer), region: cv(it, s.region), saleStatus: cv(it, s.status),
+      orderDate: date(cv(it, s.orderDate)), cancelDate: date(cv(it, s.cancelDate)),
+      lines: (it.subitems || []).map((sub) => {
+        const skuId = cv(sub, sc.skuId);
+        return { id: sub.id, name: sub.name, sku: (skuId.includes("|") ? skuId.split("|").pop() : skuId).trim(),
+          ordered: num(cv(sub, sc.ordered)), fulfilled: num(cv(sub, sc.fulfilled)), outstanding: num(cv(sub, sc.outstanding)), entries: [] };
       }),
     }));
   }
@@ -344,10 +365,11 @@ export function createMondayApi(transport = fetchTransport) {
   async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
     await checkSchema();
     const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments] = await Promise.all([
+    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments, fulfilledOrders] = await Promise.all([
       loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
+      loadFulfilledOrders(),
     ]);
-    const data = { orders, warehouse, containers, pos, boardCounts, shipments, allocationSource, loadedAt: new Date() };
+    const data = { orders, warehouse, containers, pos, boardCounts, shipments, fulfilledOrders, allocationSource, loadedAt: new Date() };
     return useLedger ? withLedger(data, ledger) : data;
   }
 

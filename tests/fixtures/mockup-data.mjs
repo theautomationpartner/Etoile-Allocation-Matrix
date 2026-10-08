@@ -99,12 +99,18 @@ export function mockupData() {
       id: s.id, name: s.id, group: "topics", location: "US", eta: s.eta, packingList: s.packing,
       lines: s.lines.map(([sku, po, qty], i) => ({ id: `${s.id}-${i}`, sku, poRef: po, qty })),
     })),
-    orders: ORDERS.map(([id, grp, cancel, lines]) => ({
-      id, name: id, group: GROUP[grp], region: "US", cancelDate: cancel,
-      lines: lines.map(([sku, ord, ful, alloc]) => ({
-        id: `${id}-${sku}`, sku, outstanding: ord - ful,
-        entries: alloc.map(([s, ref, qty]) => ({ source: SRC[s], sourceId: s === "wh" ? `wh-${sku}` : ref, qty })),
-      })),
+    // As loadMatrixData: data.orders = Orders + Pending (the demand), data.fulfilledOrders = the Fulfilled group.
+    orders: ORDERS.filter(([, grp]) => grp !== "Fulfilled").map(order),
+    fulfilledOrders: ORDERS.filter(([, grp]) => grp === "Fulfilled").map(order),
+  };
+}
+
+function order([id, grp, cancel, lines]) {
+  return {
+    id, name: id, group: GROUP[grp], region: "US", cancelDate: cancel,
+    lines: lines.map(([sku, ord, ful, alloc]) => ({
+      id: `${id}-${sku}`, sku, ordered: ord, fulfilled: ful, outstanding: ord - ful,
+      entries: alloc.map(([s, ref, qty]) => ({ source: SRC[s], sourceId: s === "wh" ? `wh-${sku}` : ref, qty })),
     })),
   };
 }

@@ -360,3 +360,20 @@ tarjetas, chips y columnas del mockup; ▸ muestra los registros sin abrir el pa
 panel del SKU; la cantidad de un chip = filas mostradas; las 10 columnas entran sin scroll lateral en 1200 y 1440 px
 (antes Status quedaba cortado); en celular la tabla se desplaza dentro de su tarjeta. Menú lateral: el nombre ya no
 se parte en dos renglones por el contador.
+
+--------------------------------------------------------------------------------
+ 14. WHOLESALE ALLOCATION — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 82 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  W-01 Tarjetas = mockup: 2 órdenes (864 u) · 2,509 u en 4 órdenes · EC0388, EC0384 · 1; chips 7·4·2·1·2 ........ PASA
+  W-02 Filas: EIVR118 Ready to ship 100% · EIVR121 Partially allocated 80% (520) · EIVR127 / EIVR129 Cannot be covered PASA
+  W-03 EIVR117 (Fulfilled): Shipped, nunca cuenta como demanda ni como Fully allocated ........................... PASA
+  W-04 Líneas: Unallocated / Mixed / In-Transit y de dónde vienen las unidades (contenedor · cantidad) ............ PASA
+  W-05 Reserva en un contenedor que ya no existe → chip rojo "(orphaned)" ........................................ PASA
+  W-06 Solo órdenes US; "Cancel date ≤ 45 days" solo con unidades sin asignar ..................................... PASA
+Chequeo visual (npm run ui-check, 141): "See orders" del Control center abre esta pantalla con "Fully allocated";
+tarjetas, chips y columnas del mockup; una tarjeta por grupo en orden con "N orders · M line items"; All orders =
+filas = badge del menú; ▸ muestra las líneas sin abrir el panel, una línea abre su SKU, ▾ las oculta; una orden abre
+su panel; la cantidad de cada chip = órdenes listadas; "SKUs blocking these orders" abre Master SKU "Sold short";
+las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: un número largo como #ECUS28341 /
+ANTHROPOLOGIE ahora parte después de la barra); en celular las tablas se desplazan dentro de su tarjeta.
