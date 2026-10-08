@@ -9,7 +9,7 @@ const NAV = [
   { id: "matrix", label: "Allocation matrix", icon: "table", open: true },
   { section: "BOARDS" },
   { id: "wholesale", label: "Wholesale Allocation", icon: "bag", open: true },
-  { id: "transit", label: "In-Transit Shipments", icon: "ship" },
+  { id: "transit", label: "In-Transit Shipments", icon: "ship", open: true },
   { id: "po", label: "Purchase Orders", icon: "box" },
   { id: "sku", label: "Master SKU Inventory", icon: "tag", open: true },
   { id: "importer", label: "In-Transit Importer", icon: "up" },

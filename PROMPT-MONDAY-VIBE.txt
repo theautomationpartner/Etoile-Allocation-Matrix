@@ -306,8 +306,8 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   .nav-h "BOARDS" → "Wholesale Allocation" (.cnt items del board) · "In-Transit
   Shipments" (.cnt contenedores en tránsito) · "Purchase Orders" · "Master SKU
   Inventory" · "In-Transit Importer" (.cnt items de cada board).
-  Solo "Allocation matrix" está habilitado; el resto a.off (42 % opacidad, not-allowed,
-  tooltip "<nombre> — not available yet").
+  Habilitados: Control center, Allocation matrix, Wholesale Allocation, In-Transit Shipments y Master SKU
+  Inventory; el resto a.off (42 % opacidad, not-allowed, tooltip "<nombre> — not available yet").
   .side-foot: "Monday synced HH:MM AM/PM" + botón "Theme" (claro/oscuro, se recuerda).
 
 5.2 Barra superior (.topbar, sticky): .crumb "Etoile · US › Allocation matrix" ·
@@ -324,7 +324,7 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   1 "Units to allocate"   .act → filtro Needs allocation; cta "Show these →" / "Showing these →"
   2 "Impossible to cover" .act → filtro Cannot be covered. Valor > 0 → .warn (rojo);
                           valor 0 → .ok (verde: nada bloqueado).
-  3 "Free inventory to draw on" · cta "See where it sits →" deshabilitado (.soon)
+  3 "Free inventory to draw on" · cta "See where it sits →" → In-Transit Shipments "Has free units"
   4 "Already allocated"
   Activa: .on. Clic otra vez → Everything.
 
@@ -865,8 +865,8 @@ Bloques: Needs a buying decision (SKUs con faltante, mayor primero) · Waiting o
 Aviso: "<n> committed units lost their source" cuando hay reservas sin fuente válida (no se marcan en la matriz).
 Clic en una fila → panel lateral del registro (SKU, venta, contenedor o PO), el mismo de la matriz.
 Botones: Review SKUs / Open in Master SKU → Master SKU "Sold short" · Open matrix / Allocate now → matriz
-  "Needs allocation" · See orders → Wholesale Allocation "Fully allocated". See shipments y Review van a
-  In-Transit Shipments, todavía no construida: se ven atenuados con "The ... screen is not available yet".
+  "Needs allocation" · See orders → Wholesale Allocation "Fully allocated" · See shipments → In-Transit
+  Shipments "Arriving ≤ 30 days" · Review (Draft packing lists) → In-Transit Shipments "Draft packing list".
 Escribir en el buscador de arriba abre la matriz con esa búsqueda. Refresh igual que en la matriz.
 Los shipments (useShipments) viven en App.jsx y los comparten la matriz y el panel del Control center.
 
@@ -911,6 +911,30 @@ Una tarjeta por grupo (Orders, Pending, Fulfilled) con "N orders · M line items
   (Shipped / Unallocated / Warehouse Stock / In-Transit / PO Pending / Mixed) · Coming from (chips "<contenedor o
   PO> ← <PO de origen> · qty"; en rojo "(orphaned)" las reservas del Ledger cuya fuente ya no tiene ese SKU).
   Una línea → panel del SKU. Las órdenes Fulfilled solo se expanden (ya no están en la matriz).
+
+--------------------------------------------------------------------------------
+ 18. IN-TRANSIT SHIPMENTS (2026-10-08)
+--------------------------------------------------------------------------------
+Mockup vTransit. Solo lectura. Una fila por contenedor activo de 🚢 In-Transit Shipments (grupo topics, Location
+US, Packing List distinto de Done: la oferta en tránsito de la matriz), ETA más cercana primero
+(src/lib/transit.js):
+  On board = Σ Qty de sus subitems · Free = unidades que nadie tiene (freeOf) · Committed = On board − Free (todas
+  las reservas abiertas del contenedor, también las que ya cuentan como warehouse) · Claimed = Committed ÷ On board
+  · Arrives = ETA (date4) con "in N days" o "landed" (ETA ya pasada, como el mockup y el Control center) · departed
+  = ETD (date_mm15dw6, nueva lectura) · From PO = POs de sus subitems con sus unidades · Customers waiting =
+  retailers con reservas en el contenedor.
+Tarjetas (cada una filtra): Still on the water (ETA futura o sin ETA; unidades a bordo) · Arriving in 30 days (lo
+  prometido) · Unclaimed units in transit (Σ Free; contenedores con Free) · Draft packing lists (lo prometido que
+  depende de un packing list sin confirmar; rojo si hay).
+Show: All shipments · Not arrived · Arriving ≤ 30 days · Has free units · Customers depend on it · Draft packing list.
+  El buscador filtra por contenedor, PO, SKU, producto, retailer u orden. Badge del menú = All shipments.
+Fila → panel del contenedor; chip de PO → panel de la PO. ▸ → subitems (SKU × PO; nombre del subitem en monday):
+  On board · Committed · Free · From PO · Promised to (retailer · qty, abre la orden; "free to sell" si nada). Si
+  un SKU viene de más de una PO, una fila de total ("same SKU from N POs") y debajo cada subitem (└).
+  Las reservas nombran el contenedor, no el subitem: se reparten entre los subitems del SKU, la PO más temprana
+  primero y la cancel date más temprana primero (el mismo criterio del panel lateral, paths.js §8.1).
+Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("Draft packing list"); matriz "See
+  where it sits" ("Has free units").
 
 --------------------------------------------------------------------------------
  HISTORIAL
@@ -960,3 +984,4 @@ Una tarjeta por grupo (Orders, Pending, Fulfilled) con "N orders · M line items
 2026-10-08  CONTROL CENTER — pantalla de inicio (sección 15), con las cifras de la matriz.
 2026-10-08  MASTER SKU INVENTORY — sección 16; Incoming records desde los subitems de Master SKU.
 2026-10-08  WHOLESALE ALLOCATION — sección 17; el grupo Fulfilled se lee aparte, sin tocar la demanda.
+2026-10-08  IN-TRANSIT SHIPMENTS — sección 18; se lee el ETD del contenedor y el nombre de sus subitems.

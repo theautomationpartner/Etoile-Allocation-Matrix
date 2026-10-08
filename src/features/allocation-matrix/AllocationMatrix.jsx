@@ -22,7 +22,7 @@ import { fetchWrite } from "../../lib/mondayWrites.js";
 // shipments: useShipments(...) owned by the workspace (the Control center opens the same records).
 // request: { n, filter?, orderShipments? } from another screen (the Control center): apply a Show filter, or
 // open an order on its Shipments tab. n changes on every request.
-export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request }) {
+export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request, onGoTransit }) {
 
   // Closing or reloading the tab with unsaved shipments: the browser asks first.
   useEffect(() => {
@@ -198,7 +198,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
           Refresh
         </button>
       </div>
-      <MetricCards metrics={model?.metrics} filter={filter} onFilter={toggleFilter} />
+      <MetricCards metrics={model?.metrics} filter={filter} onFilter={toggleFilter} onGoTransit={onGoTransit} />
       <ReviewPanel items={review} busyKey={releasing} onRelease={onRelease} />
       <ControlsBar onExpandAll={expandAll} disabled={!matrix?.groups.length} />
       <ShowFilters filter={filter} onFilter={setFilter} search={search} matched={matched} total={model?.lines.length} />

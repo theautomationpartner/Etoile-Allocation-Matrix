@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ControlCenter } from "./features/control-center/ControlCenter.jsx";
 import { SkuInventory } from "./features/sku-inventory/SkuInventory.jsx";
 import { WholesaleAllocation } from "./features/wholesale/WholesaleAllocation.jsx";
+import { InTransitShipments } from "./features/in-transit/InTransitShipments.jsx";
 import { useShipments } from "./hooks/useShipments.js";
 import { fetchWrite } from "./lib/mondayWrites.js";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -40,9 +41,10 @@ function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
   const isAdmin = user?.role === "admin";
-  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | sku | users (admins only)
+  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | wholesale | transit | sku | users (admins only)
   const [skuFilter, setSkuFilter] = useState("all"); // Master SKU Inventory Show filter (kept while the app is open)
   const [whFilter, setWhFilter] = useState("all"); // Wholesale Allocation Show filter
+  const [trFilter, setTrFilter] = useState("all"); // In-Transit Shipments Show filter
   const [search, setSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const onUsers = isAdmin && view === "users";
@@ -64,8 +66,12 @@ function Workspace({ user }) {
     setWhFilter(filter || "all");
     setView("wholesale");
   };
-  const current = onUsers ? "users" : ["home", "wholesale", "sku"].includes(view) ? view : "matrix";
-  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", sku: "Master SKU Inventory" };
+  const goTransit = (filter) => {
+    setTrFilter(filter || "all");
+    setView("transit");
+  };
+  const current = onUsers ? "users" : ["home", "wholesale", "transit", "sku"].includes(view) ? view : "matrix";
+  const TITLES = { home: "Control center", matrix: "Allocation matrix", wholesale: "Wholesale Allocation", transit: "In-Transit Shipments", sku: "Master SKU Inventory" };
 
   useEffect(() => {
     if (theme) document.documentElement.setAttribute("data-theme", theme);
@@ -94,13 +100,19 @@ function Workspace({ user }) {
         {current === "home" && (
           <div className="view">
             <ControlCenter {...matrix} search={search} onRefresh={refresh} shipments={shipments}
-              onGoMatrix={(filter) => goMatrix({ filter })} onGoSku={goSku} onGoWholesale={goWholesale} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+              onGoMatrix={(filter) => goMatrix({ filter })} onGoSku={goSku} onGoWholesale={goWholesale} onGoTransit={goTransit} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "wholesale" && (
           <div className="view">
             <WholesaleAllocation {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={whFilter} onFilter={setWhFilter}
               onGoSku={goSku} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+          </div>
+        )}
+        {current === "transit" && (
+          <div className="view">
+            <InTransitShipments {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
+              onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "sku" && (
@@ -111,7 +123,7 @@ function Workspace({ user }) {
         )}
         {/* The matrix stays mounted on the other screens: its open groups and editor state are kept. */}
         <div className="view" hidden={current !== "matrix"}>
-          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} shipments={shipments} request={matrixRequest} />
+          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} shipments={shipments} request={matrixRequest} onGoTransit={goTransit} />
         </div>
         {onUsers && (
           <div className="view">

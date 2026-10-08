@@ -377,3 +377,20 @@ filas = badge del menú; ▸ muestra las líneas sin abrir el panel, una línea 
 su panel; la cantidad de cada chip = órdenes listadas; "SKUs blocking these orders" abre Master SKU "Sold short";
 las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: un número largo como #ECUS28341 /
 ANTHROPOLOGIE ahora parte después de la barra); en celular las tablas se desplazan dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 15. IN-TRANSIT SHIPMENTS — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 87 en total, todos pasan) con los datos del mockup y su "hoy" (16 Sep 2026):
+  T-01 Tarjetas = mockup: 5 (7,952 u) · 2 (4,502 prometidas) · 2,367 en 5 contenedores · 1 (100); chips 6·5·2·5·6·1 PASA
+  T-02 Filas por ETA: FLEX-4084548 2,216·1,758·458 79% landed · FLEX-4119719 3,910·3,372·538 86% (PO-00432·3,609,
+       PO-00441·301) · FLEX-4151882 Draft 920·100·820 11% ......................................................... PASA
+  T-03 Committed y Free = lo que la matriz tiene y ofrece en cada contenedor; los subitems suman lo mismo ......... PASA
+  T-04 EC0387 de 2 POs: fila de total 1,000; PO-00432 699 primero, luego PO-00441 301; "free to sell" si nada ..... PASA
+  T-05 Customers waiting: un retailer por contenedor, sin repetir ................................................ PASA
+Chequeo visual (npm run ui-check, 158): "See shipments" del Control center abre esta pantalla con "Arriving ≤ 30
+days" y "See where it sits" de la matriz con "Has free units"; ya no queda ningún botón atenuado en el Control
+center; tarjetas, chips y columnas del mockup; All shipments = filas = badge del menú; ▸ muestra los subitems sin
+abrir el panel, un subitem abre su SKU, ▾ los oculta; una fila abre el contenedor y un chip de PO la PO; la cantidad
+de cada chip = contenedores listados; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido en
+1200: la columna Shipment se achicó 22 px); en celular la tabla se desplaza dentro de su tarjeta.

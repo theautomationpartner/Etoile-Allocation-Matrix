@@ -23,7 +23,7 @@ export function Card({ label, value, sub, tone = "", filterKey, filter, onFilter
 
 // §4 — the four cards summarise all open US wholesale demand. Drafts never count,
 // except the draft figure in the "Units to allocate" subtitle.
-export function MetricCards({ metrics: m, filter, onFilter }) {
+export function MetricCards({ metrics: m, filter, onFilter, onGoTransit }) {
   if (!m) {
     return (
       <div className="kpis">
@@ -46,7 +46,7 @@ export function MetricCards({ metrics: m, filter, onFilter }) {
         sub={m.impossible > 0 ? `${plural(m.shortSkuCount, "SKU needs", "SKUs need")} a new purchase order` : "Nothing is blocked"} />
       <Card label="Free inventory to draw on" value={fmt(m.freeInventory)}
         sub={`${fmt(f.onHand)} on hand · ${fmt(f.inTransit)} in transit · ${fmt(f.onOrder)} on order`}
-        cta="See where it sits" ctaSoon="The In-Transit Shipments screen is not available yet" />
+        cta="See where it sits" onGo={() => onGoTransit("free")} />
       <Card label="Already allocated" value={fmt(m.alreadyAllocated)}
         sub={`${fmt(a.onHand)} on hand · ${fmt(a.inTransit)} in transit · ${fmt(a.onOrder)} on order`} />
     </div>

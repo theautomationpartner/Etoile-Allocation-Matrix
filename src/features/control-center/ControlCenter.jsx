@@ -6,11 +6,7 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 
 // Control center (mockup vHome, "Control center — Requerimientos funcionales y técnicos"): the home screen.
 // Read-only: nothing here writes to monday. Every figure comes from the Allocation Matrix model (control.js).
-// Rows open the side panel of their record; buttons open another screen already filtered. Screens that are not
-// built yet (In-Transit Shipments) show their action dimmed.
-const SOON = {
-  transit: "The In-Transit Shipments screen is not available yet",
-};
+// Rows open the side panel of their record; buttons open another screen already filtered.
 const LABELS = ["Sales at risk", "Waiting to be allocated", "Committed to wholesale", `Landing in ${SOON_DAYS} days`];
 
 const inDays = (n) => (n === null ? "no date" : n === 0 ? "today" : n > 0 ? `in ${plural(n, "day", "days")}` : `${plural(-n, "day", "days")} late`);
@@ -51,13 +47,11 @@ function Block({ title, sub, action, children }) {
 }
 
 // A header button that opens another screen; dimmed with its reason when that screen is not built.
-function GoButton({ label, onGo, soon }) {
-  return soon
-    ? <button type="button" className="btn" aria-disabled="true" disabled title={soon}>{label}</button>
-    : <button type="button" className="btn" onClick={onGo}>{label}</button>;
+function GoButton({ label, onGo }) {
+  return <button type="button" className="btn" onClick={onGo}>{label}</button>;
 }
 
-export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoWholesale, onGoShipments, shipments, search }) {
+export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoWholesale, onGoTransit, onGoShipments, shipments, search }) {
   const cc = useMemo(() => (model && data ? buildControl(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(cc);
@@ -142,7 +136,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
             cta="See orders" onGo={() => onGoWholesale("allocated")} />
           <Card label={`Landing in ${SOON_DAYS} days`} value={fmt(c.landing.units)}
             sub={c.landing.shipments ? `${plural(c.landing.shipments, "shipment", "shipments")} · ${fmt(c.landing.free)} units still unclaimed` : "No containers due this month"}
-            cta="See shipments" ctaSoon={SOON.transit} />
+            cta="See shipments" onGo={() => onGoTransit("soon")} />
         </div>
       )}
 
@@ -184,7 +178,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
 
             {cc.drafts.length > 0 && (
               <Block title="Draft packing lists" sub="not confirmed by the freight forwarder yet"
-                action={<GoButton label="Review" soon={SOON.transit} />}>
+                action={<GoButton label="Review" onGo={() => onGoTransit("draft")} />}>
                 {cc.drafts.map((d) => (
                   <Row key={d.id} sev="warn" title={d.code} onOpen={() => openRecord("ship", d.id)}
                     meta={`${joinPos(d.pos)} · arrives ${d.eta ? dayMonthYear(d.eta) : "no ETA"} · ${plural(d.promised, "unit", "units")} already promised to customers`}
