@@ -913,6 +913,6 @@ Los shipments (useShipments) viven en App.jsx y los comparten la matriz y el pan
 2026-10-07  REVIEW — Last Fulfilled Processed; panel "Needs review" con Release; la reserva sigue de la
             PO al contenedor; llegada confirmada por Qty Arrived de la PO (reemplaza Done → warehouse
             por el 50 % del warehouse); Is Process nunca cuenta; Status Allocation por cantidades;
-            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
+            Arrival Status en el Ledger; Status de In-Transit; /api/daily-check para el mail de Make.
 2026-10-08  Llegada por PO: lo recibido se cuenta primero contra los contenedores Done de esa PO + SKU.
 2026-10-08  CONTROL CENTER — pantalla de inicio (sección 15), con las cifras de la matriz.
