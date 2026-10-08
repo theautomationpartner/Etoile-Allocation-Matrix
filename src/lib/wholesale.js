@@ -57,7 +57,7 @@ export function buildWholesale(model, data, { today = localToday() } = {}) {
     const lines = (o.lines || []).map((raw) => {
       const l = isOpen ? lineById.get(String(raw.id)) : null; // demand row (To ship > 0)
       const x = isOpen ? allById.get(String(raw.id)) : null; // any line of an open order
-      const outstanding = Math.max(0, (raw.ordered || 0) - (raw.fulfilled || 0));
+      const outstanding = Math.max(0, raw.outstanding ?? (raw.ordered || 0) - (raw.fulfilled || 0)); // US Qty Outstanding, as Cin7 leaves it
       const alive = x ? x.entries : [];
       const dead = x && x.orphan > 0 ? orphansOf(raw, x) : [];
       const kinds = [...new Set(alive.map((e) => STAGE_KIND[e.stage]).filter(Boolean))];
@@ -82,11 +82,12 @@ export function buildWholesale(model, data, { today = localToday() } = {}) {
     const status = !isOpen ? { c: "mut", t: "Shipped" } : rem === 0 ? { c: "wh", t: "Ready to ship" } : gap > 0 ? { c: "gap", t: "Cannot be covered" } : { c: "po", t: "Partially allocated" };
     return {
       id: String(o.id), group: o.group, open: isOpen, number, so, retailer: o.retailer || "", retailerShort: retailerShort(o.retailer),
-      saleStatus: o.saleStatus || "", cancelDate: o.cancelDate || "", days, lines, skus: new Set(lines.map((l) => l.sku)).size,
+      saleStatus: o.saleStatus || "", cancelDate: o.cancelDate || "", days, lines, skus: lines.length, // subitems of the sale
       // Same formula as the order's side panel (§14.2): rounded down, 100 only when nothing is missing.
       ord, ful, al, rem, gap, pct: ord ? (rem === 0 ? 100 : Math.min(99, Math.floor(((al + ful) / ord) * 100))) : 0, status,
       coveredBy: ["wh", "it", "po"].filter((k) => kinds.has(k)).map((k) => ({ k, t: KIND_LABEL[k] })),
-      blockingSkus: [...new Set(lines.filter((l) => l.impossible > 0).map((l) => l.sku))],
+      // SKUs of the order that are short (the SKU's shortfall, as Master SKU "Sold short"), requirements §4.1.
+      blockingSkus: [...new Set(lines.filter((l) => (model.impossibleBySku.get(l.sku) || 0) > 0).map((l) => l.sku))],
     };
   };
 

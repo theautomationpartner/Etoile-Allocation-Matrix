@@ -5,6 +5,7 @@ import { SOURCE } from "../../lib/engine.js";
 import { pathMatch, pathsFor, sortPaths, sumQ, unitPaths } from "../../lib/paths.js";
 import { localToday } from "../../lib/shipments.js";
 import { incomingRecords } from "../../lib/skuInventory.js";
+import { FULFILLED_GROUP } from "../../lib/monday.js";
 
 // Side panel (PDF §8.3, mockup "rail"): opened from an order, a SKU or a source. Each record shows its
 // allocation paths <container, PO or warehouse> → <order> with units; a container also shows its split by
@@ -36,7 +37,8 @@ export function SidePanel({ stack, onOpen, onTrail, onClose, model, data, shipme
     const containerById = new Map((data.containers || []).map((c) => [String(c.id), c]));
     const poById = new Map((data.pos || []).map((p) => [String(p.id), p]));
     const poByName = new Map((data.pos || []).map((p) => [p.name, p]));
-    const orderById = new Map((data.orders || []).map((o) => [String(o.id), o]));
+    // Open orders, plus the Fulfilled ones (Wholesale Allocation lists them and their row opens this panel).
+    const orderById = new Map([...(data.orders || []), ...(data.fulfilledOrders || [])].map((o) => [String(o.id), o]));
     const paths = unitPaths(model, data);
     const stageDate = (p) => (p.k === "it" ? containerById.get(p.ship)?.eta || "" : p.k === "po" ? poById.get(p.po)?.eta || "" : "");
     const orderLabel = (id) => {
@@ -210,12 +212,16 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
   const lines = model.lines.filter((l) => String(l.orderId) === String(id));
   const raw = o.lines || [];
   const m = {
-    ord: sumBy(raw, (l) => l.ordered), ful: sumBy(raw, (l) => l.fulfilled), outstanding: sumBy(lines, (l) => l.toShip),
+    ord: sumBy(raw, (l) => l.ordered), ful: sumBy(raw, (l) => l.fulfilled), outstanding: o.group === FULFILLED_GROUP ? sumBy(raw, (l) => l.outstanding) : sumBy(lines, (l) => l.toShip),
     al: sumBy(lines, (l) => l.allocated), rem: sumBy(lines, (l) => l.left), gap: sumBy(lines, (l) => l.impossible),
+    // Reserved on a source that no longer exists (any line of the order, also the fully shipped ones).
+    orph: sumBy(model.allLines.filter((x) => String(x.order.id) === String(id)), (x) => x.orphan),
   };
   // §14.2 formula: (fulfilled + allocated) ÷ ordered, rounded down; 100 only when nothing is missing.
   const pct = m.ord ? (m.rem === 0 ? 100 : Math.min(99, Math.floor(((m.ful + m.al) / m.ord) * 100))) : 0;
-  const chip = m.rem === 0 ? <span className="chip wh"><span className="sq" />Fully allocated</span>
+  const shipped = o.group === FULFILLED_GROUP; // Fulfilled group: shipped, no longer part of the matrix
+  const chip = shipped ? <span className="chip mut">Shipped</span>
+    : m.rem === 0 ? <span className="chip wh"><span className="sq" />Fully allocated</span>
     : m.gap > 0 ? <span className="chip gap"><span className="sq" />Cannot be covered</span>
     : <span className="chip po"><span className="sq" />Partially allocated</span>;
   const ps = pathsFor(ctx.paths, "so", String(id));
@@ -250,6 +256,7 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
       </div>
       <ContextStrip prev={prev} cur={{ type: "so", id: String(id) }} ctx={ctx} />
       {m.gap > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.gap)} units cannot be covered.</b> Not enough stock in the warehouse, in transit, or on order. This part of the sale needs a purchase decision.</div>}
+      {m.orph > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(m.orph)} units lost their source.</b> They were reserved against a shipment that was deleted and need to be reallocated.</div>}
       {late.length > 0 && <div className="note warn" style={{ marginBottom: 14 }}><b>{fmt(sumQ(late))} units land after the {dayMonthYear(o.cancelDate)} cancel date.</b> They come from {lateSrc.join(", ")}. Move them to an earlier source or ask the retailer to extend the date.</div>}
 
       <div className="sec">

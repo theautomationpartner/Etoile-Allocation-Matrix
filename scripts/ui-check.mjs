@@ -160,7 +160,10 @@ async function run() {
       const exp=q(".wht button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".wht tr.sub").length; r.subhead=all(".wht tr.subhead")[0]?.textContent||""; r.railStayedClosed=!q(".rail.on");
         q(".wht tr.sub")?.click(); await wait(300); r.skuRail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200); exp.click(); await wait(200); r.collapsed=!q(".wht tr.subhead"); }
       const openRow=all(ROWS).find(tr=>!tr.closest(".wh-group").querySelector("h3").textContent.includes("Fulfilled")); openRow?.click(); await wait(300);
-      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!openRow && openRow.querySelector(".eivr")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
+      r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!openRow && openRow.querySelector(".eivr")?.textContent === r.rail;
+      r.secs=[...document.querySelectorAll(".rail.on .sec h4")].map(h=>h.childNodes[0].textContent.trim()); q(".rail-x")?.click(); await wait(200);
+      const fulRow=all(ROWS).find(tr=>tr.closest(".wh-group").querySelector("h3").textContent.includes("Fulfilled"));
+      if(fulRow){ fulRow.click(); await wait(300); r.fulRail = (q(".rail.on .rail-trail .cur")?.textContent||"") === fulRow.querySelector(".eivr").textContent && /Shipped/.test(q(".rail.on .chip.mut")?.textContent||""); q(".rail-x")?.click(); await wait(200); } else r.fulRail = true;
       r.filtered={}; for (const name of ["Not fully allocated","Cannot be covered","Fully allocated"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="SKUs blocking these orders"); card?.click(); await wait(400);
@@ -174,7 +177,9 @@ async function run() {
     check(`Wholesale: one card per group (Orders, Pending, Fulfilled) with "N orders · M line items" ${tag}`, wh.groups.length > 0 && wh.groups.every((g, i) => ["Orders", "Pending", "Fulfilled"].includes(g) && (i === 0 || ["Orders", "Pending", "Fulfilled"].indexOf(g) > ["Orders", "Pending", "Fulfilled"].indexOf(wh.groups[i - 1]))) && wh.subs, JSON.stringify(wh.groups));
     check(`Wholesale: "All orders" count = rows listed = side nav badge ${tag}`, wh.allCount, JSON.stringify(wh));
     check(`Wholesale: ▸ shows the line items (without opening the panel), a line opens its SKU, ▾ hides them ${tag}`, wh.sub > 0 && /^ProductSKUOrderedFulfilledOutstandingUnallocatedSourceComing from$/.test(wh.subhead) && wh.railStayedClosed && wh.skuRail && wh.collapsed, JSON.stringify(wh));
-    check(`Wholesale: an order row opens the order's side panel ${tag}`, wh.railMatches, JSON.stringify({ rail: wh.rail }));
+    check(`Wholesale: an order row opens the order's side panel with its sections (requirements §7.2) ${tag}`, wh.railMatches
+      && ["Outbound shipments", "Where every unit comes from"].every((h) => wh.secs.includes(h)), JSON.stringify({ rail: wh.rail, secs: wh.secs }));
+    check(`Wholesale: a Fulfilled order's row opens its panel as "Shipped" ${tag}`, wh.fulRail, JSON.stringify({ fulRail: wh.fulRail }));
     check(`Wholesale: each Show chip's count = orders listed ${tag}`, Object.values(wh.filtered).every(Boolean), JSON.stringify(wh.filtered));
     check(`Wholesale: no horizontal page scroll, every column visible ${tag}`, wh.noScroll && wh.fits, JSON.stringify({ noScroll: wh.noScroll, fits: wh.fits }));
     check(`Wholesale: "SKUs blocking these orders" opens Master SKU with "Sold short" ${tag}`, wh.toSku, JSON.stringify(wh));

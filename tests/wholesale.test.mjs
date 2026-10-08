@@ -60,3 +60,20 @@ test("only US orders, and the urgent filter needs units still unallocated", () =
   assert.equal(w.counts.all, 7);
   assert.deepEqual(w.rows.filter(w.is.urgent).map((r) => r.number), ["EIVR121"]);
 });
+
+test("requirements §4.1: SKUs blocking = SKUs of a blocked order that are short, even where that line alone fits", () => {
+  const data = mockupData();
+  // EC0384 is short (321); a small EC0384 line in EIVR127 fits in the free units, but the SKU is still short.
+  data.orders.find((o) => o.id === "EIVR127").lines.push({ id: "EIVR127-EC0384", sku: "EC0384", ordered: 10, fulfilled: 0, outstanding: 10, entries: [] });
+  const r = row(setup(data), "EIVR127");
+  assert.deepEqual(r.blockingSkus.slice().sort(), ["EC0384", "EC0388"]);
+});
+
+test("requirements §5/§6: Outstanding is monday's US Qty Outstanding; the order meta counts its subitems", () => {
+  const data = mockupData();
+  data.fulfilledOrders[0].lines[0].outstanding = 5; // as Cin7 leaves it, not recalculated
+  data.orders.find((o) => o.id === "EIVR121").lines.push({ id: "EIVR121-EC0387b", sku: "EC0387", ordered: 0, fulfilled: 0, outstanding: 0, entries: [] });
+  const t = setup(data);
+  assert.equal(row(t, "EIVR117").lines[0].outstanding, 5);
+  assert.equal(row(t, "EIVR121").skus, 6); // 6 subitems (EC0387 twice)
+});

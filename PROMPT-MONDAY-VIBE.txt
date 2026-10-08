@@ -917,7 +917,12 @@ Una tarjeta por grupo (Orders, Pending, Fulfilled) con "N orders · M line items
   lateral de la orden; ▸ → líneas: Product · SKU · Ordered · Fulfilled · Outstanding · Unallocated · Source
   (Shipped / Unallocated / Warehouse Stock / In-Transit / PO Pending / Mixed) · Coming from (chips "<contenedor o
   PO> ← <PO de origen> · qty"; en rojo "(orphaned)" las reservas del Ledger cuya fuente ya no tiene ese SKU).
-  Una línea → panel del SKU. Las órdenes Fulfilled solo se expanden (ya no están en la matriz).
+  Una línea → panel del SKU. Una orden Fulfilled también abre su panel, con el chip "Shipped".
+Revisión contra "Wholesale Allocation — Requerimientos" (2026-10-08): Outstanding = US Qty Outstanding de monday;
+  debajo de la orden "<n> SKUs" = subitems; "past due" solo si la Cancel Date ya pasó (hoy = "0 days left"); SKUs
+  blocking = SKUs con faltante del SKU en las órdenes que no se pueden cubrir (como Master SKU "Sold short"); el
+  panel de la orden avisa "<n> units lost their source". Allocated Status / Allocated % de monday no se escriben
+  (decisión del cliente, 13.1): los valores de monday son los de la Allocation Queue anterior y pueden diferir.
 
 --------------------------------------------------------------------------------
  18. IN-TRANSIT SHIPMENTS (2026-10-08)
@@ -1039,3 +1044,4 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 2026-10-08  IN-TRANSIT IMPORTER — sección 20; se lee el tablero del Importer. Todas las pantallas del menú habilitadas.
 2026-10-08  Menú lateral claro en el tema claro; botón de tema con sol / luna. Prueba final: 192 chequeos + cruce de cifras.
 2026-10-08  MASTER SKU revisado contra sus requerimientos: registros unidos por SKU + PO Reference; secciones de panel nuevas.
+2026-10-08  WHOLESALE revisado contra sus requerimientos (ver sección 17).

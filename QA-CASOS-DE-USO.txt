@@ -453,3 +453,16 @@ npm test 96/96 · npm run ui-check 192/192 (1200, 1440 y 390 px) · build sin er
   R-03 Panel de SKU: "Incoming records" = los registros de la fila desplegada ....................................... PASA
   R-04 Panel de contenedor: "Packing list that created it" (archivo, Import Status, fecha de subida) ................ PASA
 npm test 98/98 · npm run ui-check 192/192.
+
+--------------------------------------------------------------------------------
+ 20. WHOLESALE — revisión contra "Wholesale Allocation — Requerimientos" (2026-10-08)
+--------------------------------------------------------------------------------
+  V-01 SKUs blocking = SKUs con faltante (del SKU) en órdenes que no se pueden cubrir, aunque esa línea sola entre . PASA
+  V-02 Outstanding = US Qty Outstanding de monday; "<n> SKUs" debajo de la orden = subitems .......................... PASA
+  V-03 Una orden Fulfilled abre su panel con "Shipped" (antes solo se desplegaba) ................................... PASA
+  V-04 Panel de la orden: aviso "<n> units lost their source" (§7.2) ................................................ PASA
+  V-05 "past due" solo cuando la Cancel Date ya pasó; el mismo día dice "0 days left" ................................ PASA
+  V-06 Allocated Status / Allocated % de monday vs pantalla (datos reales): coinciden EIVR118, EIVR117, #ECUS28341;
+       difieren EIVR121 (monday "Attention Required", app sin faltante → Partially allocated) y EIVR114 (monday
+       "Allocated 100%", app 93% con 1,917 sin asignar). La app no escribe esas columnas (decisión del cliente) ..... A DEFINIR
+npm test 100/100 · npm run ui-check 194/194.

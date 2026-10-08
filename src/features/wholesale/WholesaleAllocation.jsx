@@ -5,8 +5,8 @@ import { Card } from "../allocation-matrix/MetricCards.jsx";
 import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 
 // Wholesale Allocation (mockup vWholesale): every US order synced from Cin7, one card per group (Orders, Pending,
-// Fulfilled). Read-only. An open order's row opens its side panel; ▸ shows its line items, and a line opens the
-// SKU's panel. Fulfilled orders only expand (they are no longer part of the matrix).
+// Fulfilled). Read-only. A row opens the order's side panel (a Fulfilled one shows "Shipped"); ▸ shows its line
+// items, and a line opens the SKU's panel.
 const LABELS = ["Orders that can't be covered", "Units waiting on allocation", "SKUs blocking these orders", `Cancel date within ${URGENT_DAYS} days`];
 
 const Chip = ({ c, children }) => <span className={`chip ${c}`}>{c !== "mut" && <span className="sq" />}{children}</span>;
@@ -47,7 +47,7 @@ export function WholesaleAllocation({ data, model, status, error, onRefresh, shi
   const fresh = status === "loading" ? "Loading from Monday…" : status === "refreshing" ? "Recalculating with fresh Monday data…"
     : data ? `Calculated from Monday data read at ${clock(data.loadedAt)}` : "";
   const c = wh?.cards;
-  const openRow = (r) => (r.open ? openRecord("so", r.id) : toggle(r.id));
+  const openRow = (r) => openRecord("so", r.id); // every row, Fulfilled included (requirements §5)
 
   return (
     <>
@@ -152,7 +152,7 @@ export function WholesaleAllocation({ data, model, status, error, onRefresh, shi
                           <td className="wh-ret" title={r.retailer}>{r.retailer}</td>
                           <td className="wh-date">
                             {r.cancelDate ? (
-                              <>{dayMonthYear(r.cancelDate)}<div className="muted wh-days">{r.days > 0 ? `${plural(r.days, "day", "days")} left` : "past due"}</div></>
+                              <>{dayMonthYear(r.cancelDate)}<div className="muted wh-days">{r.days >= 0 ? `${plural(r.days, "day", "days")} left` : "past due"}</div></>
                             ) : <span className="muted">—</span>}
                           </td>
                           <td><Chip c={r.status.c}>{r.status.t}</Chip></td>
