@@ -308,7 +308,10 @@ div.app (grid 234px + contenido; .min = 60px) · el contenido ocupa TODO el anch
   Inventory" · "In-Transit Importer" (.cnt items de cada board).
   Todas las pantallas están habilitadas (Users & access solo para Admin). Un ítem sin `open` se vería a.off (42 %
   opacidad, not-allowed, tooltip "<nombre> — not available yet").
-  .side-foot: "Monday synced HH:MM AM/PM" + botón "Theme" (claro/oscuro, se recuerda).
+  .side-foot: "Monday synced HH:MM AM/PM" + botón de tema (pastilla con sol "Light" / luna "Dark" según el tema en
+  uso; cambia claro/oscuro y se recuerda; sin elegir, sigue al sistema).
+  El menú lateral sigue al tema (pedido del cliente, 2026-10-08; el mockup lo tenía siempre oscuro): blanco en
+  claro (ítem activo oscuro) y el oscuro del mockup en oscuro (ítem activo blanco). Tokens --nav-* en app.css.
 
 5.2 Barra superior (.topbar, sticky): .crumb "Etoile · US › Allocation matrix" ·
   .search (lupa + input "Search a SKU, PO, shipment or order…"; Esc limpia) · .sync
@@ -1030,3 +1033,4 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 2026-10-08  IN-TRANSIT SHIPMENTS — sección 18; se lee el ETD del contenedor y el nombre de sus subitems.
 2026-10-08  PURCHASE ORDERS — sección 19; Arrived y Status de la línea salen de monday (también en el panel).
 2026-10-08  IN-TRANSIT IMPORTER — sección 20; se lee el tablero del Importer. Todas las pantallas del menú habilitadas.
+2026-10-08  Menú lateral claro en el tema claro; botón de tema con sol / luna. Prueba final: 192 chequeos + cruce de cifras.

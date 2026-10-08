@@ -427,3 +427,17 @@ uploads = filas = badge del menú; "Upload packing list" abre el tablero del Imp
 "Open" abre el panel del contenedor; las revertidas se ven tachadas; la cantidad de cada chip = subidas listadas; una
 tarjeta filtra y un segundo clic vuelve; las 9 columnas entran sin scroll lateral en 1200 y 1440 px (corregido: la
 columna File se achicó); en celular la tabla se desplaza dentro de su tarjeta.
+
+--------------------------------------------------------------------------------
+ 18. TEMA, MENÚ Y PRUEBA FINAL DEL SISTEMA (2026-10-08)
+--------------------------------------------------------------------------------
+  F-01 Botón de tema: claro ↔ oscuro; el menú lateral sigue (blanco / oscuro), sol "Light" o luna "Dark" .......... PASA
+  F-02 Menú colapsado: solo el ícono del tema; celular (390 px): sin scroll horizontal ........................... PASA
+  F-03 Cada ítem del menú abre su pantalla (miga y título); ninguno deshabilitado ................................. PASA
+  F-04 Cifras compartidas iguales en todas las pantallas (datos reales de monday):
+       Waiting to be allocated = Units to allocate = Units waiting on allocation (3,728) · Committed to wholesale =
+       Already allocated = Master SKU (22,074) · libre en tránsito = Unclaimed units in transit (25,504) · libre en
+       mano = Sellable right now (13,048) · Landing in 30 days = Arriving in 30 days (6) · on order de la matriz =
+       Still to ship de las POs (45,323) · sin faltantes en ninguna (0) ............................................ PASA
+  F-05 Consola del navegador sin errores ni avisos recorriendo las 8 pantallas .................................... PASA
+npm test 96/96 · npm run ui-check 192/192 (1200, 1440 y 390 px) · build sin errores.

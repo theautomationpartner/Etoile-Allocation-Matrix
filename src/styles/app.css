@@ -389,3 +389,41 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .imt .im-date { white-space: nowrap; }
 .imt .im-it { color: var(--it); }
 .imt td .chip { white-space: nowrap; }
+
+/* ── Side nav follows the theme (client, 2026-10-08): light in the light theme, dark (the mockup's) in the dark one.
+   The mockup's side nav is always dark and hard-codes some colors; these tokens replace them. ── */
+:root {
+  --nav: #FFFFFF; --nav-ink: #585F6B; --nav-line: #E2E5EA; --nav-hover: #F2F3F6;
+  --nav-strong: #15171C; --nav-mute: #8B929C; --nav-on-bg: #15171C; --nav-on-ink: #FFFFFF;
+  --nav-cnt: #EDEFF3; --nav-cnt-ink: #585F6B; --nav-on-cnt: #3A3F48; --nav-on-cnt-ink: #E6E9EE;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --nav: #0A0C0F; --nav-ink: #9CA3AE; --nav-line: #22262D; --nav-hover: #1A1E24;
+  --nav-strong: #FFFFFF; --nav-mute: #5B6270; --nav-on-bg: #FFFFFF; --nav-on-ink: #15171C;
+  --nav-cnt: #1A1E24; --nav-cnt-ink: #8B929C; --nav-on-cnt: #EDEFF3; --nav-on-cnt-ink: #585F6B;
+} }
+:root[data-theme="dark"] {
+  --nav: #0A0C0F; --nav-ink: #9CA3AE; --nav-line: #22262D; --nav-hover: #1A1E24;
+  --nav-strong: #FFFFFF; --nav-mute: #5B6270; --nav-on-bg: #FFFFFF; --nav-on-ink: #15171C;
+  --nav-cnt: #1A1E24; --nav-cnt-ink: #8B929C; --nav-on-cnt: #EDEFF3; --nav-on-cnt-ink: #585F6B;
+}
+.side { border-right: 1px solid var(--nav-line); }
+.brand h1, .nav a:hover, .side-tg:hover, .side-foot button:hover { color: var(--nav-strong); }
+.brand p, .nav-h, .side-foot { color: var(--nav-mute); }
+.nav a.on { background: var(--nav-on-bg); color: var(--nav-on-ink); }
+.nav .cnt { background: var(--nav-cnt); color: var(--nav-cnt-ink); }
+.nav a.on .cnt { background: var(--nav-on-cnt); color: var(--nav-on-cnt-ink); }
+.nav .cnt.alert { background: var(--gap); color: #fff; }
+.side-tg, .side-foot button { color: var(--nav-cnt-ink); }
+.nav a.off:hover { color: var(--nav-ink); }
+/* Theme button: sun = light mode on, moon = dark mode on; a pill so it reads as a switch. */
+.side-foot .theme-tg { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 20px;
+  border: 1px solid var(--nav-line); background: var(--nav-cnt); color: var(--nav-strong); font-size: 11.5px; font-weight: 600; }
+.side-foot .theme-tg:hover { background: var(--nav-hover); border-color: var(--nav-mute); }
+.side-foot .theme-tg svg { color: var(--po); }
+:root[data-theme="dark"] .side-foot .theme-tg svg { color: var(--it); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .side-foot .theme-tg svg { color: var(--it); } }
+.app.min .side-foot .theme-tg { padding: 0; width: 28px; justify-content: center; }
+.app.min .side-foot .theme-tg .theme-l { display: none; }
+.side-foot > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.side-foot .theme-tg { flex: none; }

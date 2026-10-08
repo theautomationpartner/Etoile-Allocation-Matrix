@@ -84,10 +84,16 @@ function Workspace({ user }) {
     else document.documentElement.removeAttribute("data-theme");
   }, [theme]);
 
-  const toggleTheme = () => {
-    const dark = theme ? theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-    setTheme(dark ? "light" : "dark");
-  };
+  // The theme in use: the one chosen with the Theme button, else the system's (followed while nothing is chosen).
+  const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const dark = theme ? theme === "dark" : systemDark;
+  const toggleTheme = () => setTheme(dark ? "light" : "dark");
 
   const refresh = async () => {
     if (await matrix.reload()) toast.show("Figures recalculated with fresh data from Monday.");
@@ -95,7 +101,7 @@ function Workspace({ user }) {
 
   return (
     <div className={`app ${collapsed ? "min" : ""}`}>
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme}
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme} dark={dark}
         counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} view={current} onView={setView} isAdmin={isAdmin} />
       <main className="main">
         {onUsers ? (

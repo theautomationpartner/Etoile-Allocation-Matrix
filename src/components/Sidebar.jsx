@@ -17,7 +17,8 @@ const NAV = [
 const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];
 
 // counts: { home (SKUs that cannot be covered, shown as an alert), wholesale, transit, po, sku, importer }
-export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loadedAt, view = "home", onView, isAdmin = false }) {
+// dark: the theme in use (chosen or the system's); the Theme button shows it (sun = light, moon = dark) and switches it.
+export function Sidebar({ collapsed, onToggle, onToggleTheme, dark = false, counts = {}, loadedAt, view = "home", onView, isAdmin = false }) {
   return (
     <aside className="side">
       <div className="brand">
@@ -49,7 +50,10 @@ export function Sidebar({ collapsed, onToggle, onToggleTheme, counts = {}, loade
       </nav>
       <div className="side-foot">
         <span>{loadedAt ? `Monday synced ${clock(loadedAt)}` : "Monday · US"}</span>
-        <button type="button" onClick={onToggleTheme}>Theme</button>
+        <button type="button" className="theme-tg" onClick={onToggleTheme} aria-pressed={dark}
+          aria-label={dark ? "Dark mode on — switch to light mode" : "Light mode on — switch to dark mode"} title={dark ? "Switch to light mode" : "Switch to dark mode"}>
+          <Icon name={dark ? "moon" : "sun"} className="" size={14} /><span className="theme-l">{dark ? "Dark" : "Light"}</span>
+        </button>
       </div>
     </aside>
   );

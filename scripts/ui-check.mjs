@@ -94,6 +94,25 @@ async function run() {
     check(`Control center: no horizontal page scroll ${tag}`, home.noScroll);
     check(`Control center: every button and card opens its screen (none dimmed) ${tag}`, home.noDimmed);
     check(`Control center: a row opens its record in the side panel, × closes it ${tag}`, home.rail && home.railClosed, JSON.stringify({ rail: home.rail, closed: home.railClosed }));
+    // Side nav: every item opens its screen (crumb and page title); none is disabled.
+    const nav = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const out=[];
+      const items=[...document.querySelectorAll(".nav a")]; const off=items.filter(a=>a.classList.contains("off")).map(a=>a.textContent);
+      for (const id of items.map(a=>a.dataset.nav).filter(Boolean)) {
+        const a=document.querySelector('[data-nav="'+id+'"]'); const label=a.querySelector(".lb").textContent; a.click(); await wait(350);
+        const crumb=document.querySelector(".crumb b")?.textContent; const title=document.querySelector(".view:not([hidden]) .page-h h2, .view:not([hidden]) h2")?.textContent;
+        out.push({ id, label, ok: crumb === label && a.classList.contains("on") && (id === "users" || title === label), crumb, title });
+      }
+      document.querySelector('[data-nav="home"]').click(); await wait(300);
+      return JSON.stringify({ off, out })`));
+    check(`side nav: every item opens its screen, none disabled ${tag}`, nav.off.length === 0 && nav.out.length >= 7 && nav.out.every((x) => x.ok), JSON.stringify(nav));
+    // Theme button: light ↔ dark; the side nav follows (white in light, the mockup's dark in dark); sun / moon icon.
+    const theme = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=()=>document.querySelector(".theme-tg");
+      const state=()=>({ theme: document.documentElement.getAttribute("data-theme")||"system", nav: getComputedStyle(document.querySelector(".side")).backgroundColor,
+        on: getComputedStyle(document.querySelector(".nav a.on")).backgroundColor, label: b().textContent, pressed: b().getAttribute("aria-pressed") });
+      const r=[state()]; b().click(); await wait(250); r.push(state()); b().click(); await wait(250); r.push(state()); return JSON.stringify(r)`));
+    const looks = (x) => (x.label === "Light" ? x.nav === "rgb(255, 255, 255)" && x.on === "rgb(21, 23, 28)" && x.pressed === "false"
+      : x.label === "Dark" && x.nav === "rgb(10, 12, 15)" && x.on === "rgb(255, 255, 255)" && x.pressed === "true");
+    check(`Theme button switches light ↔ dark and the side nav follows (sun / moon) ${tag}`, theme.every(looks) && theme[0].label !== theme[1].label && theme[0].label === theme[2].label, JSON.stringify(theme));
     // Master SKU Inventory: from the Control center ("Open in Master SKU" → "Sold short"), then its own checks.
     const sku = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
       const b=[...document.querySelectorAll(".view:not([hidden]) .card-h .btn")].find(x=>x.textContent==="Open in Master SKU"); const r={ enabled: !!b && !b.disabled };
