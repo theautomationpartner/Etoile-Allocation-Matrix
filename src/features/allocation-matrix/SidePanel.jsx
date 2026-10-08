@@ -453,12 +453,14 @@ function DeleteSection({ c, model, pos, res }) {
       {ask && (
         <>
           <div className="scrim on del-scrim" onClick={() => !busy && setAsk(false)} />
-          <div className="ua-dlg" role="alertdialog" aria-modal="true" aria-labelledby="del-dlg-t">
-            <h3 id="del-dlg-t">Delete {code}?</h3>
-            <p>Monday removes the shipment and everything its Draft packing list created.{res > 0 ? ` ${fmt(res)} promised units will lose their source and have to be reallocated.` : ""} This can't be undone from the app.</p>
+          {/* The warning: only "Yes, delete it" calls the deletion webhook (api/delete-shipment.js). */}
+          <div className="ua-dlg del-warn" role="alertdialog" aria-modal="true" aria-labelledby="del-dlg-t" aria-describedby="del-dlg-d">
+            <h3 id="del-dlg-t"><span aria-hidden="true">⚠</span> Are you sure you want to delete {code}?</h3>
+            <p id="del-dlg-d">This unlinks several associated items: the In-Transit item and its subitems, the Master SKU incoming records,
+              the units on its purchase orders and the Importer file.{res > 0 ? ` ${fmt(res)} promised units will need to be reallocated.` : ""} It can't be undone.</p>
             <div className="ua-dlg-b">
-              <button type="button" className="btn" onClick={() => setAsk(false)} disabled={busy}>Cancel</button>
-              <button type="button" className="btn danger" onClick={start} disabled={busy}>{busy ? "Starting…" : "Delete shipment"}</button>
+              <button type="button" className="btn" onClick={() => setAsk(false)} disabled={busy} autoFocus>Cancel</button>
+              <button type="button" className="btn danger" onClick={start} disabled={busy}>{busy ? "Deleting…" : "Yes, delete it"}</button>
             </div>
           </div>
         </>
