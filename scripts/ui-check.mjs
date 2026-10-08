@@ -205,6 +205,13 @@ async function run() {
       const first=q(ROWS); first?.click(); await wait(300);
       r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!first && first.querySelector(".tr-ship .strong")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
       const poChip=q(ROWS+" button.chip.po"); if(poChip){ poChip.click(); await wait(300); r.poRail=q(".rail.on .rail-trail .cur")?.textContent||""; r.poMatches=poChip.textContent.startsWith(r.poRail); q(".rail-x")?.click(); await wait(200); } else r.poMatches=true;
+      const draftRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Draft"));
+      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .btn.danger").find(x=>x.textContent==="Delete shipment");
+        r.delBox=!!q(".rail.on .danger-box .cascade") && !!del && !del.disabled; del?.click(); await wait(250);
+        r.delAsk=/^Delete .+\?$/.test(q(".ua-dlg h3")?.textContent||""); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
+        r.delCancel=!q(".ua-dlg") && !!q(".rail.on"); q(".rail-x")?.click(); await wait(200); } else { r.delBox=r.delAsk=r.delCancel=true; r.noDraft=true; }
+      const finalRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Final"));
+      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
       r.filtered={}; for (const name of ["Not arrived","Arriving ≤ 30 days","Has free units","Customers depend on it","Draft packing list"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.click(); await wait(200);
@@ -216,6 +223,8 @@ async function run() {
     check(`In-Transit: "All shipments" count = rows listed = side nav badge ${tag}`, tr.allCount, JSON.stringify(tr));
     check(`In-Transit: ▸ shows the subitems (without opening the panel), a subitem opens its SKU, ▾ hides them ${tag}`, tr.sub > 0 && /^Subitem · productSKUOn boardCommittedFreeFrom POPromised to$/.test(tr.subhead) && tr.railStayedClosed && tr.skuRail && tr.collapsed, JSON.stringify(tr));
     check(`In-Transit: a row opens the container's side panel; a PO chip opens the PO's ${tag}`, tr.railMatches && tr.poMatches, JSON.stringify({ rail: tr.rail, po: tr.poRail }));
+    check(`In-Transit: "Delete this shipment" — Draft: what gets undone + confirmation (Cancel sends nothing); Final: only the explanation ${tag}`,
+      tr.delBox && tr.delAsk && tr.delCancel && tr.finalText, JSON.stringify({ box: tr.delBox, ask: tr.delAsk, cancel: tr.delCancel, final: tr.finalText, noDraft: tr.noDraft }));
     check(`In-Transit: each Show chip's count = shipments listed ${tag}`, Object.values(tr.filtered).every(Boolean), JSON.stringify(tr.filtered));
     check(`In-Transit: no horizontal page scroll, every column visible ${tag}`, tr.noScroll && tr.fits, JSON.stringify({ noScroll: tr.noScroll, fits: tr.fits }));
     // Purchase Orders (side nav): its own checks.
@@ -264,8 +273,6 @@ async function run() {
       r.rows=document.querySelectorAll(ROWS).length;
       const allN=+(all(".view:not([hidden]) .fchip").find(x=>/^All uploads/.test(x.textContent))?.querySelector("i")?.textContent||"-1").replace(/,/g,"");
       r.allCount = r.rows === allN && +(q('[data-nav="importer"] .cnt')?.textContent||allN) === allN;
-      const up=all(".view:not([hidden]) .page-h a.btn").find(a=>a.textContent==="Upload packing list");
-      r.upload = !!up && up.target==="_blank" && up.href.endsWith("monday.com/boards/18404604646");
       r.note = /^Deleting a shipment undoes the whole chain\./.test(q(".view:not([hidden]) .note:not(.warn)")?.textContent||"");
       r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
       r.fits=q(".imt").offsetWidth <= q(".imt").closest(".tw").clientWidth + 1;
@@ -274,6 +281,13 @@ async function run() {
       r.reverted = all(ROWS).filter(tr=>tr.textContent.includes("Reverted")).every(tr=>tr.classList.contains("gone"));
       r.filtered={}; for (const name of ["Live shipments","Draft, reversible","Reverted"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
+      const upBtn=all(".view:not([hidden]) .page-h .btn").find(x=>x.textContent==="Upload packing list"); upBtn?.click(); for (let t=0; t<40 && !document.querySelector(".up-dlg .up-p"); t++) await wait(250);
+      const dlg=q(".up-dlg"); r.upFields = dlg ? [...dlg.querySelectorAll(".up-l")].map(l=>(l.querySelector("legend")||l).childNodes[0].textContent.trim()) : [];
+      r.upPeople = dlg ? dlg.querySelectorAll(".up-p input").length : 0; r.upMe = dlg ? dlg.querySelectorAll(".up-p input:checked").length === 1 : false;
+      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import, ETD\.$/.test(q(".up-dlg .note.warn")?.textContent||"");
+      r.upEnglish = !!dlg && ![...dlg.querySelectorAll("input[type=file], input[type=date]")].some(i=>i.offsetWidth>2) && /Choose file/.test(dlg.textContent) && /Choose a date/.test(dlg.textContent);
+      document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250); r.upEsc = !q(".up-dlg");
+      if(!r.upEsc){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); }
       const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Shipments created"); card?.click(); await wait(250);
       r.cardFilter=/^Live shipments/.test(q(".view:not([hidden]) .fchip.on")?.textContent||""); card?.click(); await wait(250);
       r.cardBack=/^All uploads/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
@@ -283,10 +297,12 @@ async function run() {
       && im.chips.join("|") === "All uploads|Live shipments|Draft, reversible|Reverted"
       && im.head.join("|") === "File|Uploaded|Status|Shipment created|Packing list|Arrives|Units|Promised|" && im.rows > 0, JSON.stringify(im));
     check(`In-Transit Importer: "All uploads" count = rows listed = side nav badge ${tag}`, im.allCount, JSON.stringify(im));
-    check(`In-Transit Importer: "Upload packing list" opens the Importer board in monday (new tab) ${tag}`, im.upload, JSON.stringify(im));
     check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
     check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
     check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
+    check(`In-Transit Importer: "Upload packing list" opens the form (the Importer Form's fields, monday people, me checked), validates, Esc closes ${tag}`,
+      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upValidates && im.upEnglish && im.upEsc,
+      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
     // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
     await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
     await sleep(300);

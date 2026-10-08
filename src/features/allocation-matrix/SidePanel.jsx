@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt, plural, dayMonth, dayMonthYear } from "../../lib/format.js";
 import { containerCode, orderParts, retailerShort } from "../../lib/matrix.js";
 import { SOURCE } from "../../lib/engine.js";
@@ -6,6 +6,7 @@ import { pathMatch, pathsFor, sortPaths, sumQ, unitPaths } from "../../lib/paths
 import { localToday } from "../../lib/shipments.js";
 import { incomingRecords } from "../../lib/skuInventory.js";
 import { FULFILLED_GROUP } from "../../lib/monday.js";
+import { requestShipmentDeletion, useAppActions } from "../../lib/appActions.js";
 
 // Side panel (PDF §8.3, mockup "rail"): opened from an order, a SKU or a source. Each record shows its
 // allocation paths <container, PO or warehouse> → <order> with units; a container also shows its split by
@@ -399,10 +400,33 @@ function DeletionSteps({ status }) {
   );
 }
 
-// §8.1–8.2 — what deleting this shipment would undo. Only shipments created from a Draft packing list can be deleted.
-// The button is not connected yet: how the app should start Monday's deletion is pending confirmation.
+// §8.1–8.2 — what deleting this shipment undoes. Only shipments created from a Draft packing list can be deleted.
+// "Delete shipment" asks first (TBD-I07), then starts monday's deletion through the server (api/delete-shipment.js);
+// the steps then show from the container's Deletion Status.
 function DeleteSection({ c, model, pos, res }) {
+  const { toast, refresh } = useAppActions();
+  const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
   const draft = c.packingList === "Draft";
+  const code = containerCode(c.name);
+  const start = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await requestShipmentDeletion(c.id);
+      setSent(true);
+      setAsk(false);
+      toast(`Deletion of ${code} started in Monday. It disappears from the app once Monday finishes.`);
+      setTimeout(() => refresh(), 6000); // Deletion Status shows the steps after the next read
+    } catch (e) {
+      setError(e.message || "The deletion could not be started.");
+      setAsk(false);
+    } finally {
+      setBusy(false);
+    }
+  };
   const orders = new Set(model.allLines.filter((x) => x.entries.some((e) => e.source === SOURCE.IN_TRANSIT && String(e.sourceId) === String(c.id))).map((x) => String(x.order.id)));
   const skus = [...new Set(c.lines.map((l) => l.sku))];
   return (
@@ -421,8 +445,23 @@ function DeleteSection({ c, model, pos, res }) {
             <li><span className="s">4</span><span><span className="n">Importer</span> — the file is marked <b>Deleted in In-Transit</b>. The file stays, the shipment doesn't.</span></li>
           </ul>
           {res > 0 && <p style={{ color: "var(--gap)", fontWeight: 600 }}>Careful: {fmt(res)} units are already promised to {plural(orders.size, "wholesale order", "wholesale orders")}. Those reservations will be orphaned and have to be redone.</p>}
-          <button type="button" className="btn danger" disabled aria-disabled="true" title="Not available yet: deleting from the app is pending confirmation. Use the Delete In-Transit Item button in Monday.">Delete shipment</button>
+          {error && <p style={{ color: "var(--gap)" }} role="alert">{error}</p>}
+          {sent ? <p style={{ fontWeight: 600 }}>Deletion requested. Monday is processing it — refresh to follow its steps.</p>
+            : <button type="button" className="btn danger" onClick={() => setAsk(true)} disabled={busy}>Delete shipment</button>}
         </div>
+      )}
+      {ask && (
+        <>
+          <div className="scrim on del-scrim" onClick={() => !busy && setAsk(false)} />
+          <div className="ua-dlg" role="alertdialog" aria-modal="true" aria-labelledby="del-dlg-t">
+            <h3 id="del-dlg-t">Delete {code}?</h3>
+            <p>Monday removes the shipment and everything its Draft packing list created.{res > 0 ? ` ${fmt(res)} promised units will lose their source and have to be reallocated.` : ""} This can't be undone from the app.</p>
+            <div className="ua-dlg-b">
+              <button type="button" className="btn" onClick={() => setAsk(false)} disabled={busy}>Cancel</button>
+              <button type="button" className="btn danger" onClick={start} disabled={busy}>{busy ? "Starting…" : "Delete shipment"}</button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -444,7 +483,7 @@ function POPanel({ id, prev, ctx, model, data, onOpen }) {
       <div className="rail-h"><h3>{p.name}</h3></div>
       <p className="rail-sub">
         {[p.reference ? `Reference ${p.reference}` : "", supplier].filter(Boolean).join(" · ")}<br />
-        {[p.status, p.region ? `destination ${p.region}` : "", `ETA ${dayMonthYear(p.eta) || "—"}`].filter(Boolean).join(" · ")}
+        {[p.status, p.region ? `destination ${p.region}` : "", p.date ? `raised ${dayMonthYear(p.date)}` : "", `ETA ${dayMonthYear(p.eta) || "—"}`].filter(Boolean).join(" · ")}
       </p>
       <div className="flow">
         <div className="s-po"><div className="fl">Ordered</div><div className="fv">{fmt(sumBy(skus, ord))}</div></div>

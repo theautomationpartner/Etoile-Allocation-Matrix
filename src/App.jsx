@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { ControlCenter } from "./features/control-center/ControlCenter.jsx";
 import { SkuInventory } from "./features/sku-inventory/SkuInventory.jsx";
 import { WholesaleAllocation } from "./features/wholesale/WholesaleAllocation.jsx";
@@ -16,6 +16,7 @@ import { useStoredState } from "./hooks/useStoredState.js";
 import { BOARDS } from "./lib/monday.js";
 import { OPEN_ORDER_GROUPS } from "./lib/engine.js";
 import { isUsImport } from "./lib/importer.js";
+import { AppActions } from "./lib/appActions.js";
 import { AuthGate } from "./components/AuthGate.jsx";
 import { UsersAccess } from "./features/users/UsersAccess.jsx";
 
@@ -52,6 +53,8 @@ function Workspace({ user }) {
   const [poFilter, setPoFilter] = useState("all"); // Purchase Orders Show filter
   const [impFilter, setImpFilter] = useState("all"); // In-Transit Importer Show filter
   const [search, setSearch] = useState("");
+  // The screens filter with the deferred value: typing stays instant while the tables (the hidden matrix included) catch up.
+  const deferredSearch = useDeferredValue(search);
   const [userSearch, setUserSearch] = useState("");
   const onUsers = isAdmin && view === "users";
   const matrix = useMatrixData();
@@ -100,6 +103,7 @@ function Workspace({ user }) {
   };
 
   return (
+    <AppActions.Provider value={{ toast: toast.show, refresh: matrix.reload }}>
     <div className={`app ${collapsed ? "min" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme} dark={dark}
         counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} view={current} onView={setView} isAdmin={isAdmin} />
@@ -111,43 +115,43 @@ function Workspace({ user }) {
         )}
         {current === "home" && (
           <div className="view">
-            <ControlCenter {...matrix} search={search} onRefresh={refresh} shipments={shipments}
+            <ControlCenter {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments}
               onGoMatrix={(filter) => goMatrix({ filter })} onGoSku={goSku} onGoWholesale={goWholesale} onGoTransit={goTransit} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "wholesale" && (
           <div className="view">
-            <WholesaleAllocation {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={whFilter} onFilter={setWhFilter}
+            <WholesaleAllocation {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={whFilter} onFilter={setWhFilter}
               onGoSku={goSku} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "transit" && (
           <div className="view">
-            <InTransitShipments {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
+            <InTransitShipments {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "po" && (
           <div className="view">
-            <PurchaseOrders {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={poFilter} onFilter={setPoFilter}
+            <PurchaseOrders {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={poFilter} onFilter={setPoFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "sku" && (
           <div className="view">
-            <SkuInventory {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
+            <SkuInventory {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {current === "importer" && (
           <div className="view">
-            <InTransitImporter {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={impFilter} onFilter={setImpFilter}
+            <InTransitImporter {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={impFilter} onFilter={setImpFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {/* The matrix stays mounted on the other screens: its open groups and editor state are kept. */}
         <div className="view" hidden={current !== "matrix"}>
-          <AllocationMatrix {...matrix} search={search} onRefresh={refresh} toast={toast.show} shipments={shipments} request={matrixRequest} onGoTransit={goTransit} />
+          <AllocationMatrix {...matrix} search={deferredSearch} onRefresh={refresh} toast={toast.show} shipments={shipments} request={matrixRequest} onGoTransit={goTransit} />
         </div>
         {onUsers && (
           <div className="view">
@@ -157,5 +161,6 @@ function Workspace({ user }) {
       </main>
       <Toast {...toast} />
     </div>
+    </AppActions.Provider>
   );
 }

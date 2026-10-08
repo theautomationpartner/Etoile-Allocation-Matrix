@@ -478,3 +478,27 @@ npm test 100/100 · npm run ui-check 194/194.
        recuadro con lo que se deshace y aviso de unidades prometidas (botón desactivado, pendiente de confirmar) .... PASA
   N-05 Importer: Reverted = todo Import Status distinto de Imported; "Uploaded this month" = desde hoy − 30 .......... PASA
 npm test 103/103 · npm run ui-check 194/194.
+
+--------------------------------------------------------------------------------
+ 22. PURCHASE ORDERS (requerimientos), DELETE SHIPMENT, UPLOAD PACKING LIST (2026-10-08)
+--------------------------------------------------------------------------------
+  Q-01 Purchase Orders contra su documento: todo aplicado; agregado "raised <Date>" en el panel de la PO ........... PASA
+  Q-02 /api/delete-shipment (receptor local en lugar de Make, nada real borrado): Final → 409 "Only shipments created
+       from a Draft file"; contenedor AU → 409; id inexistente → 404; id inválido / cuerpo no JSON → 400; Draft US
+       (FLEX-4169490) → 200 y el webhook recibe { event…, itemId, itemName, requestedBy… }; sin variable → 503 ........ PASA
+  Q-03 Pantalla: Draft → "Delete shipment" → diálogo "Delete FLEX-…?" con las unidades prometidas → Cancel no envía;
+       confirmar → aviso + "Deletion requested"; Final → solo el texto, sin botón ..................................... PASA
+  Q-04 /api/importer-upload: GET trae las 6 personas del formulario; ?dry=1 arma las columnas (Type Import, Location,
+       ETD, ETA, People) y deja Import Status = Import para el final; faltantes → 400 con la lista ................... PASA
+  Q-05 Adjuntar archivo por la API de monday: probado en un tablero temporal (creado y borrado) ....................... PASA
+  Q-06 Ventana "Upload packing list": campos del formulario, yo marcado en People, valida faltantes, selector de
+       archivo y fechas en inglés, Esc / Cancel cierran, envío (en modo prueba) → aviso y cierre ..................... PASA
+  Q-07 El formulario de monday embebido pide login de monday → no se usa embebido (queda como enlace) ................ INFO
+  Q-08 QA senior — buscador en Wholesale, In-Transit, Purchase Orders, Master SKU e Importer: filtra, muestra "N of M
+       match" y el mensaje sin resultados; Enter abre el panel y Esc lo cierra; el filtro elegido se mantiene al
+       cambiar de pantalla; Refresh vuelve a leer monday (15–20 s) ............................................. PASA
+  Q-09 HALLAZGO y arreglo: cada tecla del buscador tardaba ~400 ms en Master SKU (se redibujaban todas las
+       pantallas, también la matriz oculta). Ahora el campo guarda el texto y la app lo recibe como actualización de
+       baja prioridad: 15–53 ms por tecla; la tabla se filtra enseguida después ................................... PASA
+  Q-10 Ventanas nuevas a 390 px y en oscuro: entran en pantalla, sin scroll horizontal, botones visibles ........... PASA
+npm test 103/103 · npm run ui-check 196/196.

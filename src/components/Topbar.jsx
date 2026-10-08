@@ -1,8 +1,17 @@
 // Same markup as the mockup's topbar, plus the signed-in user at the right. The search narrows the rows of the
 // open view: the matrix (order, SKU, product, container or PO) or Users & access (name or email).
+import { startTransition, useEffect, useState } from "react";
 import { UserChip } from "./AuthGate.jsx";
 
+// The field keeps what is typed itself, so typing never waits for the screens: the app gets the text as a
+// low-priority update (startTransition) that React can interrupt while the user keeps typing.
 export function Topbar({ search, onSearch, user, title = "Allocation matrix", placeholder = "Search a SKU, PO, shipment or order…" }) {
+  const [text, setText] = useState(search);
+  useEffect(() => setText(search), [search]); // cleared or changed by the app
+  const change = (v) => {
+    setText(v);
+    startTransition(() => onSearch(v));
+  };
   return (
     <div className="topbar">
       <div className="crumb">Etoile · US <span>›</span> <b>{title}</b></div>
@@ -11,7 +20,7 @@ export function Topbar({ search, onSearch, user, title = "Allocation matrix", pl
           <circle cx="7" cy="7" r="4.5" />
           <path d="M10.5 10.5 14 14" />
         </svg>
-        <input value={search} onChange={(e) => onSearch(e.target.value)} onKeyDown={(e) => e.key === "Escape" && onSearch("")}
+        <input value={text} onChange={(e) => change(e.target.value)} onKeyDown={(e) => e.key === "Escape" && change("")}
           placeholder={placeholder} autoComplete="off" aria-label="Search" />
       </div>
       <div className="sync">US · Red Stag + Boxzooka</div>

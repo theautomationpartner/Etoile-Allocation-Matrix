@@ -950,7 +950,12 @@ Fila → panel del contenedor; chip de PO → panel de la PO. ▸ → subitems (
 Deletion Status (color_mm3y67m8): mientras monday elimina un contenedor, la fila se ve atenuada con el paso y el
   panel muestra "Deletion status" con los pasos. Panel del contenedor: "Departed <ETD> · arrives <ETA>"; sección
   "Delete this shipment" (§8): Final → texto; Draft → recuadro con lo que se deshace y el aviso de unidades
-  prometidas; el botón "Delete shipment" queda desactivado hasta confirmar cómo la app dispara el borrado de monday.
+  prometidas, y el botón "Delete shipment" → diálogo de confirmación → POST /api/delete-shipment, que valida en
+  monday (In-Transit Shipments, grupo topics, US, Packing List Draft, sin borrado en curso) y llama al webhook de la
+  variable de Vercel DELETE_SHIPMENT_WEBHOOK (el escenario de Make del borrado, 5290661). Cuerpo:
+  { event: { type: "delete_shipment", boardId, pulseId, pulseName, columnId: "button_mm3yn17e", userId }, itemId,
+  itemName, boardId, requestedBy: { userId, name, email }, at }. Sin la variable, la app avisa que no está configurado.
+  La app no borra nada por sí misma; los pasos se ven después por Deletion Status.
 Entradas: Control center "See shipments" ("Arriving ≤ 30 days") y "Review" ("Draft packing list"); matriz "See
   where it sits" ("Has free units").
 
@@ -975,7 +980,8 @@ Fila → panel de la PO; chip de contenedor → su panel. ▸ → una línea por
   subitem: Fully Arrived / Partially Arrived / Ordered) · Ordered · Arrived · Shipped · Still to ship · Reserved
   on PO (reservas hechas en la PO) · Sold to (direct + via containers: retailer · qty, abre la orden; lo que viaja
   en contenedores sale del mismo reparto de In-Transit Shipments). Una línea → panel del SKU.
-Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ordered − Outstanding, calculado).
+Panel lateral de la PO: Arrived = Qty Arrived y el Status del subitem (antes Ordered − Outstanding, calculado);
+  subtítulo con "raised <Date>" (date_mm15edcy).
 
 --------------------------------------------------------------------------------
  20. IN-TRANSIT IMPORTER (2026-10-08)
@@ -995,8 +1001,13 @@ Tarjetas: Shipments created (Live; unidades de sus contenedores) · Still revers
   no filtra). Nota del mockup sobre el borrado.
 Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del menú = All uploads. El buscador filtra
   por archivo, item o contenedor.
-"Upload packing list" abre el tablero del Importer en monday en otra pestaña (ahí se sube el archivo). "Open" y el
-  chip del contenedor → panel lateral del contenedor.
+"Upload packing list" abre una ventana con los campos del Importer Form del tablero (Name, File, Type Import,
+  Location, ETD, ETA, People; People = quien sube, se pueden sumar otros usuarios de monday). POST multipart a
+  /api/importer-upload: crea el item (grupo topics) con sus columnas, adjunta el archivo (máx. 4 MB, límite de
+  Vercel) y recién después pone Import Status = Import, que dispara la importación de monday. ?dry=1 valida sin
+  escribir. El formulario de monday (pide login de monday, por eso no se muestra embebido) queda como enlace. Al
+  cerrar la ventana después de enviar, la app vuelve a leer monday. "Open" y el chip del contenedor → panel lateral.
+Colores de tarjetas: como el mockup (rojo), aunque el documento diga ámbar (decisión del cliente, 2026-10-08).
 
 --------------------------------------------------------------------------------
  HISTORIAL
@@ -1053,3 +1064,4 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 2026-10-08  MASTER SKU revisado contra sus requerimientos: registros unidos por SKU + PO Reference; secciones de panel nuevas.
 2026-10-08  WHOLESALE revisado contra sus requerimientos (ver sección 17).
 2026-10-08  IN-TRANSIT (Shipments e Importer) revisado contra sus requerimientos (secciones 18 y 20).
+2026-10-08  Delete shipment (webhook DELETE_SHIPMENT_WEBHOOK), Upload packing list (formulario propio → Importer), PO "raised". Merge a main.
