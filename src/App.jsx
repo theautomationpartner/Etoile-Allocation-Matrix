@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ControlCenter } from "./features/control-center/ControlCenter.jsx";
+import { SkuInventory } from "./features/sku-inventory/SkuInventory.jsx";
 import { useShipments } from "./hooks/useShipments.js";
 import { fetchWrite } from "./lib/mondayWrites.js";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -36,7 +37,8 @@ function Workspace({ user }) {
   const [collapsed, setCollapsed] = useStoredState("etoile-side-min", false); // §3: the browser remembers it
   const [theme, setTheme] = useStoredState("etoile-theme", null); // null = follow the system
   const isAdmin = user?.role === "admin";
-  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | users (admins only)
+  const [view, setView] = useState("home"); // home (Control center, the first screen) | matrix | sku | users (admins only)
+  const [skuFilter, setSkuFilter] = useState("all"); // Master SKU Inventory Show filter (kept while the app is open)
   const [search, setSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const onUsers = isAdmin && view === "users";
@@ -50,7 +52,12 @@ function Workspace({ user }) {
     setMatrixRequest((cur) => ({ n: (cur?.n || 0) + 1, ...req }));
     setView("matrix");
   };
-  const current = onUsers ? "users" : view === "home" ? "home" : "matrix";
+  const goSku = (filter) => {
+    setSkuFilter(filter || "all");
+    setView("sku");
+  };
+  const current = onUsers ? "users" : ["home", "sku"].includes(view) ? view : "matrix";
+  const TITLES = { home: "Control center", matrix: "Allocation matrix", sku: "Master SKU Inventory" };
 
   useEffect(() => {
     if (theme) document.documentElement.setAttribute("data-theme", theme);
@@ -74,12 +81,18 @@ function Workspace({ user }) {
         {onUsers ? (
           <Topbar search={userSearch} onSearch={setUserSearch} user={user} title="Users & access" placeholder="Search a user by name or email…" />
         ) : (
-          <Topbar search={search} onSearch={setSearch} user={user} title={current === "home" ? "Control center" : "Allocation matrix"} />
+          <Topbar search={search} onSearch={setSearch} user={user} title={TITLES[current]} />
         )}
         {current === "home" && (
           <div className="view">
             <ControlCenter {...matrix} search={search} onRefresh={refresh} shipments={shipments}
-              onGoMatrix={(filter) => goMatrix({ filter })} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+              onGoMatrix={(filter) => goMatrix({ filter })} onGoSku={goSku} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
+          </div>
+        )}
+        {current === "sku" && (
+          <div className="view">
+            <SkuInventory {...matrix} search={search} onRefresh={refresh} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
+              onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} />
           </div>
         )}
         {/* The matrix stays mounted on the other screens: its open groups and editor state are kept. */}

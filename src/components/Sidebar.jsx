@@ -1,7 +1,7 @@
 import { Icon } from "./Icon.jsx";
 import { clock } from "../lib/format.js";
 
-// Same markup as the mockup's side nav. Built so far: "Control center", "Allocation matrix" and, for admins only,
+// Same markup as the mockup's side nav. Built so far: "Control center", "Allocation matrix", "Master SKU Inventory" and, for admins only,
 // "Users & access"; the rest are shown (with their counts) but cannot be opened.
 const NAV = [
   { section: "OVERVIEW" },
@@ -11,7 +11,7 @@ const NAV = [
   { id: "wholesale", label: "Wholesale Allocation", icon: "bag" },
   { id: "transit", label: "In-Transit Shipments", icon: "ship" },
   { id: "po", label: "Purchase Orders", icon: "box" },
-  { id: "sku", label: "Master SKU Inventory", icon: "tag" },
+  { id: "sku", label: "Master SKU Inventory", icon: "tag", open: true },
   { id: "importer", label: "In-Transit Importer", icon: "up" },
 ];
 const ADMIN_NAV = [{ section: "ADMIN" }, { id: "users", label: "Users & access", icon: "users", open: true }];

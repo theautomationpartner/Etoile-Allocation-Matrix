@@ -15,7 +15,7 @@ export function Card({ label, value, sub, tone = "", filterKey, filter, onFilter
       <div className="lab">{label}</div>
       <div className="val">{value}</div>
       <div className="sub">{sub}</div>
-      {act && <div className="cta">{on ? "Showing these" : onGo ? cta : "Show these"} <span>→</span></div>}
+      {act && <div className="cta">{on ? "Showing these" : cta || "Show these"} <span>→</span></div>}
       {ctaSoon && <div className="cta soon" title={ctaSoon}>{cta} <span>→</span></div>}
     </div>
   );

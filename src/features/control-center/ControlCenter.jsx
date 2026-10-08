@@ -7,9 +7,8 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 // Control center (mockup vHome, "Control center — Requerimientos funcionales y técnicos"): the home screen.
 // Read-only: nothing here writes to monday. Every figure comes from the Allocation Matrix model (control.js).
 // Rows open the side panel of their record; buttons open another screen already filtered. Screens that are not
-// built yet (Master SKU Inventory, Wholesale Allocation, In-Transit Shipments) show their action dimmed.
+// built yet (Wholesale Allocation, In-Transit Shipments) show their action dimmed.
 const SOON = {
-  sku: "The Master SKU Inventory screen is not available yet",
   wholesale: "The Wholesale Allocation screen is not available yet",
   transit: "The In-Transit Shipments screen is not available yet",
 };
@@ -59,7 +58,7 @@ function GoButton({ label, onGo, soon }) {
     : <button type="button" className="btn" onClick={onGo}>{label}</button>;
 }
 
-export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoShipments, shipments, search }) {
+export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoShipments, shipments, search }) {
   const cc = useMemo(() => (model && data ? buildControl(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(cc);
@@ -135,7 +134,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
         <div className="kpis">
           <Card label="Sales at risk" value={fmt(c.atRisk.units)} tone={c.atRisk.units > 0 ? "warn" : ""}
             sub={c.atRisk.units > 0 ? `${plural(c.atRisk.skus, "SKU", "SKUs")} sold with nothing behind them` : "Everything sold has stock behind it"}
-            cta="Review SKUs" onGo={() => onGoMatrix("blocked")} />
+            cta="Review SKUs" onGo={() => onGoSku("short")} />
           <Card label="Waiting to be allocated" value={fmt(c.waiting.units)}
             sub={c.waiting.units > 0 ? `${plural(c.waiting.lines, "order line", "order lines")} · stock exists, decision missing` : "Nothing left to allocate"}
             cta="Open matrix" onGo={() => onGoMatrix("pending")} />
@@ -158,7 +157,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
         <div className="two">
           <div className="cc-col">
             <Block title="Needs a buying decision" sub="sold, but no stock anywhere to cover it"
-              action={<GoButton label="Open in Master SKU" soon={SOON.sku} />}>
+              action={<GoButton label="Open in Master SKU" onGo={() => onGoSku("short")} />}>
               {cc.short.length ? cc.short.map((s) => (
                 <Row key={s.sku} title={`${s.sku} · ${s.name}`} onOpen={() => openRecord("sku", s.sku)}
                   meta={`${fmt(s.need)} units sold · only ${fmt(s.available)} available anywhere`}

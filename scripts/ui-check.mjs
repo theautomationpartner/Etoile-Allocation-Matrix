@@ -94,11 +94,38 @@ async function run() {
     check(`Control center: no horizontal page scroll ${tag}`, home.noScroll);
     check(`Control center: buttons to screens not built yet are dimmed with the reason ${tag}`, home.soonDisabled);
     check(`Control center: a row opens its record in the side panel, × closes it ${tag}`, home.rail && home.railClosed, JSON.stringify({ rail: home.rail, closed: home.railClosed }));
+    // Master SKU Inventory: from the Control center ("Open in Master SKU" → "Sold short"), then its own checks.
+    const sku = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s);
+      const b=[...document.querySelectorAll(".view:not([hidden]) .card-h .btn")].find(x=>x.textContent==="Open in Master SKU"); const r={ enabled: !!b && !b.disabled };
+      b?.click(); await wait(400);
+      r.crumb=q(".crumb b")?.textContent; r.chipOn=q(".view:not([hidden]) .fchip.on")?.textContent||""; r.navOn=q('[data-nav="sku"]')?.classList.contains("on");
+      [...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^All products/.test(x.textContent))?.click(); await wait(300);
+      r.cards=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .lab")].map(x=>x.textContent);
+      r.chips=[...document.querySelectorAll(".view:not([hidden]) .fchip")].map(x=>x.textContent.replace(/[0-9,]+$/,""));
+      r.head=[...document.querySelectorAll(".skt thead th")].map(x=>x.textContent);
+      r.rows=document.querySelectorAll(".skt tbody tr.clickable").length;
+      r.noScroll=document.documentElement.scrollWidth <= innerWidth + 1;
+      r.fits=q(".skt").offsetWidth <= q(".tw").clientWidth + 1; // all 10 columns visible without scrolling sideways
+      const exp=q(".skt button.exp"); if(exp){ exp.click(); await wait(250); r.sub=document.querySelectorAll(".skt tr.sub").length; r.subhead=!!q(".skt tr.subhead"); r.railStayedClosed=!q(".rail.on"); exp.click(); await wait(200); r.collapsed=!q(".skt tr.subhead"); }
+      q(".skt tbody tr.clickable")?.click(); await wait(300); r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; q(".rail-x")?.click(); await wait(200);
+      const chip=[...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^Has unassigned demand/.test(x.textContent)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
+      chip?.click(); await wait(250); r.filtered = document.querySelectorAll(".skt tbody tr.clickable").length === n;
+      [...document.querySelectorAll(".view:not([hidden]) .fchip")].find(x=>/^All products/.test(x.textContent))?.click(); await wait(200);
+      return JSON.stringify(r)`));
+    check(`"Open in Master SKU" opens Master SKU Inventory with "Sold short" on ${tag}`, sku.enabled && sku.crumb === "Master SKU Inventory" && /^Sold short/.test(sku.chipOn) && sku.navOn, JSON.stringify(sku));
+    check(`Master SKU: cards, Show chips and columns of the mockup ${tag}`, sku.cards.join("|") === "SKUs sold short|Out of stock, still selling|Sellable right now|Committed to wholesale"
+      && sku.chips.join("|") === "All products|Sold short|No warehouse stock|Has unassigned demand|Free stock available|No wholesale demand"
+      && sku.head.join("|") === "Product|SKU|On hand|In transit|On order|Sold|Unassigned|Free to sell|Cover|Status" && sku.rows > 0, JSON.stringify(sku));
+    check(`Master SKU: ▸ shows the incoming records (without opening the panel), ▾ hides them ${tag}`, sku.sub > 0 && sku.subhead && sku.railStayedClosed && sku.collapsed, JSON.stringify(sku));
+    check(`Master SKU: a row opens the SKU's side panel; a chip's count = rows shown ${tag}`, sku.rail && sku.filtered, JSON.stringify(sku));
+    check(`Master SKU: no horizontal page scroll, every column visible (Status not cut) ${tag}`, sku.noScroll && sku.fits, JSON.stringify({ noScroll: sku.noScroll, fits: sku.fits }));
+    await ev(`document.querySelector('[data-nav="home"]')?.click()`);
+    for (let i = 0; i < 40 && !(await ev(`return !!document.querySelector(".two .card")`)); i++) await sleep(250);
     // "Open matrix" opens the matrix with the "Needs allocation" filter on.
     const toMatrix = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const card=[...document.querySelectorAll(".view:not([hidden]) .kpis .kpi")].find(k=>k.querySelector(".lab")?.textContent==="Waiting to be allocated");
       card.click(); await wait(400); return JSON.stringify({ crumb: document.querySelector(".crumb b")?.textContent, chip: document.querySelector(".fchip.on")?.textContent || "" })`));
     check(`"Open matrix" opens the matrix with "Needs allocation" on ${tag}`, toMatrix.crumb === "Allocation matrix" && /Needs allocation/.test(toMatrix.chip), JSON.stringify(toMatrix));
-    await ev(`[...document.querySelectorAll(".fchip")].find(b=>/Everything/.test(b.textContent))?.click()`);
+    await ev(`[...document.querySelectorAll(".view:not([hidden]) .fchip")].find(b=>/Everything/.test(b.textContent))?.click()`);
     await sleep(200);
     for (let i = 0; i < 120 && !(await ev(`return !!document.querySelector("tr.g")`).catch(() => false)); i++) await sleep(500);
     if (!(await ev(`return !!document.querySelector("tr.g")`))) { check(`matrix loads ${tag}`, false, "no order rows (is the app running and are you authorized?)"); continue; }
@@ -253,6 +280,9 @@ async function run() {
     oneCol: getComputedStyle(two).gridTemplateColumns.split(" ").length === 1,
     fit: [...document.querySelectorAll(".two .card")].every(c=>c.getBoundingClientRect().right <= innerWidth + 1) })`));
   check("Control center: one column, no horizontal page scroll @390px", phone.noScroll && phone.oneCol && phone.fit, JSON.stringify(phone));
+  await ev(`document.querySelector('[data-nav="sku"]')?.click()`);
+  for (let t = 0; t < 40 && !(await ev(`return !!document.querySelector(".skt tbody tr")`)); t++) await sleep(250);
+  check("Master SKU: no horizontal page scroll @390px (the table scrolls inside)", await ev(`const tw=document.querySelector(".tw"); return document.documentElement.scrollWidth <= innerWidth + 1 && tw.getBoundingClientRect().right <= innerWidth + 1`));
   await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
 }
 

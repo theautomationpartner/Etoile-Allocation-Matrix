@@ -274,3 +274,39 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .card-h .sub { flex: 1 1 120px; min-width: 0; }
 .card-h .right { flex: none; }
 .card-h .right .btn { white-space: nowrap; }
+
+/* Master SKU Inventory (mockup vSKU) */
+.skt .sk-prod { min-width: 250px; }
+.skt .sk-cover { min-width: 130px; }
+.skt td.r, .skt th.r { font-variant-numeric: tabular-nums; }
+.skt .sk-it { color: var(--it); }
+.skt .sk-po { color: var(--po); }
+.skt .sk-gap { color: var(--gap); }
+.sk-name { display: inline-flex; align-items: center; gap: 6px; }
+button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
+.sk-cov-t { font-size: 11px; margin-top: 4px; }
+.sk-ships { line-height: 1.9; }
+.sk-ships .chip + .chip { margin-left: 4px; }
+.skt tr.clickable:focus-visible td { background: var(--surface-2); }
+.skt tr.clickable:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--focus); }
+.skt .sk-prod { min-width: 220px; }
+.skt .sk-cover { min-width: 112px; }
+.skt td .chip { white-space: nowrap; }
+.skt tr.sub td { white-space: nowrap; }
+.skt tr.sub td:first-child { white-space: normal; min-width: 220px; }
+.skt tr.sub td.sk-ships { white-space: normal; max-width: 210px; }
+.skt tr.sub td.sk-ships .chip { margin: 2px 4px 2px 0; }
+.skt tr.sub td.sk-ships .chip + .chip { margin-left: 0; }
+/* Side nav: a long label never pushes its counter onto a second line */
+.nav a .lb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.skt tr.sub td { padding-left: 7px; padding-right: 7px; }
+.skt tr.sub td:first-child { padding-left: 30px; }
+.skt tr.subhead th { padding-left: 7px; padding-right: 7px; }
+.skt .sk-sku { width: 1%; min-width: 72px; max-width: 150px; overflow-wrap: anywhere; }
+.skt th.sk-sku { white-space: nowrap; }
+.skt th, .skt td { padding-left: 9px; padding-right: 9px; }
+.skt .sk-prod { min-width: 190px; }
+.skt .sk-cover { min-width: 100px; }
+.sk-cov-t { white-space: nowrap; }
+.skt .sk-cover { min-width: 0; }
+.skt .sk-prod { min-width: 176px; }

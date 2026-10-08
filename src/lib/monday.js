@@ -23,6 +23,9 @@ export const COL = {
   sale: { retailer: "dropdown_mm17we0j", region: "color_mm17q217", status: "color_mm17bttk", orderDate: "date_mm1s15v9", cancelDate: "date_mm5bxkpz", saleCin7: "link_mm26kvdr", allocStatus: "color_mm7146kz", allocPct: "numeric_mm71h5ps" },
   saleSub: { skuId: "text_mm251am5", ordered: "numeric_mm17ttsn", fulfilled: "numeric_mm19rrnv", outstanding: "numeric_mm19gkqq", allocJson: "long_text_mm4kee9f", allocSource: "dropdown_mm4fwfk7", poRel: "board_relation_mm3hna2c", itRel: "board_relation_mm342hhx", ledgerRel: "board_relation_mm7pqf7j", lastProcessed: "numeric_mm7x8pp1" },
   wh: { sku: "text_mm17625z", usQty: "numeric_mm1765fq" },
+  // Master SKU subitems ("Incoming records"): one per PO × SKU (PurchaseID = Cin7 OrderID|SKU), one per container.
+  whSub: { po: "board_relation_mm19zsyp", region: "lookup_mm1hgwz5", eta: "date_mm2vrt3q", arrival: "color_mm2vzyxm", usInTransit: "numeric_mm293ds6",
+    usOutstanding: "numeric_mm19bvcx", usOnOrder: "numeric_mm19v320", purchaseId: "text_mm1cnjfs", transitId: "text_mm34kmb5" },
   // isProcess: "Is Process" checkbox — copies made while importing, never counted.
   // subPo: the PO item of each container line · subStatus: Arrived – Pending Receiving / Received (written by the app)
   it: { location: "color_mm3bhhys", eta: "date4", packingList: "color_mm1c7w2a", isProcess: "boolean_mm7xhwt8", subSku: "text_mm15xggt", subQty: "numeric_mm3k24ed", subPoRef: "text_mm2ebx76", subPo: "board_relation_mm2ef1zr", subStatus: "color_mm3kvr2h" },
@@ -199,12 +202,30 @@ export function createMondayApi(transport = fetchTransport) {
     return Object.fromEntries((d?.boards || []).map((b) => [String(b.id), b.items_count]));
   }
 
+  // Master SKU items, with their subitems: the "Incoming records" (one per PO × SKU, split per container that
+  // carries it), written by the PO sync and the In-Transit importer (Proceso-In-Transit.md).
   async function loadWarehouse() {
-    const items = await allItems(BOARDS.warehouse, `id name column_values(ids:[${gqlList([COL.wh.sku, COL.wh.usQty])}]) { id text }`);
+    const r = COL.whSub;
+    const items = await allItems(BOARDS.warehouse, `id name column_values(ids:[${gqlList([COL.wh.sku, COL.wh.usQty])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList(Object.values(r))}]) { id text ... on BoardRelationValue { linked_item_ids } ... on MirrorValue { display_value } } }`);
     const out = {};
     for (const it of items) {
       const sku = cv(it, COL.wh.sku).trim();
-      if (sku && !out[sku]) out[sku] = { itemId: it.id, name: it.name, usQty: num(cv(it, COL.wh.usQty)) };
+      if (!sku || out[sku]) continue;
+      out[sku] = {
+        itemId: it.id, name: it.name, usQty: num(cv(it, COL.wh.usQty)),
+        incoming: (it.subitems || []).map((s) => {
+          const col = (id) => s.column_values.find((c) => c.id === id);
+          return {
+            id: String(s.id), name: s.name,
+            poId: (col(r.po)?.linked_item_ids || [])[0] ? String(col(r.po).linked_item_ids[0]) : null,
+            region: col(r.region)?.display_value || col(r.region)?.text || "",
+            eta: date(cv(s, r.eta)), arrival: cv(s, r.arrival), // Estimated / Confirmed
+            inTransit: num(cv(s, r.usInTransit)), outstanding: num(cv(s, r.usOutstanding)), onOrder: num(cv(s, r.usOnOrder)),
+            purchaseId: cv(s, r.purchaseId).trim(), transitLineId: cv(s, r.transitId).trim(), // In-Transit subitem carrying it
+          };
+        }),
+      };
     }
     return out;
   }
@@ -283,6 +304,7 @@ export function createMondayApi(transport = fetchTransport) {
       [BOARDS.wholesale]: { name: "Wholesale Allocation", cols: [COL.sale.region, COL.sale.cancelDate] },
       [BOARDS.wholesaleSub]: { name: "Wholesale Allocation (subitems)", cols: [COL.saleSub.skuId, COL.saleSub.outstanding, COL.saleSub.ledgerRel, COL.saleSub.lastProcessed, "board_relation_mm7pd15e", "multiple_person_mm7pdm50"] },
       [BOARDS.warehouse]: { name: "Master SKU Inventory", cols: [COL.wh.sku, COL.wh.usQty] },
+      "18402981518": { name: "Master SKU Inventory (subitems)", cols: Object.values(COL.whSub) },
       [BOARDS.inTransit]: { name: "In-Transit Shipments", cols: [COL.it.location, COL.it.eta, COL.it.packingList, COL.it.isProcess] },
       [BOARDS.inTransitSub]: { name: "In-Transit Shipments (subitems)", cols: [COL.it.subSku, COL.it.subQty, COL.it.subPoRef, COL.it.subPo, COL.it.subStatus] },
       [BOARDS.po]: { name: "Purchase Orders", cols: [COL.po.region, COL.po.eta] },

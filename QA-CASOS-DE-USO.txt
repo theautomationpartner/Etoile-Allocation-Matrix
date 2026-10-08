@@ -346,3 +346,17 @@ Chequeo visual (npm run ui-check, 111): es la primera pantalla; 4 tarjetas y CTA
 textos sin cortar; sin scroll horizontal (1200, 1440 y 390 px, una columna en celular); botones a pantallas no
 construidas atenuados con el motivo; una fila abre el panel lateral y × lo cierra; "Open matrix" abre la matriz
 con "Needs allocation". Encabezados de bloque: título y botón nunca se parten (corregido en 1200 px).
+
+
+--------------------------------------------------------------------------------
+ 13. MASTER SKU INVENTORY — casos probados (2026-10-08)
+--------------------------------------------------------------------------------
+Tests automáticos (npm test, 76 en total, todos pasan) con los datos del mockup:
+  S-01 Filas = mockup: EC0388 57·0·0·600·543·—·10% Short 543; EC0400 8·700·980·520·520·708; EC0387 120·1,832·2,600 . PASA
+  S-02 Tarjetas = mockup: 2 (864) · 7 · 653 + 2,367 · 12,254 (8 SKUs); chips 21·2·7·8·13·2 ......................... PASA
+  S-03 Incoming records: solo US, uno por PurchaseID con sus contenedores; Estimated sin contenedor ................ PASA
+Chequeo visual (npm run ui-check, 122): "Open in Master SKU" del Control center abre esta pantalla con "Sold short";
+tarjetas, chips y columnas del mockup; ▸ muestra los registros sin abrir el panel y ▾ los oculta; una fila abre el
+panel del SKU; la cantidad de un chip = filas mostradas; las 10 columnas entran sin scroll lateral en 1200 y 1440 px
+(antes Status quedaba cortado); en celular la tabla se desplaza dentro de su tarjeta. Menú lateral: el nombre ya no
+se parte en dos renglones por el contador.
