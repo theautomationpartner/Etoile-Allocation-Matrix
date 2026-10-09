@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildPurchaseOrders, PO_FILTERS } from "../../lib/purchaseOrders.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -9,7 +10,7 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 const LABELS = ["Open purchase orders", "Nothing shipped yet", "Already sold to customers", "Arrives after a cancel date"];
 const STATUS_CHIP = { "Fully Arrived": "wh", "Partially Arrived": "po" };
 
-export function PurchaseOrders({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments }) {
+export function PurchaseOrders({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments, panelRequest }) {
   const po = useMemo(() => (model && data ? buildPurchaseOrders(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(po);
@@ -20,6 +21,7 @@ export function PurchaseOrders({ data, model, status, error, onRefresh, shipment
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const openFrom = (e, type, id) => { e.stopPropagation(); openRecord(type, id); };
   const panel = {
     onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),

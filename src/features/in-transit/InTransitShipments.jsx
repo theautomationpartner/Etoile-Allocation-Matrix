@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonth, dayMonthYear } from "../../lib/format.js";
 import { buildTransit, SOON_DAYS, TRANSIT_FILTERS } from "../../lib/transit.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -14,7 +15,7 @@ const SPLIT_UNKNOWN = "Monday does not record which PO the promised units come f
 
 const Chip = ({ c, children }) => <span className={`chip ${c}`}>{c !== "mut" && <span className="sq" />}{children}</span>;
 
-export function InTransitShipments({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments }) {
+export function InTransitShipments({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments, panelRequest }) {
   const tr = useMemo(() => (model && data ? buildTransit(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(tr);
@@ -25,6 +26,7 @@ export function InTransitShipments({ data, model, status, error, onRefresh, ship
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const openFrom = (e, type, id) => { e.stopPropagation(); openRecord(type, id); };
   const panel = {
     onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),

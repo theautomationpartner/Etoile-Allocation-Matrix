@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildImporter, IMPORT_FILTERS } from "../../lib/importer.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -15,7 +16,7 @@ const LABELS = ["Shipments created", "Still reversible", "Reverted", "Uploaded t
 const FORM_URL = "https://forms.monday.com/forms/d589ca5528644f916c76216b5c1fbfff?r=use1";
 const PACKING_CHIP = { Final: "wh", Done: "wh" };
 
-export function InTransitImporter({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments }) {
+export function InTransitImporter({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments, panelRequest }) {
   const imp = useMemo(() => (model && data ? buildImporter(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(imp);
@@ -27,6 +28,7 @@ export function InTransitImporter({ data, model, status, error, onRefresh, shipm
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const panel = {
     onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),
     onTrail: (i) => setRail((cur) => cur.slice(0, i + 1)),

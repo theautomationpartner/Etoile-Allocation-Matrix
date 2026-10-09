@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt } from "../../lib/format.js";
 import { buildOrderMatrix } from "../../lib/matrix.js";
 import { allocatedMessage, clampValue, editorFor, suggestSplit, validate } from "../../lib/allocation.js";
@@ -22,7 +23,7 @@ import { fetchWrite } from "../../lib/mondayWrites.js";
 // shipments: useShipments(...) owned by the workspace (the Control center opens the same records).
 // request: { n, filter?, orderShipments? } from another screen (the Control center): apply a Show filter, or
 // open an order on its Shipments tab. n changes on every request.
-export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request, onGoTransit }) {
+export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request, onGoTransit, panelRequest }) {
 
   // Closing or reloading the tab with unsaved shipments: the browser asks first.
   useEffect(() => {
@@ -148,6 +149,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       shipments.actions.setTab(orderId, "ships");
     },
   };
+  usePanelRequest(panelRequest, panel.onPanel);
 
   // Esc closes the editor first, then the side panel (as in the mockup).
   const escRef = useRef(null);

@@ -1011,6 +1011,29 @@ Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del 
 Colores de tarjetas: como el mockup (rojo), aunque el documento diga ámbar (decisión del cliente, 2026-10-08).
 
 --------------------------------------------------------------------------------
+ 21. CONEXIONES TRANSVERSALES Y PANELES (2026-10-09)
+--------------------------------------------------------------------------------
+Revisado contra "Conexiones transversales y paneles de detalle — Requerimientos". Los 4 paneles (orden, SKU,
+contenedor, PO) son los mismos en todas las pantallas (SidePanel.jsx); los puntos de entrada de cada pantalla, los
+saltos panel → panel (tabla de recorridos y listas), la franja de contexto (hasta 6 líneas, "has no units linked")
+y los accesos a otras pantallas con filtro ya estaban. Agregado:
+  · Buscador del encabezado + Enter (§3.1): abre el panel del primer resultado, prioridad SKU → PO (número o
+    Reference) → contenedor (nombre o código, en tránsito primero) → orden (número, SO, retailer o etiqueta corta);
+    dentro de un tipo gana el exacto, luego "empieza con", luego "contiene" (src/lib/search.js findRecord). Sin
+    resultado: aviso "Nothing in Monday matches …"; si hay más: "Opened X · N more records match". Escribir sigue
+    filtrando la pantalla. Cada Enter empieza un breadcrumb nuevo (usePanelRequest; al cambiar de pantalla la
+    pedida se descarta).
+  · Breadcrumb (§5.1): un registro que ya no está en monday (p. ej. un contenedor eliminado) sale del breadcrumb y el
+    panel vuelve al anterior, o se cierra si no queda ninguno.
+  · Panel de la orden (§4.2): las reservas cuya fuente ya no cuenta aparecen en rojo en "Containers feeding this
+    order": "Shipment deleted · reservation orphaned" (no clickeable) o, si el contenedor sigue en monday pero ya no
+    es fuente de esas unidades, "Still in Monday, no longer a source for these units" (abre el contenedor).
+Diferencias que quedan a propósito (puntos abiertos del documento): la etiqueta de fila de SKU de la matriz abre el
+  panel del SKU (TBD-P01); los chips de orden en In-Transit (Promised to) y Purchase Orders (Sold to) abren el panel
+  de la orden (TBD-X05 / TBD-O06); los chips "Coming from" de Wholesale no abren panel (TBD-W08). Sin panel de
+  Warehouse ni de shipment de salida (TBD-X01 / X02).
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -1067,3 +1090,4 @@ Colores de tarjetas: como el mockup (rojo), aunque el documento diga ámbar (dec
 2026-10-08  IN-TRANSIT (Shipments e Importer) revisado contra sus requerimientos (secciones 18 y 20).
 2026-10-08  Delete shipment (webhook DELETE_SHIPMENT_WEBHOOK), Upload packing list (formulario propio → Importer), PO "raised". Merge a main.
 2026-10-08  Delete shipment arriba en el panel del contenedor; el detalle de lo que se deshace va en la advertencia.
+2026-10-09  CONEXIONES TRANSVERSALES — sección 21: buscador + Enter, breadcrumb sin registros borrados, reservas huérfanas en la orden.

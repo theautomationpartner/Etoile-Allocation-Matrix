@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildSkuInventory, SKU_FILTERS } from "../../lib/skuInventory.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -9,7 +10,7 @@ import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 const LABELS = ["SKUs sold short", "Out of stock, still selling", "Sellable right now", "Committed to wholesale"];
 const PACKING_CHIP = { Final: "wh", Draft: "po", Done: "wh" };
 
-export function SkuInventory({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments }) {
+export function SkuInventory({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments, panelRequest }) {
   const inv = useMemo(() => (model && data ? buildSkuInventory(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(inv);
@@ -19,6 +20,7 @@ export function SkuInventory({ data, model, status, error, onRefresh, shipments,
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const panel = {
     onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),
     onTrail: (i) => setRail((cur) => cur.slice(0, i + 1)),

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildWholesale, GROUPS, URGENT_DAYS, WH_FILTERS } from "../../lib/wholesale.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -11,7 +12,7 @@ const LABELS = ["Orders that can't be covered", "Units waiting on allocation", "
 
 const Chip = ({ c, children }) => <span className={`chip ${c}`}>{c !== "mut" && <span className="sq" />}{children}</span>;
 
-export function WholesaleAllocation({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoSku, onGoShipments }) {
+export function WholesaleAllocation({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoSku, onGoShipments, panelRequest }) {
   const wh = useMemo(() => (model && data ? buildWholesale(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(wh);
@@ -22,6 +23,7 @@ export function WholesaleAllocation({ data, model, status, error, onRefresh, shi
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const panel = {
     onOpen: (type, id) => setRail((cur) => [...cur, { type, id: String(id) }]),
     onTrail: (i) => setRail((cur) => cur.slice(0, i + 1)),

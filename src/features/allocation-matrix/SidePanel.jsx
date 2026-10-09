@@ -6,6 +6,7 @@ import { pathMatch, pathsFor, sortPaths, sumQ, unitPaths } from "../../lib/paths
 import { localToday } from "../../lib/shipments.js";
 import { incomingRecords } from "../../lib/skuInventory.js";
 import { FULFILLED_GROUP } from "../../lib/monday.js";
+import { orphansOf } from "../../lib/wholesale.js";
 import { requestShipmentDeletion, useAppActions } from "../../lib/appActions.js";
 
 // Side panel (PDF §8.3, mockup "rail"): opened from an order, a SKU or a source. Each record shows its
@@ -27,10 +28,7 @@ function RelRow({ kind, title, meta, qty, onOpen }) {
   );
 }
 
-export function SidePanel({ stack, onOpen, onTrail, onClose, model, data, shipments, onGoShipments }) {
-  const open = stack.length > 0;
-  const cur = stack[stack.length - 1];
-  const prev = stack[stack.length - 2];
+export function SidePanel({ stack: fullStack, onOpen, onTrail, onClose, model, data, shipments, onGoShipments }) {
   const bodyRef = useRef(null);
 
   const ctx = useMemo(() => {
@@ -56,6 +54,15 @@ export function SidePanel({ stack, onOpen, onTrail, onClose, model, data, shipme
     return { containerById, poById, poByName, orderById, paths, stageDate, orderLabel, name, poLabel };
   }, [model, data]);
 
+  // Connections §5.1: a record that is no longer in monday (e.g. a deleted container) leaves the breadcrumb; the panel
+  // goes back to the previous record, or closes when none is left. Trail clicks keep the caller's own indexes.
+  const gone = (s) => (s.type === "ship" ? !ctx.containerById.has(s.id) : s.type === "po" ? !ctx.poById.has(s.id) : s.type === "so" ? !ctx.orderById.has(s.id) : false);
+  const live = fullStack.map((s, i) => ({ s, i })).filter(({ s }) => !ctx || !gone(s));
+  const stack = live.map((x) => x.s);
+  const open = stack.length > 0;
+  const cur = stack[stack.length - 1];
+  const prev = stack[stack.length - 2];
+
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
   }, [cur?.type, cur?.id]);
@@ -75,7 +82,7 @@ export function SidePanel({ stack, onOpen, onTrail, onClose, model, data, shipme
           <div className="rail-trail">
             {open && ctx && stack.map((s, i) => (i === stack.length - 1
               ? <span key={i} className="cur">{ctx.name(s)}</span>
-              : <span key={i} style={{ display: "contents" }}><button type="button" onClick={() => onTrail(i)}>{ctx.name(s)}</button><span>›</span></span>))}
+              : <span key={i} style={{ display: "contents" }}><button type="button" onClick={() => onTrail(live[i].i)}>{ctx.name(s)}</button><span>›</span></span>))}
           </div>
           <button type="button" className="rail-x" onClick={onClose} aria-label="Close">×</button>
         </div>
@@ -218,6 +225,16 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
     // Reserved on a source that no longer exists (any line of the order, also the fully shipped ones).
     orph: sumBy(model.allLines.filter((x) => String(x.order.id) === String(id)), (x) => x.orphan),
   };
+  // Reservations whose source was deleted, one row per source (as Wholesale's "(orphaned)" chips).
+  const deadBy = new Map();
+  for (const x of model.allLines.filter((y) => String(y.order.id) === String(id) && y.orphan > 0)) {
+    for (const d of orphansOf(x.line, x)) {
+      const k = `${d.source}|${d.sourceId}|${d.ref}`;
+      if (!deadBy.has(k)) deadBy.set(k, { ...d, qty: 0 });
+      deadBy.get(k).qty += d.qty;
+    }
+  }
+  const dead = [...deadBy.values()];
   // §14.2 formula: (fulfilled + allocated) ÷ ordered, rounded down; 100 only when nothing is missing.
   const pct = m.ord ? (m.rem === 0 ? 100 : Math.min(99, Math.floor(((m.ful + m.al) / m.ord) * 100))) : 0;
   const shipped = o.group === FULFILLED_GROUP; // Fulfilled group: shipped, no longer part of the matrix
@@ -276,9 +293,9 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
         <PathTable type="so" id={String(id)} ctx={ctx} onOpen={onOpen} hl={prev} />
       </div>
 
-      {byShip.size > 0 && (
+      {(byShip.size > 0 || dead.length > 0) && (
         <div className="sec">
-          <h4>Containers feeding this order <span className="c">{byShip.size}</span></h4>
+          <h4>Containers feeding this order <span className="c">{byShip.size + dead.length}</span></h4>
           <div className="rel">
             {[...byShip.entries()].map(([s, q]) => {
               const c = ctx.containerById.get(s);
@@ -286,6 +303,14 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
               return <RelRow key={s} kind="it" title={containerCode(c?.name || s)}
                 meta={`Arrives ${dayMonthYear(c?.eta) || "—"}${c?.eta && o.cancelDate && c.eta > o.cancelDate ? " · after cancel date" : ""}${pos.length ? ` · units from ${pos.join(" + ")}` : ""}`}
                 qty={`${fmt(q)} u`} onOpen={() => onOpen("ship", s)} />;
+            })}
+            {/* Connections §4.2: a reserved source that no longer counts — red. A deleted shipment is not clickable; a
+                container still in Monday that no longer carries the SKU opens its panel. */}
+            {dead.map((d) => {
+              const still = d.source === SOURCE.IN_TRANSIT && ctx.containerById.has(d.sourceId);
+              return <RelRow key={`dead-${d.source}-${d.sourceId}-${d.ref}`} kind="gap" title={d.ref ? containerCode(d.ref) : "A deleted source"}
+                meta={`${still ? "Still in Monday, no longer a source for these units" : d.source === SOURCE.IN_TRANSIT || !d.source ? "Shipment deleted" : "Source no longer available"} · reservation orphaned`}
+                qty={`${fmt(d.qty)} u`} onOpen={still ? () => onOpen("ship", d.sourceId) : undefined} />;
             })}
           </div>
         </div>

@@ -31,13 +31,13 @@ const sum = (arr, f) => arr.reduce((a, x) => a + (f(x) || 0), 0);
 // Ledger reservations whose source no longer exists (the engine's orphan units of the line): the raw entries
 // with no live counterpart. A PO reservation that moved to its container (pass 0) is not an orphan. When the
 // entries cannot be told apart, one chip with the orphan total.
-function orphansOf(raw, x) {
+export function orphansOf(raw, x) {
   const followedPos = new Set(x.rawEntries.map((r) => r.followedFrom).filter(Boolean));
   const list = (raw.entries || []).filter((e) => Number(e.qty) > 0
     && !x.rawEntries.some((r) => r.source === e.source && String(r.sourceId) === String(e.sourceId))
     && !(e.source === SOURCE.PO && followedPos.has(e.ref)));
-  if (sum(list, (e) => Number(e.qty)) === x.orphan) return list.map((e) => ({ ref: e.ref || String(e.sourceId), qty: Number(e.qty) }));
-  return [{ ref: "", qty: x.orphan }];
+  if (sum(list, (e) => Number(e.qty)) === x.orphan) return list.map((e) => ({ ref: e.ref || String(e.sourceId), source: e.source, sourceId: String(e.sourceId ?? ""), qty: Number(e.qty) }));
+  return [{ ref: "", source: "", sourceId: "", qty: x.orphan }];
 }
 
 export function buildWholesale(model, data, { today = localToday() } = {}) {

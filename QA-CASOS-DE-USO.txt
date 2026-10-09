@@ -502,3 +502,21 @@ npm test 103/103 · npm run ui-check 194/194.
        baja prioridad: 15–53 ms por tecla; la tabla se filtra enseguida después ................................... PASA
   Q-10 Ventanas nuevas a 390 px y en oscuro: entran en pantalla, sin scroll horizontal, botones visibles ........... PASA
 npm test 103/103 · npm run ui-check 196/196.
+
+--------------------------------------------------------------------------------
+ 23. CONEXIONES TRANSVERSALES — revisión contra su documento (2026-10-09)
+--------------------------------------------------------------------------------
+  X-01 Buscador + Enter en cada pantalla (datos reales): Wholesale "EC0450" → SKU · In-Transit "PO-00432" → PO ·
+       Purchase Orders "FLEX-4169490" → contenedor · Master SKU "EIVR121" → orden · Importer "ec0357" → SKU ·
+       matriz "EIVR114" → orden; sin resultado → "Nothing in Monday matches …" ..................................... PASA
+  X-02 Prioridad SKU → PO → contenedor → orden; exacto > empieza con > contiene; Fulfilled incluidas (tests) ........ PASA
+  X-03 PO → SKU: breadcrumb de 2, franja de contexto y filas resaltadas; el eslabón anterior vuelve y descarta los
+       posteriores; Esc y la zona oscura cierran ........................................................................ PASA
+  X-04 Panel de EIVR114: reservas huérfanas en rojo, "Shipment deleted · reservation orphaned", no clickeables:
+       2,000 u en FLEX-4119719 y 412 u en FLEX-4132795. Verificado en monday: apuntan a los items 12880279649 y
+       12880433232, los Draft eliminados y reimportados (los actuales tienen otro id). Si un contenedor sigue en monday
+       pero ya no es fuente, dice "Still in Monday, no longer a source for these units" y abre su panel ............... PASA
+  X-05 Breadcrumb sin registros borrados: si un contenedor del recorrido desaparece, vuelve al anterior o cierra ..... PASA (código)
+  X-06 Puntos de entrada de Control center, matriz, Wholesale, In-Transit, Importer, Purchase Orders y Master SKU;
+       saltos panel → panel; accesos a otras pantallas con filtro: ya estaban (chequeados en ui-check) ................ PASA
+npm test 106/106 · npm run ui-check 202/202 (límite del chequeo: 8 min).

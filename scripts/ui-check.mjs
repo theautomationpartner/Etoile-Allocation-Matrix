@@ -21,8 +21,8 @@ const profile = mkdtempSync(join(tmpdir(), "ui-check-"));
 const browser = spawn(EDGE, ["--headless=new", "--disable-gpu", "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Never hang silently: fail after 4 minutes.
-const watchdog = setTimeout(() => { console.log("FAIL  ui-check timed out (4 min)"); try { browser.kill(); } catch { /* ignore */ } process.exit(1); }, 240000);
+// Never hang silently: fail after 8 minutes (8 screens × 2 widths, each width reads monday again).
+const watchdog = setTimeout(() => { console.log("FAIL  ui-check timed out (8 min)"); try { browser.kill(); } catch { /* ignore */ } process.exit(1); }, 480000);
 
 let ws, id = 0;
 const pending = new Map();
@@ -105,6 +105,28 @@ async function run() {
       document.querySelector('[data-nav="home"]').click(); await wait(300);
       return JSON.stringify({ off, out })`));
     check(`side nav: every item opens its screen, none disabled ${tag}`, nav.off.length === 0 && nav.out.length >= 7 && nav.out.every((x) => x.ok), JSON.stringify(nav));
+    // Connections §3.1 / §5: header search + Enter opens the first match; panel → panel builds the breadcrumb with the
+    // context strip; an earlier link goes back and drops the later ones; Esc and the dimmed area close it.
+    const cx = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s); const all=(s)=>[...document.querySelectorAll(s)];
+      const inp=q("input[placeholder^='Search a SKU']"); const type=async(v)=>{ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(inp,v); inp.dispatchEvent(new Event("input",{bubbles:true})); await wait(700); };
+      document.querySelector('[data-nav="po"]').click(); await wait(500);
+      await type("PO-00432"); inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(600);
+      const r={ first: q(".rail.on .rail-trail .cur")?.textContent||"" };
+      const skuBtn=all(".rail.on .pt .pt-l").find(b=>/^[A-Z]{2}[0-9]/.test(b.textContent)); skuBtn?.click(); await wait(400);
+      r.trail=all(".rail.on .rail-trail button, .rail.on .rail-trail .cur").map(x=>x.textContent);
+      r.ctx=!!q(".rail.on .ctx") && /You came from|has no units linked/.test(q(".rail.on .ctx").textContent);
+      r.hl=all(".rail.on .pt tr.hl").length;
+      all(".rail.on .rail-trail button")[0]?.click(); await wait(400);
+      r.back=all(".rail.on .rail-trail button, .rail.on .rail-trail .cur").map(x=>x.textContent);
+      window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(300); r.escClosed=!q(".rail.on");
+      inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(500); q(".scrim.on")?.click(); await wait(300); r.scrimClosed=!q(".rail.on");
+      await type("zzz-nothing-matches"); inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(400);
+      r.none=/Nothing in Monday matches/.test(q(".toast")?.textContent||""); await type("");
+      document.querySelector('[data-nav="home"]').click(); await wait(500);
+      return JSON.stringify(r)`));
+    check(`Connections: search + Enter opens the first match (the PO for "PO-00432"); nothing found → message ${tag}`, cx.first === "PO-00432" && cx.none, JSON.stringify(cx));
+    check(`Connections: PO → SKU builds the breadcrumb with the context strip and highlighted rows ${tag}`, cx.trail.length === 2 && cx.trail[0] === cx.first && cx.ctx && cx.hl > 0, JSON.stringify(cx));
+    check(`Connections: an earlier breadcrumb link goes back and drops the later ones; Esc and the dimmed area close ${tag}`, cx.back.length === 1 && cx.back[0] === cx.first && cx.escClosed && cx.scrimClosed, JSON.stringify(cx));
     // Theme button: light ↔ dark; the side nav follows (white in light, the mockup's dark in dark); sun / moon icon.
     const theme = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=()=>document.querySelector(".theme-tg");
       const state=()=>({ theme: document.documentElement.getAttribute("data-theme")||"system", nav: getComputedStyle(document.querySelector(".side")).backgroundColor,
