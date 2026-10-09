@@ -1003,11 +1003,16 @@ Tarjetas: Shipments created (Live; unidades de sus contenedores) · Still revers
 Show: All uploads · Live shipments · Draft, reversible · Reverted. Badge del menú = All uploads. El buscador filtra
   por archivo, item o contenedor.
 "Upload packing list" abre una ventana con los campos del Importer Form del tablero (Name, File, Type Import,
-  Location, ETD, ETA, People; People = quien sube, se pueden sumar otros usuarios de monday). POST multipart a
+  Location, ETD, ETA, People). People: desplegable con buscador y el avatar de monday de cada persona (foto, o la
+  imagen de iniciales con su color; photo_tiny), quien sube viene elegido. ETD / ETA: calendario propio
+  (DatePicker). Sin enlace al formulario de monday (pedido del cliente).
+Fechas (DatePicker, src/components/DatePicker.jsx): dentro de monday la app corre en un iframe de otro dominio y ahí
+  el navegador bloquea el calendario nativo (showPicker) — por eso ETD/ETA no abrían. La app usa su propio
+  calendario, en inglés, en el Importer y en "Ship date" de la matriz. Probado dentro de un iframe de otro dominio
+  con clics reales. POST multipart a
   /api/importer-upload: crea el item (grupo topics) con sus columnas, adjunta el archivo (máx. 4 MB, límite de
   Vercel) y recién después pone Import Status = Import, que dispara la importación de monday. ?dry=1 valida sin
-  escribir. El formulario de monday (pide login de monday, por eso no se muestra embebido) queda como enlace. Al
-  cerrar la ventana después de enviar, la app vuelve a leer monday. "Open" y el chip del contenedor → panel lateral.
+  escribir. Al cerrar la ventana después de enviar, la app vuelve a leer monday. "Open" y el chip del contenedor → panel lateral.
 Colores de tarjetas: como el mockup (rojo), aunque el documento diga ámbar (decisión del cliente, 2026-10-08).
 
 --------------------------------------------------------------------------------
@@ -1091,3 +1096,4 @@ Diferencias que quedan a propósito (puntos abiertos del documento): la etiqueta
 2026-10-08  Delete shipment (webhook DELETE_SHIPMENT_WEBHOOK), Upload packing list (formulario propio → Importer), PO "raised". Merge a main.
 2026-10-08  Delete shipment arriba en el panel del contenedor; el detalle de lo que se deshace va en la advertencia.
 2026-10-09  CONEXIONES TRANSVERSALES — sección 21: buscador + Enter, breadcrumb sin registros borrados, reservas huérfanas en la orden.
+2026-10-09  Calendario propio (ETD/ETA y Ship date: el nativo está bloqueado en el iframe de monday); People con avatares; sin enlace al form.

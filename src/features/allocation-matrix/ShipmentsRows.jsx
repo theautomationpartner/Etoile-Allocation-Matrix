@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fmt, dayMonth, dayMonthYear } from "../../lib/format.js";
 import { shipUnits } from "../../lib/shipments.js";
+import { DatePicker } from "../../components/DatePicker.jsx";
 
 // "···" menu of a shipment: a floating panel placed under the button. It is rendered into <body>
 // (portal): inside the table it would share the sticky cells' stacking context and could be painted
@@ -99,30 +100,18 @@ function RenameInput({ value, onDone, onCancel }) {
   );
 }
 
-// Ship date shown in English ("21 Dec 2026" / "Set a date") whatever the browser's language — the
-// native date field would show the system's own placeholder (e.g. "dd/mm/aaaa"). Clicking it opens the
-// native date picker; "×" clears the date.
+// Ship date shown in English ("21 Dec 2026" / "Set a date") with the app's own calendar (DatePicker): the browser's
+// date picker is blocked inside monday's iframe and would show the system's language. "×" clears the date.
 function ShipDateField({ value, min, onChange }) {
-  const ref = useRef(null);
-  const open = () => {
-    const el = ref.current;
-    try {
-      el.showPicker();
-    } catch {
-      el.focus();
-      el.click();
-    }
-  };
   return (
     <span className="shd">
       <span className="lbl">Ship date</span>
       <span className="date-field">
-        <button type="button" className={`date-btn ${value ? "" : "empty"}`} onClick={open} aria-label={value ? `Ship date ${dayMonthYear(value)}, change` : "Set a ship date"}>
+        <DatePicker value={value} min={min} onChange={onChange} className={`date-btn ${value ? "" : "empty"}`}
+          ariaLabel={value ? `Ship date ${dayMonthYear(value)}, change` : "Set a ship date"}>
           <CalendarIcon /> {value ? dayMonthYear(value) : "Set a date"}
-        </button>
+        </DatePicker>
         {value && <button type="button" className="date-clear" onClick={() => onChange("")} aria-label="Clear ship date" title="Clear ship date">×</button>}
-        <input ref={ref} type="date" className="date-native" tabIndex={-1} aria-hidden="true" value={value || ""} min={min}
-          onChange={(e) => onChange(e.target.value)} />
       </span>
     </span>
   );

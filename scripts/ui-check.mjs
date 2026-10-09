@@ -305,8 +305,12 @@ async function run() {
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       const upBtn=all(".view:not([hidden]) .page-h .btn").find(x=>x.textContent==="Upload packing list"); upBtn?.click(); for (let t=0; t<40 && !document.querySelector(".up-dlg .up-p"); t++) await wait(250);
       const dlg=q(".up-dlg"); r.upFields = dlg ? [...dlg.querySelectorAll(".up-l")].map(l=>(l.querySelector("legend")||l).childNodes[0].textContent.trim()) : [];
-      r.upPeople = dlg ? dlg.querySelectorAll(".up-p input").length : 0; r.upMe = dlg ? dlg.querySelectorAll(".up-p input:checked").length === 1 : false;
-      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import, ETD\.$/.test(q(".up-dlg .note.warn")?.textContent||"");
+      r.upMe = dlg ? dlg.querySelectorAll(".up-pp-c").length === 1 : false; r.upLink = !dlg?.querySelector(".up-ext");
+      dlg?.querySelector(".up-pp-b")?.click(); await wait(300); r.upPeople = dlg ? dlg.querySelectorAll(".up-pp-m li button img, .up-pp-m li button .av-i").length : 0;
+      dlg?.querySelector(".up-pp-b")?.click(); await wait(200);
+      dlg?.querySelector(".up-date-b")?.click(); await wait(300); r.upCal = !!q(".dp .dp-g") && /^(January|February|March|April|May|June|July|August|September|October|November|December) [0-9]{4}$/.test(q(".dp-h b")?.textContent||"");
+      [...document.querySelectorAll(".dp .dp-d")][9]?.click(); await wait(250); r.upDate = /^10 [A-Z][a-z]{2} [0-9]{4}$/.test(dlg?.querySelector(".up-date-b")?.textContent||"");
+      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import[.]$/.test(q(".up-dlg .note.warn")?.textContent||"");
       r.upEnglish = !!dlg && ![...dlg.querySelectorAll("input[type=file], input[type=date]")].some(i=>i.offsetWidth>2) && /Choose file/.test(dlg.textContent) && /Choose a date/.test(dlg.textContent);
       document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250); r.upEsc = !q(".up-dlg");
       if(!r.upEsc){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); }
@@ -322,9 +326,9 @@ async function run() {
     check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
     check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
     check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
-    check(`In-Transit Importer: "Upload packing list" opens the form (the Importer Form's fields, monday people, me checked), validates, Esc closes ${tag}`,
-      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upValidates && im.upEnglish && im.upEsc,
-      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
+    check(`In-Transit Importer: "Upload packing list" opens the form (fields, People dropdown with monday avatars, own calendar for ETD), validates, Esc closes ${tag}`,
+      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upLink && im.upCal && im.upDate && im.upValidates && im.upEnglish && im.upEsc,
+      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, link: im.upLink, cal: im.upCal, date: im.upDate, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
     // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
     await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
     await sleep(300);
@@ -451,6 +455,10 @@ async function run() {
     check(`"···" icon centred in its button ${tag}`, ctl.dotsOffset.every((v) => v <= 1), JSON.stringify(ctl.dotsOffset));
 
     check(`ship date shown in English (no browser-language placeholder) ${tag}`, await ev(`const t=document.querySelector("tr.shc .date-btn").textContent; return /Set a date|[0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/.test(t) && !/aaaa|jj|mm|dd/i.test(t)`));
+    const sd = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=document.querySelector("tr.shc .date-btn"); b.click(); await wait(300);
+      const open=!!document.querySelector(".dp .dp-g"); const d=[...document.querySelectorAll(".dp .dp-d:not(:disabled)")].pop(); d?.click(); await wait(300);
+      const t=document.querySelector("tr.shc .date-btn").textContent; const toast=document.querySelector(".toast")?.textContent||""; return JSON.stringify({ open, picked: /[0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/.test(t) || /lands later/.test(toast), closed: !document.querySelector(".dp"), toast })`));
+    check(`ship date: the app's own calendar opens (works inside monday's iframe), a day sets the date (or the matrix explains why not) ${tag}`, sd.open && sd.picked && sd.closed, JSON.stringify(sd));
     check(`shipment table headers not clipped ${tag}`, await ev(`return [...document.querySelectorAll("tr.shth .nn.n4 span")].every(x => x.scrollWidth <= x.clientWidth + 1 && x.scrollHeight <= x.clientHeight + 1)`));
     check(`legend tip reads "…click Allocate." ${tag}`, await ev(`const k=document.querySelector(".mx-hint .k.tip"); const b=k.querySelector("b").getBoundingClientRect(); const r=document.createRange(); r.setStart(k.lastChild,0); r.setEnd(k.lastChild,1); return r.getBoundingClientRect().left - b.right < 2`));
     await ev(`document.querySelector("tr.shc .shm").click()`);

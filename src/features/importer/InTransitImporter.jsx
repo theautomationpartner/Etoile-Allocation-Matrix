@@ -4,16 +4,14 @@ import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildImporter, IMPORT_FILTERS } from "../../lib/importer.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
 import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
+import { DatePicker } from "../../components/DatePicker.jsx";
 import { importerPeople, uploadPackingList, useAppActions } from "../../lib/appActions.js";
 
 // In-Transit Importer (mockup vImporter): one row per packing list uploaded for the US, newest first. Read-only:
 // "Upload packing list" opens a pop-up with the fields of the board's Importer Form (Name, File, Type Import, People,
 // Location, ETD, ETA); the server creates the Importer item and sets Import Status = Import, which starts monday's
-// import (api/importer-upload.js). The monday form itself (members only) stays one click away. Deleting a shipment
-// is done from its side panel. The shipment chip and "Open" show the container's side panel.
+// import (api/importer-upload.js). Deleting a shipment is done from its side panel. The shipment chip and "Open" show the container's side panel.
 const LABELS = ["Shipments created", "Still reversible", "Reverted", "Uploaded this month"];
-// The board's Importer Form in monday (asks for a monday login), offered as an alternative.
-const FORM_URL = "https://forms.monday.com/forms/d589ca5528644f916c76216b5c1fbfff?r=use1";
 const PACKING_CHIP = { Final: "wh", Done: "wh" };
 
 export function InTransitImporter({ data, model, status, error, onRefresh, shipments, search, filter, onFilter, onGoShipments, panelRequest }) {
@@ -215,7 +213,6 @@ function UploadDialog({ onClose, onDone }) {
       <form className="up-dlg" role="dialog" aria-modal="true" aria-labelledby="up-dlg-t" onSubmit={submit} noValidate>
         <div className="up-h">
           <h3 id="up-dlg-t">Upload packing list</h3>
-          <a className="up-ext" href={FORM_URL} target="_blank" rel="noopener noreferrer">Use the Monday form instead</a>
           <button type="button" className="rail-x" onClick={onClose} disabled={busy} aria-label="Close">×</button>
         </div>
         <p className="up-n">Creates the item in the In-Transit Importer and starts the import: Monday reads the file and creates the shipment.</p>
@@ -240,15 +237,10 @@ function UploadDialog({ onClose, onDone }) {
             </label>
           </div>
           <div className="up-row">
-            <div className="up-l">ETD<EnglishDate label="ETD" value={f.etd} onChange={(v) => setF((cur) => ({ ...cur, etd: v }))} /></div>
-            <div className="up-l">ETA<EnglishDate label="ETA" value={f.eta} onChange={(v) => setF((cur) => ({ ...cur, eta: v }))} /></div>
+            <div className="up-l">ETD<UpDate label="ETD" value={f.etd} onChange={(v) => setF((cur) => ({ ...cur, etd: v }))} /></div>
+            <div className="up-l">ETA<UpDate label="ETA" value={f.eta} onChange={(v) => setF((cur) => ({ ...cur, eta: v }))} /></div>
           </div>
-          <fieldset className="up-l up-people">
-            <legend>People</legend>
-            {users ? users.map((u) => (
-              <label key={u.id} className="up-p"><input type="checkbox" checked={f.people.includes(u.id)} onChange={() => togglePerson(u.id)} />{u.name}</label>
-            )) : <span className="muted">Loading people from Monday…</span>}
-          </fieldset>
+          <div className="up-l">People<PeoplePicker users={users} value={f.people} onToggle={togglePerson} /></div>
           <p className="up-hint">Type Import: <b>In-Transit</b> creates the shipment with a Final packing list; <b>In-Transit Draft</b> with a Draft one (it can be deleted later). Files up to 4 MB.</p>
           {error && <div className="note warn" role="alert">{error}</div>}
         </div>
@@ -261,20 +253,65 @@ function UploadDialog({ onClose, onDone }) {
   );
 }
 
-// A date shown in English ("21 Dec 2026" / "Choose a date") whatever the browser's language; it opens the native
-// date picker (same approach as the matrix's ship date).
-function EnglishDate({ label, value, onChange }) {
-  const ref = useRef(null);
-  const open = () => {
-    try { ref.current.showPicker(); } catch { ref.current.focus(); ref.current.click(); }
-  };
+// ETD / ETA: the app's calendar (DatePicker), in English; the native one is blocked inside monday's iframe.
+function UpDate({ label, value, onChange }) {
   return (
     <span className="up-date">
-      <button type="button" className={`up-i up-date-b ${value ? "" : "empty"}`} onClick={open} aria-label={value ? `${label} ${dayMonthYear(value)}, change` : `Choose the ${label}`}>
+      <DatePicker value={value} onChange={onChange} className={`up-i up-date-b ${value ? "" : "empty"}`}
+        ariaLabel={value ? `${label} ${dayMonthYear(value)}, change` : `Choose the ${label}`}>
         {value ? dayMonthYear(value) : "Choose a date"}
-      </button>
+      </DatePicker>
       {value && <button type="button" className="date-clear" onClick={() => onChange("")} aria-label={`Clear the ${label}`}>×</button>}
-      <input ref={ref} type="date" className="date-native" tabIndex={-1} aria-hidden="true" value={value || ""} onChange={(e) => onChange(e.target.value)} />
+    </span>
+  );
+}
+
+// People: a dropdown like monday's — each person with their monday avatar (photo, or monday's initials image with
+// their color); initials on a neutral circle if the image can't load. Search, click to add or remove.
+function Avatar({ user, size = 22 }) {
+  const [broken, setBroken] = useState(false);
+  const initials = String(user.name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  return user.photo && !broken
+    ? <img className="av" src={user.photo} alt="" width={size} height={size} onError={() => setBroken(true)} />
+    : <span className="av av-i" style={{ width: size, height: size }} aria-hidden="true">{initials}</span>;
+}
+function PeoplePicker({ users, value, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const [find, setFind] = useState("");
+  const box = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const outside = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("keydown", esc, true);
+    return () => { document.removeEventListener("mousedown", outside); window.removeEventListener("keydown", esc, true); };
+  }, [open]);
+  if (!users) return <span className="up-i up-pp-b muted">Loading people from Monday…</span>;
+  const chosen = users.filter((u) => value.includes(u.id));
+  const list = users.filter((u) => u.name.toLowerCase().includes(find.trim().toLowerCase()));
+  return (
+    <span className="up-pp" ref={box}>
+      <button type="button" className="up-i up-pp-b" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}>
+        {chosen.length ? chosen.map((u) => <span key={u.id} className="up-pp-c"><Avatar user={u} size={20} />{u.name}</span>)
+          : <span className="muted">Choose people</span>}
+        <span className="up-pp-a" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="up-pp-m">
+          <input className="up-i" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Type to find results" autoFocus />
+          <ul role="listbox" aria-multiselectable="true" aria-label="People">
+            {list.map((u) => (
+              <li key={u.id} role="option" aria-selected={value.includes(u.id)}>
+                <button type="button" onClick={() => onToggle(u.id)} className={value.includes(u.id) ? "on" : ""}>
+                  <Avatar user={u} /><span>{u.name}</span>{value.includes(u.id) && <span className="up-pp-k" aria-hidden="true">✓</span>}
+                </button>
+              </li>
+            ))}
+            {!list.length && <li className="muted up-pp-none">No one matches “{find.trim()}”.</li>}
+          </ul>
+        </div>
+      )}
     </span>
   );
 }

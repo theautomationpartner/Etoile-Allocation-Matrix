@@ -520,3 +520,17 @@ npm test 103/103 · npm run ui-check 196/196.
   X-06 Puntos de entrada de Control center, matriz, Wholesale, In-Transit, Importer, Purchase Orders y Master SKU;
        saltos panel → panel; accesos a otras pantallas con filtro: ya estaban (chequeados en ui-check) ................ PASA
 npm test 106/106 · npm run ui-check 202/202 (límite del chequeo: 8 min).
+
+--------------------------------------------------------------------------------
+ 24. UPLOAD PACKING LIST Y FECHAS DENTRO DE MONDAY (2026-10-09)
+--------------------------------------------------------------------------------
+  U-01 HALLAZGO (cliente): ETD y ETA no abrían dentro de monday. Causa: la app corre en un iframe de otro dominio y el
+       navegador bloquea el calendario nativo (showPicker). Afectaba también "Ship date" de la matriz ............... CORREGIDO
+  U-02 App en un iframe de otro dominio (como monday) con clics reales del mouse: ETD → calendario → 15 Oct 2026;
+       ETA → mes siguiente → 20 Nov 2026 ............................................................................ PASA
+  U-03 People: desplegable con buscador; las 6 personas con su avatar de monday (foto o imagen de iniciales con su
+       color); varias a la vez; quien sube viene elegido ............................................................. PASA
+  U-04 Sin el enlace "Use the Monday form instead"; la × a la derecha; la lista se despliega dentro de la ventana .... PASA
+  U-05 Ship date de la matriz con el calendario propio: abre, elegir un día pone la fecha o la matriz explica por qué
+       no (una fuente llega después) ................................................................................ PASA
+npm test 106/106 · npm run ui-check 204/204.
