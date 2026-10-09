@@ -21,8 +21,8 @@ const profile = mkdtempSync(join(tmpdir(), "ui-check-"));
 const browser = spawn(EDGE, ["--headless=new", "--disable-gpu", "--disable-background-timer-throttling", "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows", `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Never hang silently: fail after 4 minutes.
-const watchdog = setTimeout(() => { console.log("FAIL  ui-check timed out (4 min)"); try { browser.kill(); } catch { /* ignore */ } process.exit(1); }, 240000);
+// Never hang silently: fail after 8 minutes (8 screens × 2 widths, each width reads monday again).
+const watchdog = setTimeout(() => { console.log("FAIL  ui-check timed out (8 min)"); try { browser.kill(); } catch { /* ignore */ } process.exit(1); }, 480000);
 
 let ws, id = 0;
 const pending = new Map();
@@ -105,6 +105,28 @@ async function run() {
       document.querySelector('[data-nav="home"]').click(); await wait(300);
       return JSON.stringify({ off, out })`));
     check(`side nav: every item opens its screen, none disabled ${tag}`, nav.off.length === 0 && nav.out.length >= 7 && nav.out.every((x) => x.ok), JSON.stringify(nav));
+    // Connections §3.1 / §5: header search + Enter opens the first match; panel → panel builds the breadcrumb with the
+    // context strip; an earlier link goes back and drops the later ones; Esc and the dimmed area close it.
+    const cx = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const q=(s)=>document.querySelector(s); const all=(s)=>[...document.querySelectorAll(s)];
+      const inp=q("input[placeholder^='Search a SKU']"); const type=async(v)=>{ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(inp,v); inp.dispatchEvent(new Event("input",{bubbles:true})); await wait(700); };
+      document.querySelector('[data-nav="po"]').click(); await wait(500);
+      await type("PO-00432"); inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(600);
+      const r={ first: q(".rail.on .rail-trail .cur")?.textContent||"" };
+      const skuBtn=all(".rail.on .pt .pt-l").find(b=>/^[A-Z]{2}[0-9]/.test(b.textContent)); skuBtn?.click(); await wait(400);
+      r.trail=all(".rail.on .rail-trail button, .rail.on .rail-trail .cur").map(x=>x.textContent);
+      r.ctx=!!q(".rail.on .ctx") && /You came from|has no units linked/.test(q(".rail.on .ctx").textContent);
+      r.hl=all(".rail.on .pt tr.hl").length;
+      all(".rail.on .rail-trail button")[0]?.click(); await wait(400);
+      r.back=all(".rail.on .rail-trail button, .rail.on .rail-trail .cur").map(x=>x.textContent);
+      window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(300); r.escClosed=!q(".rail.on");
+      inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(500); q(".scrim.on")?.click(); await wait(300); r.scrimClosed=!q(".rail.on");
+      await type("zzz-nothing-matches"); inp.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})); await wait(400);
+      r.none=/Nothing in Monday matches/.test(q(".toast")?.textContent||""); await type("");
+      document.querySelector('[data-nav="home"]').click(); await wait(500);
+      return JSON.stringify(r)`));
+    check(`Connections: search + Enter opens the first match (the PO for "PO-00432"); nothing found → message ${tag}`, cx.first === "PO-00432" && cx.none, JSON.stringify(cx));
+    check(`Connections: PO → SKU builds the breadcrumb with the context strip and highlighted rows ${tag}`, cx.trail.length === 2 && cx.trail[0] === cx.first && cx.ctx && cx.hl > 0, JSON.stringify(cx));
+    check(`Connections: an earlier breadcrumb link goes back and drops the later ones; Esc and the dimmed area close ${tag}`, cx.back.length === 1 && cx.back[0] === cx.first && cx.escClosed && cx.scrimClosed, JSON.stringify(cx));
     // Theme button: light ↔ dark; the side nav follows (white in light, the mockup's dark in dark); sun / moon icon.
     const theme = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=()=>document.querySelector(".theme-tg");
       const state=()=>({ theme: document.documentElement.getAttribute("data-theme")||"system", nav: getComputedStyle(document.querySelector(".side")).backgroundColor,
@@ -206,12 +228,12 @@ async function run() {
       r.rail=q(".rail.on .rail-trail .cur")?.textContent||""; r.railMatches = !!first && first.querySelector(".tr-ship .strong")?.textContent === r.rail; q(".rail-x")?.click(); await wait(200);
       const poChip=q(ROWS+" button.chip.po"); if(poChip){ poChip.click(); await wait(300); r.poRail=q(".rail.on .rail-trail .cur")?.textContent||""; r.poMatches=poChip.textContent.startsWith(r.poRail); q(".rail-x")?.click(); await wait(200); } else r.poMatches=true;
       const draftRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Draft"));
-      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .btn.danger").find(x=>x.textContent==="Delete shipment");
-        r.delBox=!!q(".rail.on .danger-box .cascade") && !!del && !del.disabled; del?.click(); await wait(250);
+      if(draftRow){ draftRow.click(); await wait(400); const del=all(".rail.on .rail-h .btn.danger").find(x=>x.textContent==="Delete shipment");
+        r.delBox=!!del && !!del.closest(".rail-h") && !del.disabled; del?.click(); await wait(250); r.delBox = r.delBox && q(".ua-dlg.del-warn .cascade")?.children.length === 4;
         r.delAsk=/Are you sure you want to delete .+\?$/.test(q(".ua-dlg.del-warn h3")?.textContent||"") && /unlinks several associated items/.test(q(".ua-dlg.del-warn p")?.textContent||"") && !!all(".ua-dlg .btn.danger").find(x=>x.textContent==="Yes, delete it"); all(".ua-dlg .btn").find(x=>x.textContent==="Cancel")?.click(); await wait(200);
         r.delCancel=!q(".ua-dlg") && !!q(".rail.on"); q(".rail-x")?.click(); await wait(200); } else { r.delBox=r.delAsk=r.delCancel=true; r.noDraft=true; }
       const finalRow=all(ROWS).find(tr=>[...tr.querySelectorAll(".chip")].some(c=>c.textContent==="Final"));
-      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
+      if(finalRow){ finalRow.click(); await wait(400); r.finalText=/Only shipments created from a Draft file can be deleted/.test(q(".rail.on")?.textContent||"") && !all(".rail.on .rail-h .btn.danger").length; q(".rail-x")?.click(); await wait(200); } else r.finalText=true;
       r.filtered={}; for (const name of ["Not arrived","Arriving ≤ 30 days","Has free units","Customers depend on it","Draft packing list"]) { const chip=all(".view:not([hidden]) .fchip").find(x=>x.textContent.startsWith(name)); const n=+(chip?.querySelector("i")?.textContent||"0").replace(/,/g,"");
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       all(".view:not([hidden]) .fchip").find(x=>/^All shipments/.test(x.textContent))?.click(); await wait(200);
@@ -223,7 +245,7 @@ async function run() {
     check(`In-Transit: "All shipments" count = rows listed = side nav badge ${tag}`, tr.allCount, JSON.stringify(tr));
     check(`In-Transit: ▸ shows the subitems (without opening the panel), a subitem opens its SKU, ▾ hides them ${tag}`, tr.sub > 0 && /^Subitem · productSKUOn boardCommittedFreeFrom POPromised to$/.test(tr.subhead) && tr.railStayedClosed && tr.skuRail && tr.collapsed, JSON.stringify(tr));
     check(`In-Transit: a row opens the container's side panel; a PO chip opens the PO's ${tag}`, tr.railMatches && tr.poMatches, JSON.stringify({ rail: tr.rail, po: tr.poRail }));
-    check(`In-Transit: "Delete this shipment" — Draft: what gets undone + confirmation (Cancel sends nothing); Final: only the explanation ${tag}`,
+    check(`In-Transit: "Delete shipment" at the top of a Draft panel → warning with what gets undone (Cancel sends nothing); Final: only the explanation ${tag}`,
       tr.delBox && tr.delAsk && tr.delCancel && tr.finalText, JSON.stringify({ box: tr.delBox, ask: tr.delAsk, cancel: tr.delCancel, final: tr.finalText, noDraft: tr.noDraft }));
     check(`In-Transit: each Show chip's count = shipments listed ${tag}`, Object.values(tr.filtered).every(Boolean), JSON.stringify(tr.filtered));
     check(`In-Transit: no horizontal page scroll, every column visible ${tag}`, tr.noScroll && tr.fits, JSON.stringify({ noScroll: tr.noScroll, fits: tr.fits }));
@@ -283,8 +305,12 @@ async function run() {
         chip?.click(); await wait(250); r.filtered[name] = (n === 0 ? !!q(".view:not([hidden]) .mx-empty") : document.querySelectorAll(ROWS).length === n); }
       const upBtn=all(".view:not([hidden]) .page-h .btn").find(x=>x.textContent==="Upload packing list"); upBtn?.click(); for (let t=0; t<40 && !document.querySelector(".up-dlg .up-p"); t++) await wait(250);
       const dlg=q(".up-dlg"); r.upFields = dlg ? [...dlg.querySelectorAll(".up-l")].map(l=>(l.querySelector("legend")||l).childNodes[0].textContent.trim()) : [];
-      r.upPeople = dlg ? dlg.querySelectorAll(".up-p input").length : 0; r.upMe = dlg ? dlg.querySelectorAll(".up-p input:checked").length === 1 : false;
-      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import, ETD\.$/.test(q(".up-dlg .note.warn")?.textContent||"");
+      r.upMe = dlg ? dlg.querySelectorAll(".up-pp-c").length === 1 : false; r.upLink = !dlg?.querySelector(".up-ext");
+      dlg?.querySelector(".up-pp-b")?.click(); await wait(300); r.upPeople = dlg ? dlg.querySelectorAll(".up-pp-m li button img, .up-pp-m li button .av-i").length : 0;
+      dlg?.querySelector(".up-pp-b")?.click(); await wait(200);
+      dlg?.querySelector(".up-date-b")?.click(); await wait(300); r.upCal = !!q(".dp .dp-g") && /^(January|February|March|April|May|June|July|August|September|October|November|December) [0-9]{4}$/.test(q(".dp-h b")?.textContent||"");
+      [...document.querySelectorAll(".dp .dp-d")][9]?.click(); await wait(250); r.upDate = /^10 [A-Z][a-z]{2} [0-9]{4}$/.test(dlg?.querySelector(".up-date-b")?.textContent||"");
+      dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import[.]$/.test(q(".up-dlg .note.warn")?.textContent||"");
       r.upEnglish = !!dlg && ![...dlg.querySelectorAll("input[type=file], input[type=date]")].some(i=>i.offsetWidth>2) && /Choose file/.test(dlg.textContent) && /Choose a date/.test(dlg.textContent);
       document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250); r.upEsc = !q(".up-dlg");
       if(!r.upEsc){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); }
@@ -300,9 +326,9 @@ async function run() {
     check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
     check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
     check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
-    check(`In-Transit Importer: "Upload packing list" opens the form (the Importer Form's fields, monday people, me checked), validates, Esc closes ${tag}`,
-      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upValidates && im.upEnglish && im.upEsc,
-      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
+    check(`In-Transit Importer: "Upload packing list" opens the form (fields, People dropdown with monday avatars, own calendar for ETD), validates, Esc closes ${tag}`,
+      im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upLink && im.upCal && im.upDate && im.upValidates && im.upEnglish && im.upEsc,
+      JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, link: im.upLink, cal: im.upCal, date: im.upDate, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
     // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
     await ev(`document.querySelector('[data-nav="matrix"]')?.click()`);
     await sleep(300);
@@ -429,6 +455,10 @@ async function run() {
     check(`"···" icon centred in its button ${tag}`, ctl.dotsOffset.every((v) => v <= 1), JSON.stringify(ctl.dotsOffset));
 
     check(`ship date shown in English (no browser-language placeholder) ${tag}`, await ev(`const t=document.querySelector("tr.shc .date-btn").textContent; return /Set a date|[0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/.test(t) && !/aaaa|jj|mm|dd/i.test(t)`));
+    const sd = JSON.parse(await ev(`const wait=(ms)=>new Promise(x=>setTimeout(x,ms)); const b=document.querySelector("tr.shc .date-btn"); b.click(); await wait(300);
+      const open=!!document.querySelector(".dp .dp-g"); const d=[...document.querySelectorAll(".dp .dp-d:not(:disabled)")].pop(); d?.click(); await wait(300);
+      const t=document.querySelector("tr.shc .date-btn").textContent; const toast=document.querySelector(".toast")?.textContent||""; return JSON.stringify({ open, picked: /[0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/.test(t) || /lands later/.test(toast), closed: !document.querySelector(".dp"), toast })`));
+    check(`ship date: the app's own calendar opens (works inside monday's iframe), a day sets the date (or the matrix explains why not) ${tag}`, sd.open && sd.picked && sd.closed, JSON.stringify(sd));
     check(`shipment table headers not clipped ${tag}`, await ev(`return [...document.querySelectorAll("tr.shth .nn.n4 span")].every(x => x.scrollWidth <= x.clientWidth + 1 && x.scrollHeight <= x.clientHeight + 1)`));
     check(`legend tip reads "…click Allocate." ${tag}`, await ev(`const k=document.querySelector(".mx-hint .k.tip"); const b=k.querySelector("b").getBoundingClientRect(); const r=document.createRange(); r.setStart(k.lastChild,0); r.setEnd(k.lastChild,1); return r.getBoundingClientRect().left - b.right < 2`));
     await ev(`document.querySelector("tr.shc .shm").click()`);

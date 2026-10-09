@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildControl, SOON_DAYS } from "../../lib/control.js";
 import { Card } from "../allocation-matrix/MetricCards.jsx";
@@ -51,7 +52,7 @@ function GoButton({ label, onGo }) {
   return <button type="button" className="btn" onClick={onGo}>{label}</button>;
 }
 
-export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoWholesale, onGoTransit, onGoShipments, shipments, search }) {
+export function ControlCenter({ data, model, status, error, onRefresh, onGoMatrix, onGoSku, onGoWholesale, onGoTransit, onGoShipments, shipments, search, panelRequest }) {
   const cc = useMemo(() => (model && data ? buildControl(model, data) : null), [model, data]);
   const busy = status === "loading" || status === "refreshing";
   const ready = Boolean(cc);
@@ -68,6 +69,7 @@ export function ControlCenter({ data, model, status, error, onRefresh, onGoMatri
     },
   };
   const openRecord = (type, id) => setRail([{ type, id: String(id) }]);
+  usePanelRequest(panelRequest, openRecord);
   const escRef = useRef(null);
   escRef.current = () => rail.length && setRail([]);
   useEffect(() => {

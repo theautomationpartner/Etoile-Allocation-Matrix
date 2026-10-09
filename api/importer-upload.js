@@ -1,6 +1,6 @@
 // "Upload packing list" (requirements "In-Transit" §6, TBD-I04): creates the item of In-Transit / Wholesale Importer
 // (18404604646) with the fields of the board's "Importer Form", for authenticated, whitelisted users (see _auth.js).
-//   GET  → the monday people that can be picked for People ({ users: [{ id, name }], me }).
+//   GET  → the monday people that can be picked for People ({ users: [{ id, name, photo }], me }).
 //   POST multipart/form-data: name, file, typeImport (In-Transit | In-Transit Draft), people (user ids, comma
 //        separated), location (US | AU), etd, eta (YYYY-MM-DD) → { ok, itemId }.
 // Order (PROCESO-in-transit, automation 2): create the item with its columns → attach the file → only then set
@@ -21,8 +21,9 @@ const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 export const GET = guarded(async (_request, { user }) => {
-  const d = await serverMonday(`{ users(limit:500, kind:non_guests){ id name enabled } }`);
-  const users = (d?.users || []).filter((u) => u.enabled).map((u) => ({ id: String(u.id), name: u.name })).sort((a, b) => a.name.localeCompare(b.name));
+  // photo: the monday avatar (a photo, or monday's own image with the person's initials and color).
+  const d = await serverMonday(`{ users(limit:500, kind:non_guests){ id name enabled photo_tiny } }`);
+  const users = (d?.users || []).filter((u) => u.enabled).map((u) => ({ id: String(u.id), name: u.name, photo: u.photo_tiny || "" })).sort((a, b) => a.name.localeCompare(b.name));
   return json(200, { users, me: user.userId });
 });
 

@@ -438,7 +438,7 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .up-h { display: flex; align-items: center; gap: 12px; padding: 14px 16px 6px; }
 .up-h h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 .up-h .up-ext { margin-left: auto; font-size: 12px; color: var(--it); }
-.up-h .rail-x { position: static; }
+.up-h .rail-x { position: static; margin-left: auto; }
 .up-n { margin: 0; padding: 0 16px 10px; font-size: 12.5px; color: var(--ink-2); border-bottom: 1px solid var(--line); }
 .up-dlg { height: auto; max-height: calc(100vh - 48px); }
 .up-body { padding: 12px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -463,3 +463,42 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 /* Delete shipment warning (the last step before the deletion webhook). */
 .ua-dlg.del-warn { border-color: var(--gap-b); }
 .ua-dlg.del-warn h3 { color: var(--gap); display: flex; gap: 7px; align-items: baseline; }
+/* Delete shipment: button right of the container code; the warning lists what gets undone. */
+.rail-h.rail-h-act { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rail-h-act .del-btn { height: 30px; flex: none; }
+.ua-dlg.del-warn { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.ua-dlg.del-warn .cascade { margin: 12px 0 4px; }
+.ua-dlg.del-warn .cascade li { border-top-color: var(--line-2); }
+.ua-dlg.del-warn .del-careful { margin-top: 8px; color: var(--gap); font-weight: 600; }
+.ua-dlg.del-warn .note { margin: 10px 0 0; }
+
+/* DatePicker: the app's own calendar (inside monday's iframe the native one can't open). Above panels and dialogs. */
+.dp { position: fixed; z-index: 90; width: 252px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px; font-size: 12.5px; color: var(--ink); }
+.dp-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.dp-h b { font-size: 13px; font-weight: 600; }
+.dp-nav { width: 28px; height: 28px; border-radius: 6px; font-size: 17px; color: var(--ink-2); }
+.dp-nav:hover { background: var(--surface-2); color: var(--ink); }
+.dp-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-w { text-align: center; font-size: 10.5px; color: var(--ink-3); padding: 4px 0; }
+.dp-d { height: 30px; border-radius: 6px; font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dp-d:hover:not(:disabled) { background: var(--surface-2); }
+.dp-d.today { box-shadow: inset 0 0 0 1px var(--ink-3); }
+.dp-d.on { background: var(--ink); color: var(--surface); font-weight: 600; }
+.dp-d:disabled { color: var(--ink-3); opacity: .45; cursor: not-allowed; }
+.dp-f { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
+.dp-f button { font-size: 12px; color: var(--it); font-weight: 500; padding: 2px 4px; }
+.dp-f button:disabled { color: var(--ink-3); }
+/* Upload packing list: People dropdown with monday avatars. */
+.av { border-radius: 50%; flex: none; object-fit: cover; }
+.av-i { display: inline-grid; place-items: center; background: var(--line); color: var(--ink-2); font-size: 9.5px; font-weight: 700; }
+.up-pp { position: relative; display: block; }
+.up-pp-b { width: 100%; height: auto; min-height: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 30px 5px 8px; text-align: left; cursor: pointer; }
+.up-pp-c { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 2px; border-radius: 20px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12.5px; }
+.up-pp-a { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 11px; }
+.up-pp-m { margin-top: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 8px; }
+.up-pp-m .up-i { width: 100%; margin-bottom: 6px; }
+.up-pp-m ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.up-pp-m li button { width: 100%; display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 6px; font-size: 13px; font-weight: 400; color: var(--ink); text-align: left; }
+.up-pp-m li button:hover, .up-pp-m li button.on { background: var(--surface-2); }
+.up-pp-k { margin-left: auto; color: var(--wh); font-weight: 700; }
+.up-pp-none { padding: 6px 8px; font-size: 12.5px; font-weight: 400; }
