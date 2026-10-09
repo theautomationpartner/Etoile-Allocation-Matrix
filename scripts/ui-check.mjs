@@ -82,7 +82,7 @@ async function run() {
         blocks: [...document.querySelectorAll(".two .card-h h3")].map(x=>x.textContent),
         noScroll: document.documentElement.scrollWidth <= innerWidth + 1,
         textsFit: [...document.querySelectorAll(".two .att .t, .two .att .m, .tl-i .t, .tl-i .m")].every(x=>x.scrollWidth<=x.clientWidth+1),
-        noDimmed: !document.querySelector(".view:not([hidden]) .btn[disabled], .view:not([hidden]) .kpi .cta.soon"),
+        noDimmed: !document.querySelector(".view:not([hidden]) .btn[disabled]:not(.refresh), .view:not([hidden]) .kpi .cta.soon"), // Refresh is busy while the data loads
         cta: [...document.querySelectorAll(".view:not([hidden]) .kpis .kpi .cta")].map(x=>x.textContent.replace("→","").trim()) };
       const row=q(".two .att"); if(row){ row.click(); await wait(300); r.rail = q(".rail.on .rail-trail .cur")?.textContent || ""; q(".rail-x")?.click(); await wait(200); r.railClosed = !q(".rail.on"); }
       return JSON.stringify(r)`));

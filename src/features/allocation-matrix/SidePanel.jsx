@@ -451,7 +451,8 @@ function DeleteShipment({ c, model, pos, res }) {
       setSent(true);
       setAsk(false);
       toast(`Deletion of ${code} started in Monday. It disappears from the app once Monday finishes.`);
-      setTimeout(() => refresh(), 6000); // Deletion Status shows the steps after the next read
+      // monday deletes in the background: read the boards it changes again (Deletion Status steps, then gone).
+      for (const ms of [6000, 60000]) setTimeout(() => refresh(["containers", "imports", "warehouse"]), ms);
     } catch (e) {
       setError(e.message || "The deletion could not be started.");
     } finally {

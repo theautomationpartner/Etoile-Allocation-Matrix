@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DENIED_EVENT, fetchMe, NotAuthorizedError } from "../lib/auth.js";
 import { NOT_AUTHORIZED_MESSAGE } from "../lib/access.js";
 
-const CACHE_PREFIX = "etoile-matrix-cache";
+const CACHE_PREFIXES = ["etoile-matrix-cache", "etoile-parts-cache"]; // monday data kept in the browser
 
 // Nothing of the app renders until the server confirms who is signed in and that they are Active in
 // the access list. Outside monday, or for anyone not listed, only the generic message is shown.
@@ -14,7 +14,7 @@ export function AuthGate({ children }) {
     const lock = () => {
       // Drop anything cached on this device and show only the message.
       try {
-        Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
+        Object.keys(localStorage).filter((k) => CACHE_PREFIXES.some((pre) => k.startsWith(pre))).forEach((k) => localStorage.removeItem(k));
       } catch {
         /* storage unavailable */
       }

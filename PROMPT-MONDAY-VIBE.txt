@@ -1039,6 +1039,32 @@ Diferencias que quedan a propósito (puntos abiertos del documento): la etiqueta
   Warehouse ni de shipment de salida (TBD-X01 / X02).
 
 --------------------------------------------------------------------------------
+ 22. CACHÉ DEL LADO DEL SERVIDOR (2026-10-09, solución por ahora)
+--------------------------------------------------------------------------------
+Antes: cada navegador leía TODO monday por su cuenta (14 llamadas, ~1 MB, ~11 s, ~300.000 de complejidad) al abrir
+la app (si su copia local tenía más de 2 h) y en cada Refresh; además /api/monday deja pasar cualquier lectura.
+Ahora los datos salen de una caché en el servidor (api/data.js + api/_cache.js), una entrada por parte (≈ tablero):
+orders, fulfilledOrders, warehouse, containers, pos, ledger, shipments, imports, boardCounts (DATA_PARTS, monday.js).
+  · Cada parte se lee de monday como mucho una vez cada 6 h para todos los usuarios (o cuando alguien la refresca).
+  · GET /api/data → partes de la caché; solo las vencidas o faltantes van a monday. POST /api/data { refresh } → lee
+    esas partes ya. Dos cargas iguales en la misma instancia comparten una lectura.
+  · El botón Refresh de cada pantalla lee SOLO sus tableros (src/lib/screenParts.js): Control center y matriz →
+    todos; Wholesale → orders + fulfilledOrders + ledger; In-Transit → containers + ledger; Purchase Orders → pos;
+    Master SKU → warehouse; Importer → imports + containers. Su línea dice "read at <hora del más viejo> · updates
+    every 6 h".
+  · Toda escritura de la app borra de la caché las partes que toca (monday-write: según la operación; daily-check:
+    orders, ledger, containers; borrar contenedor: containers, imports, warehouse; subir packing list: imports): la
+    próxima carga las vuelve a leer y nadie sigue viendo lo de antes de la escritura. En el navegador, lo que el
+    usuario escribió se vuelve a leer en el siguiente refresco (patchData marca orders, ledger y shipments).
+  · Lo que cambia en monday por fuera de la app (Make / Cin7) se ve como mucho 6 h después, o al apretar Refresh.
+  · Almacenamiento: Redis de Upstash (Vercel Marketplace; variables KV_REST_API_URL + KV_REST_API_TOKEN o
+    UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN), compartido por todas las instancias. Sin esas variables usa
+    la memoria de cada instancia (funciona, pero cada arranque en frío vuelve a leer monday). El Ledger viaja como
+    lista (sus Map no sobreviven al JSON); PREFIX versionado (etoile:data:v2:).
+  · El navegador guarda las últimas partes (etoile-parts-cache-v2) para pintar al instante; AuthGate las borra si se
+    pierde el acceso. vercel.json: api/data.js con maxDuration 60 (una lectura completa tarda ~11 s).
+
+--------------------------------------------------------------------------------
  HISTORIAL
 --------------------------------------------------------------------------------
 2026-09-30  PUNTO 1 — Métricas + filtros Show. Esqueleto de la pantalla.
@@ -1097,3 +1123,4 @@ Diferencias que quedan a propósito (puntos abiertos del documento): la etiqueta
 2026-10-08  Delete shipment arriba en el panel del contenedor; el detalle de lo que se deshace va en la advertencia.
 2026-10-09  CONEXIONES TRANSVERSALES — sección 21: buscador + Enter, breadcrumb sin registros borrados, reservas huérfanas en la orden.
 2026-10-09  Calendario propio (ETD/ETA y Ship date: el nativo está bloqueado en el iframe de monday); People con avatares; sin enlace al form.
+2026-10-09  CACHÉ DEL SERVIDOR — sección 22: datos por tablero, 6 h, Refresh por pantalla, invalidación al escribir.

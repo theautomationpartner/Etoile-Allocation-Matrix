@@ -18,6 +18,7 @@ import { OPEN_ORDER_GROUPS } from "./lib/engine.js";
 import { isUsImport } from "./lib/importer.js";
 import { AppActions } from "./lib/appActions.js";
 import { findRecord } from "./lib/search.js";
+import { SCREEN_PARTS } from "./lib/screenParts.js";
 import { AuthGate } from "./components/AuthGate.jsx";
 import { UsersAccess } from "./features/users/UsersAccess.jsx";
 
@@ -110,8 +111,9 @@ function Workspace({ user }) {
   const dark = theme ? theme === "dark" : systemDark;
   const toggleTheme = () => setTheme(dark ? "light" : "dark");
 
-  const refresh = async () => {
-    if (await matrix.reload()) toast.show("Figures recalculated with fresh data from Monday.");
+  // A screen's Refresh reads that screen's boards again from monday (SCREEN_PARTS); the rest stays as cached.
+  const refreshFor = (key) => async () => {
+    if (await matrix.reload(SCREEN_PARTS[key])) toast.show("Figures recalculated with fresh data from Monday.");
   };
 
   return (
@@ -127,43 +129,43 @@ function Workspace({ user }) {
         )}
         {current === "home" && (
           <div className="view">
-            <ControlCenter {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments}
+            <ControlCenter {...matrix} search={deferredSearch} onRefresh={refreshFor("home")} shipments={shipments}
               onGoMatrix={(filter) => goMatrix({ filter })} onGoSku={goSku} onGoWholesale={goWholesale} onGoTransit={goTransit} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {current === "wholesale" && (
           <div className="view">
-            <WholesaleAllocation {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={whFilter} onFilter={setWhFilter}
+            <WholesaleAllocation {...matrix} search={deferredSearch} onRefresh={refreshFor("wholesale")} shipments={shipments} filter={whFilter} onFilter={setWhFilter}
               onGoSku={goSku} onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {current === "transit" && (
           <div className="view">
-            <InTransitShipments {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
+            <InTransitShipments {...matrix} search={deferredSearch} onRefresh={refreshFor("transit")} shipments={shipments} filter={trFilter} onFilter={setTrFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {current === "po" && (
           <div className="view">
-            <PurchaseOrders {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={poFilter} onFilter={setPoFilter}
+            <PurchaseOrders {...matrix} search={deferredSearch} onRefresh={refreshFor("po")} shipments={shipments} filter={poFilter} onFilter={setPoFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {current === "sku" && (
           <div className="view">
-            <SkuInventory {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
+            <SkuInventory {...matrix} search={deferredSearch} onRefresh={refreshFor("sku")} shipments={shipments} filter={skuFilter} onFilter={setSkuFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {current === "importer" && (
           <div className="view">
-            <InTransitImporter {...matrix} search={deferredSearch} onRefresh={refresh} shipments={shipments} filter={impFilter} onFilter={setImpFilter}
+            <InTransitImporter {...matrix} search={deferredSearch} onRefresh={refreshFor("importer")} shipments={shipments} filter={impFilter} onFilter={setImpFilter}
               onGoShipments={(orderId) => goMatrix({ orderShipments: orderId })} panelRequest={panelRequest} />
           </div>
         )}
         {/* The matrix stays mounted on the other screens: its open groups and editor state are kept. */}
         <div className="view" hidden={current !== "matrix"}>
-          <AllocationMatrix {...matrix} search={deferredSearch} onRefresh={refresh} toast={toast.show} shipments={shipments} request={matrixRequest} onGoTransit={goTransit} panelRequest={current === "matrix" ? panelRequest : null} />
+          <AllocationMatrix {...matrix} search={deferredSearch} onRefresh={refreshFor("matrix")} toast={toast.show} shipments={shipments} request={matrixRequest} onGoTransit={goTransit} panelRequest={current === "matrix" ? panelRequest : null} />
         </div>
         {onUsers && (
           <div className="view">

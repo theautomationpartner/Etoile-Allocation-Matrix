@@ -7,6 +7,7 @@
 // Several people can be listed; whoever was already there is kept.
 
 import { guarded, serverMonday } from "./_auth.js";
+import { invalidateParts } from "./_cache.js";
 import { NS, WRITE_OPS, checkWrite } from "../src/lib/mondayWrites.js";
 import { LINE_PEOPLE_COLUMN } from "../src/lib/access.js";
 
@@ -24,6 +25,17 @@ const peopleWith = (existingValue, userId) => {
   return { personsAndTeams: people };
 };
 const addColumn = (v, columnId, value) => JSON.stringify({ ...JSON.parse(v), [columnId]: value });
+
+// The cached data parts (api/_cache.js) each write touches: they are read from monday again on the next load, so no
+// one keeps seeing the data from before the write.
+const PARTS_OF_OP = {
+  createShipment: ["shipments"], updateShipment: ["shipments"], createShipmentLines: ["shipments"], updateShipmentLines: ["shipments"],
+  deleteShipmentItems: ["shipments"],
+  createLedgerItem: ["ledger"], updateLedgerItem: ["ledger"], moveLedgerItem: ["ledger"], createLedgerSubitems: ["ledger"],
+  deleteLedgerSubitems: ["ledger"], setLedgerStatus: ["ledger"], updateLedgerSubitems: ["ledger"],
+  setTransitLines: ["containers"],
+  linkLines: ["orders", "ledger", "shipments"], // Wholesale subitem links (Ledger, shipments, Last Fulfilled Processed)
+};
 
 export const POST = guarded(async (request, { user }) => {
   let payload;
@@ -82,7 +94,9 @@ export const POST = guarded(async (request, { user }) => {
       headers: { "Content-Type": "application/json", Authorization: process.env.MONDAY_TOKEN },
       body: JSON.stringify({ query, variables: vars }),
     });
-    return json(200, await res.json());
+    const body = await res.json();
+    await invalidateParts(PARTS_OF_OP[op] || ["orders", "ledger", "shipments", "containers"]);
+    return json(200, body);
   } catch (error) {
     return json(502, { error: `Could not reach monday.com: ${error?.message || error}` });
   }

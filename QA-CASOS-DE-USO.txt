@@ -534,3 +534,16 @@ npm test 106/106 · npm run ui-check 202/202 (límite del chequeo: 8 min).
   U-05 Ship date de la matriz con el calendario propio: abre, elegir un día pone la fecha o la matriz explica por qué
        no (una fuente llega después) ................................................................................ PASA
 npm test 106/106 · npm run ui-check 204/204.
+
+--------------------------------------------------------------------------------
+ 25. CACHÉ DEL LADO DEL SERVIDOR (2026-10-09)
+--------------------------------------------------------------------------------
+Medición antes (una carga completa, datos reales): 14 llamadas a monday · 11,2 s · 1,06 MB · ~301.000 de complejidad.
+  K-01 /api/data: 1ª llamada lee monday (9,6 s); 2ª sale de la caché (0,008 s, sin llamar a monday) ............... PASA
+  K-02 Refresh de Purchase Orders: solo lee "pos" (3,4 s); el resto queda de la caché ............................. PASA
+  K-03 Abrir la app con la caché llena: datos en 12 ms, cifras en 2,8 s (antes ~16 s) ............................. PASA
+  K-04 HALLAZGO durante la prueba: el Ledger (dos Map) se rompía al pasar por el JSON de la caché ("ledger.byId.get
+       is not a function") → viaja como lista; el modelo armado desde la caché es idéntico al de monday directo ..... CORREGIDO
+  K-05 La caché vence a las 6 h y una escritura borra la parte que toca (tests) ...................................... PASA
+  K-06 Partes desconocidas → 400; sin login → 401 (guarded) .......................................................... PASA
+npm test 108/108.

@@ -20,6 +20,7 @@
 // Env: MONDAY_TOKEN, DAILY_CHECK_SECRET (any long random text, also typed in Make), SALE_REPORT_GMAIL (webhook URL),
 // APP_URL (optional; default: the app in monday).
 import { createHash, timingSafeEqual } from "node:crypto";
+import { invalidateParts } from "./_cache.js";
 import { createMondayApi } from "../src/lib/monday.js";
 import { buildModel, SOURCE } from "../src/lib/engine.js";
 import { BASELINE, LEDGER, WRITE_OPS, checkWrite, chunks } from "../src/lib/mondayWrites.js";
@@ -140,6 +141,7 @@ export async function POST(request) {
     const mail = reviewMail(items, { appUrl, at, writes: dryRun ? null : planned, dryRun });
     const body = { ok: true, dryRun, at, writes: planned, requests: log.length, hasItems: items.length > 0, count: items.length, appUrl, ...mail, items };
     body.webhook = await notify(body);
+    if (!dryRun) await invalidateParts(["orders", "ledger", "containers"]); // what it wrote is read again on the next load
     return json(200, body);
   } catch (error) {
     console.error("[daily-check]", error);
