@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { readAt } from "../../hooks/useMatrixData.js";
+import { SCREEN_PARTS } from "../../lib/screenParts.js";
 import { usePanelRequest } from "../../hooks/usePanelRequest.js";
 import { clock, fmt, plural, dayMonthYear } from "../../lib/format.js";
 import { buildSkuInventory, SKU_FILTERS } from "../../lib/skuInventory.js";
@@ -44,7 +46,7 @@ export function SkuInventory({ data, model, status, error, onRefresh, shipments,
   }, [inv, filter, q]);
 
   const fresh = status === "loading" ? "Loading from Monday…" : status === "refreshing" ? "Recalculating with fresh Monday data…"
-    : data ? `Calculated from Monday data read at ${clock(data.loadedAt)}` : "";
+    : data ? `Calculated from Monday data read at ${clock(readAt(data, SCREEN_PARTS.sku))} · updates every 6 h` : "";
   const c = inv?.cards;
 
   return (
@@ -59,14 +61,14 @@ export function SkuInventory({ data, model, status, error, onRefresh, shipments,
       {error && (
         <div className="note warn" role="alert">
           <b>{ready ? "Refresh failed." : "Monday could not be read."}</b> {error}
-          {ready && ` Showing the figures loaded at ${clock(data.loadedAt)}.`}{" "}
+          {ready && ` Showing the figures loaded at ${clock(readAt(data, SCREEN_PARTS.sku))}.`}{" "}
           <button type="button" className="btn" onClick={onRefresh}>Try again</button>
         </div>
       )}
 
       <div className="kpi-bar">
         <span className="fresh" aria-live="polite">{fresh}</span>
-        <button type="button" className="btn refresh" onClick={onRefresh} disabled={busy} title="Read every board again from Monday and recalculate all figures">
+        <button type="button" className="btn refresh" onClick={onRefresh} disabled={busy} title="Read this screen's boards again from Monday now (otherwise they update every 6 hours)">
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true" className={busy ? "spin" : ""}>
             <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3" />
           </svg>

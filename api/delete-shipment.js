@@ -10,6 +10,7 @@
 // Env: DELETE_SHIPMENT_WEBHOOK (the scenario's webhook URL; without it the app says the action is not configured).
 
 import { guarded, serverMonday } from "./_auth.js";
+import { invalidateParts } from "./_cache.js";
 
 const BOARD = "18402604887"; // 🚢 In-Transit Shipments
 const ITEMS_GROUP = "topics"; // In-Transit Shipments (Items)
@@ -59,5 +60,6 @@ export const POST = guarded(async (request, { user }) => {
     return json(502, { error: `The deletion could not be started (webhook HTTP ${res.status}). Nothing was deleted.` });
   }
   console.info(`[delete-shipment] ${it.name} (${itemId}) requested by ${user.name} (${user.userId})`);
+  await invalidateParts(["containers", "imports", "warehouse"]); // monday's deletion changes them
   return json(200, { ok: true, itemId, itemName: it.name });
 });

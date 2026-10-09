@@ -113,6 +113,31 @@ export function withLedger(data, ledger) {
   return { ...data, orders };
 }
 
+// The parts of the app's data, each read from its own monday board(s) and cached on the server on its own.
+export const DATA_PARTS = ["orders", "fulfilledOrders", "warehouse", "containers", "pos", "ledger", "shipments", "imports", "boardCounts"];
+
+// The Ledger as loaded is two Maps (by item id, by line key) of the same records; the cache keeps it as one list.
+export const ledgerToList = ({ byId, byKey }) => {
+  const keyOf = new Map([...byKey].map(([k, rec]) => [rec, k]));
+  return [...byId.values()].map((rec) => ({ ...rec, key: keyOf.get(rec) || "" }));
+};
+export function ledgerFromList(list) {
+  const byId = new Map(), byKey = new Map();
+  for (const { key, ...rec } of list) {
+    byId.set(String(rec.itemId), rec);
+    if (key) byKey.set(key, rec);
+  }
+  return { byId, byKey };
+}
+
+// The raw parts → the data the app computes with (the Ledger's allocations go onto the order lines).
+export function assembleData(parts, allocationSource = ALLOCATION_SOURCE.LEDGER, loadedAt = new Date()) {
+  const { ledger: ledgerPart, ...rest } = parts;
+  const ledger = Array.isArray(ledgerPart) ? ledgerFromList(ledgerPart) : ledgerPart;
+  const data = { boardCounts: {}, shipments: [], fulfilledOrders: [], imports: [], ...rest, allocationSource, loadedAt };
+  return allocationSource === ALLOCATION_SOURCE.LEDGER && ledger ? withLedger(data, ledger) : data;
+}
+
 export function createMondayApi(transport = fetchTransport) {
   // Walks items_page / next_items_page until the cursor runs out.
   async function allItems(boardId, fields, { groups } = {}) {
@@ -383,16 +408,22 @@ export function createMondayApi(transport = fetchTransport) {
     return it ? { id: String(it.id), group: it.group?.id || "", subitemIds: (it.subitems || []).map((s) => String(s.id)) } : null;
   }
 
-  async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
+  // One loader per part of the data (≈ one monday board): the server caches each part on its own (api/data.js).
+  const PART_LOADERS = {
+    orders: loadOrders, fulfilledOrders: loadFulfilledOrders, warehouse: loadWarehouse, containers: loadContainers, pos: loadPOs,
+    ledger: async () => ledgerToList(await loadLedger()), shipments: loadShipments, imports: loadImports, boardCounts: () => loadBoardCounts().catch(() => ({})),
+  };
+  // Reads the given parts from monday (after the column check) → { part: rawData }.
+  async function loadParts(names = DATA_PARTS) {
     await checkSchema();
-    const useLedger = allocationSource === ALLOCATION_SOURCE.LEDGER;
-    const [orders, warehouse, containers, pos, ledger, boardCounts, shipments, fulfilledOrders, imports] = await Promise.all([
-      loadOrders(), loadWarehouse(), loadContainers(), loadPOs(), useLedger ? loadLedger() : null, loadBoardCounts().catch(() => ({})), loadShipments(),
-      loadFulfilledOrders(), loadImports(),
-    ]);
-    const data = { orders, warehouse, containers, pos, boardCounts, shipments, fulfilledOrders, imports, allocationSource, loadedAt: new Date() };
-    return useLedger ? withLedger(data, ledger) : data;
+    const values = await Promise.all(names.map((n) => PART_LOADERS[n]()));
+    return Object.fromEntries(names.map((n, i) => [n, values[i]]));
   }
 
-  return { loadMatrixData, loadLedger, loadShipments, findLedgerItem };
+  async function loadMatrixData({ allocationSource = ALLOCATION_SOURCE.LEDGER } = {}) {
+    const parts = await loadParts(allocationSource === ALLOCATION_SOURCE.LEDGER ? DATA_PARTS : DATA_PARTS.filter((n) => n !== "ledger"));
+    return assembleData(parts, allocationSource, new Date());
+  }
+
+  return { loadMatrixData, loadParts, loadLedger, loadShipments, findLedgerItem };
 }

@@ -8,6 +8,7 @@
 // Import itself). ?dry=1 validates and answers what it would write, without writing anything.
 
 import { guarded, serverMonday } from "./_auth.js";
+import { invalidateParts } from "./_cache.js";
 
 const BOARD = "18404604646";
 const GROUP = "topics";
@@ -86,5 +87,6 @@ export const POST = guarded(async (request, { user }) => {
   if (!started?.change_column_value?.id) return json(502, { error: `The file is in Monday but the import did not start (${started?.error || "no answer"}). Set Import Status to Import in Monday.`, itemId });
 
   console.info(`[importer-upload] "${name}" (${file.name}, ${file.size} B) → item ${itemId}, by ${user.name} (${user.userId})`);
+  await invalidateParts(["imports"]);
   return json(200, { ok: true, itemId });
 });

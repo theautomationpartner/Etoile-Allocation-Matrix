@@ -1,6 +1,7 @@
 // What any screen or side panel may ask the app shell for: a toast and a refresh of the monday data.
 import { createContext, useContext } from "react";
 
+// refresh(parts?): the cached data (api/data.js); with parts, those are read from monday now.
 export const AppActions = createContext({ toast: () => {}, refresh: async () => false });
 export const useAppActions = () => useContext(AppActions);
 
