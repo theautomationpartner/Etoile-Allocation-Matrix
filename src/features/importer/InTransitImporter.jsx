@@ -8,6 +8,7 @@ import { Card } from "../allocation-matrix/MetricCards.jsx";
 import { SidePanel } from "../allocation-matrix/SidePanel.jsx";
 import { DatePicker } from "../../components/DatePicker.jsx";
 import { importerPeople, uploadPackingList, useAppActions } from "../../lib/appActions.js";
+import { confirmDiscard, useLeaveGuard } from "../../lib/leaveGuard.js";
 
 // In-Transit Importer (mockup vImporter): one row per packing list uploaded for the US, newest first. Read-only:
 // "Upload packing list" opens a pop-up with the fields of the board's Importer Form (Name, File, Type Import, People,
@@ -24,6 +25,7 @@ export function InTransitImporter({ data, model, status, error, onRefresh, shipm
   const [upload, setUpload] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const closeUpload = () => { setUpload(false); if (uploaded) { setUploaded(false); onRefresh(); } }; // read monday again to list it
+  const askClose = useRef(null); // the open form's close: asks first when something is filled in
 
   // Side panel (same rail and trail as the matrix).
   const [rail, setRail] = useState([]);
@@ -36,7 +38,7 @@ export function InTransitImporter({ data, model, status, error, onRefresh, shipm
     onGoShipments(orderId) { setRail([]); onGoShipments(orderId); },
   };
   const escRef = useRef(null);
-  escRef.current = () => (upload ? closeUpload() : rail.length && setRail([]));
+  escRef.current = () => (upload ? askClose.current?.() : rail.length && setRail([]));
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && escRef.current();
     window.addEventListener("keydown", onKey);
@@ -169,13 +171,14 @@ export function InTransitImporter({ data, model, status, error, onRefresh, shipm
 
       <SidePanel stack={rail} model={model} data={data} shipments={shipments} {...panel} />
 
-      {upload && <UploadDialog onClose={closeUpload} onDone={() => setUploaded(true)} />}
+      {upload && <UploadDialog onClose={closeUpload} onDone={() => setUploaded(true)} askCloseRef={askClose} />}
     </>
   );
 }
 
-// The Importer Form's fields. People defaults to whoever is uploading.
-function UploadDialog({ onClose, onDone }) {
+// The Importer Form's fields. People defaults to whoever is uploading. Once something is filled in, closing the
+// form (×, Cancel, a click outside, Esc), switching screens or leaving the app asks first.
+function UploadDialog({ onClose, onDone, askCloseRef }) {
   const { toast } = useAppActions();
   const [users, setUsers] = useState(null);
   const [f, setF] = useState({ name: "", typeImport: "", location: "US", etd: "", eta: "", people: [] });
@@ -192,6 +195,15 @@ function UploadDialog({ onClose, onDone }) {
     return () => { on = false; };
   }, []);
   const togglePerson = (id) => setF((cur) => ({ ...cur, people: cur.people.includes(id) ? cur.people.filter((x) => x !== id) : [...cur.people, id] }));
+  const filled = Boolean(f.name.trim() || file || f.typeImport || f.etd || f.eta);
+  const what = `Packing list${f.name.trim() ? ` “${f.name.trim()}”` : file ? ` ${file.name}` : ""} — ${busy ? "still being sent to Monday" : "not sent yet"}`;
+  useLeaveGuard(filled || busy, what, { screen: true });
+  const close = () => {
+    if (busy) return;
+    if (!filled) return onClose();
+    confirmDiscard(what, { title: "Discard this packing list?", action: "Discard" }).then((ok) => ok && onClose());
+  };
+  askCloseRef.current = close;
   const missing = [!f.name.trim() && "Name", !file && "File", !f.typeImport && "Type Import", !f.people.length && "People", !f.location && "Location", !f.etd && "ETD"].filter(Boolean);
   const submit = async (e) => {
     e.preventDefault();
@@ -211,11 +223,11 @@ function UploadDialog({ onClose, onDone }) {
   };
   return (
     <>
-      <div className="scrim on up-scrim" onClick={() => !busy && onClose()} />
+      <div className="scrim on up-scrim" onClick={close} />
       <form className="up-dlg" role="dialog" aria-modal="true" aria-labelledby="up-dlg-t" onSubmit={submit} noValidate>
         <div className="up-h">
           <h3 id="up-dlg-t">Upload packing list</h3>
-          <button type="button" className="rail-x" onClick={onClose} disabled={busy} aria-label="Close">×</button>
+          <button type="button" className="rail-x" onClick={close} disabled={busy} aria-label="Close">×</button>
         </div>
         <p className="up-n">Creates the item in the In-Transit Importer and starts the import: Monday reads the file and creates the shipment.</p>
         <div className="up-body">
@@ -247,7 +259,7 @@ function UploadDialog({ onClose, onDone }) {
           {error && <div className="note warn" role="alert">{error}</div>}
         </div>
         <div className="up-b">
-          <button type="button" className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="button" className="btn" onClick={close} disabled={busy}>Cancel</button>
           <button type="submit" className="btn on" disabled={busy}>{busy ? "Sending…" : "Submit"}</button>
         </div>
       </form>
