@@ -247,6 +247,7 @@ export function ledgerRecord({ order, raw, sku, entries, data, now = new Date() 
   };
   const subitems = parts.map((p) => ({
     name: p.ref || TYPE_LABEL[p.source],
+    source: p.source, sourceId: String(p.sourceId), qty: p.qty, // to match a source record kept from the last allocation
     values: {
       [LS.type]: { label: TYPE_LABEL[p.source] },
       [LS.sourceId]: String(p.sourceId),
