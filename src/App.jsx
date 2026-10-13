@@ -21,6 +21,8 @@ import { findRecord } from "./lib/search.js";
 import { SCREEN_PARTS } from "./lib/screenParts.js";
 import { AuthGate } from "./components/AuthGate.jsx";
 import { UsersAccess } from "./features/users/UsersAccess.jsx";
+import { LeaveGuard } from "./components/LeaveGuard.jsx";
+import { confirmLeave, useLeaveGuard } from "./lib/leaveGuard.js";
 
 // Side nav badges, as in the mockup: SKUs that cannot be covered (alert on Control center), the orders listed
 // on Wholesale Allocation (US: Orders, Pending and Fulfilled), containers in transit, the US purchase orders, the
@@ -63,24 +65,22 @@ function Workspace({ user }) {
   const toast = useToast();
   // Shipments live here: the matrix edits them and the Control center's side panel shows them.
   const shipments = useShipments({ data: matrix.data, model: matrix.model, write: fetchWrite, toast: toast.show, patchData: matrix.patchData });
+  // Unsaved shipments survive switching screens, but not leaving the app or a Refresh (monday is read again).
+  useLeaveGuard(shipments.hasUnsaved, `${shipments.unsaved.join(", ")} — not saved to Monday`, { refresh: true });
+  // Switching screens drops what only lives on the open screen (a filled packing list form): ask first.
+  const goView = (v, before) => {
+    confirmLeave("screen", { title: "Switch screens without saving?", action: "Discard and switch" }).then((ok) => {
+      if (!ok) return;
+      before?.();
+      setView(v);
+    });
+  };
   // A request for the matrix from the Control center: { n, filter } or { n, orderShipments }.
   const [matrixRequest, setMatrixRequest] = useState(null);
-  const goMatrix = (req) => {
-    setMatrixRequest((cur) => ({ n: (cur?.n || 0) + 1, ...req }));
-    setView("matrix");
-  };
-  const goSku = (filter) => {
-    setSkuFilter(filter || "all");
-    setView("sku");
-  };
-  const goWholesale = (filter) => {
-    setWhFilter(filter || "all");
-    setView("wholesale");
-  };
-  const goTransit = (filter) => {
-    setTrFilter(filter || "all");
-    setView("transit");
-  };
+  const goMatrix = (req) => goView("matrix", () => setMatrixRequest((cur) => ({ n: (cur?.n || 0) + 1, ...req })));
+  const goSku = (filter) => goView("sku", () => setSkuFilter(filter || "all"));
+  const goWholesale = (filter) => goView("wholesale", () => setWhFilter(filter || "all"));
+  const goTransit = (filter) => goView("transit", () => setTrFilter(filter || "all"));
   // Header search + Enter (Connections §3.1): the first matching record opens in the open screen's side panel.
   const [panelRequest, setPanelRequest] = useState(null);
   useEffect(() => setPanelRequest(null), [view]); // a screen opened later never replays an old request
@@ -112,7 +112,9 @@ function Workspace({ user }) {
   const toggleTheme = () => setTheme(dark ? "light" : "dark");
 
   // A screen's Refresh reads that screen's boards again from monday (SCREEN_PARTS); the rest stays as cached.
+  // Reading monday again resets unsaved shipments: ask first.
   const refreshFor = (key) => async () => {
+    if (!(await confirmLeave("refresh", { title: "Refresh and lose your changes?", action: "Discard and refresh" }))) return;
     if (await matrix.reload(SCREEN_PARTS[key])) toast.show("Figures recalculated with fresh data from Monday.");
   };
 
@@ -120,7 +122,7 @@ function Workspace({ user }) {
     <AppActions.Provider value={{ toast: toast.show, refresh: matrix.reload }}>
     <div className={`app ${collapsed ? "min" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} onToggleTheme={toggleTheme} dark={dark}
-        counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} view={current} onView={setView} isAdmin={isAdmin} />
+        counts={navCounts(matrix)} loadedAt={matrix.data?.loadedAt} view={current} onView={(v) => goView(v)} isAdmin={isAdmin} />
       <main className="main">
         {onUsers ? (
           <Topbar search={userSearch} onSearch={setUserSearch} user={user} title="Users & access" placeholder="Search a user by name or email…" />
@@ -174,6 +176,7 @@ function Workspace({ user }) {
         )}
       </main>
       <Toast {...toast} />
+      <LeaveGuard />
     </div>
     </AppActions.Provider>
   );

@@ -238,9 +238,13 @@ export function useShipments({ data, model, write, toast, patchData }) {
     },
   };
 
+  // What is not saved yet, for the leave warning: "Shipment 2 of #1234".
+  const unsaved = Object.entries(byOrder).flatMap(([orderId, ships]) => ships.filter((s) => s.dirty)
+    .map((s) => `${s.name}${model ? ` of ${orderInfo(orderId).number}` : ""}`));
+
   return {
     ui, actions, shipsOf, allocatedOf, lineOf, splitOf, srcDate, orderInfo, remainingToCopy,
-    hasUnsaved: Object.values(byOrder).some((ships) => ships.some((s) => s.dirty)),
+    hasUnsaved: unsaved.length > 0, unsaved,
     lateUnitsOf: (orderId, sh) => sh.skus.reduce((a, k) => a + lateUnits(sh, splitOf(orderId, shipsOf(orderId), k)[sh.id], srcDate), 0),
     maxOf: (orderId, sh, sku) => maxFor(shipsOf(orderId), sh, sku, allocatedOf(orderId, sku)),
     remainingOf: (orderId, sh, sku) => remainingAfter(shipsOf(orderId), sh, sku, allocatedOf(orderId, sku)),

@@ -18,6 +18,13 @@ import { ShowFilters } from "./ShowFilters.jsx";
 import { Legend } from "./Legend.jsx";
 import { MatrixTable } from "./MatrixTable.jsx";
 import { fetchWrite } from "../../lib/mondayWrites.js";
+import { confirmDiscard, useLeaveGuard } from "../../lib/leaveGuard.js";
+
+// The editor's values ({ sourceId: qty }) as typed vs. as opened.
+const sameValues = (a = {}, b = {}) => {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((k) => (Number(a[k]) || 0) === (Number(b[k]) || 0));
+};
 
 // Allocation matrix screen (§3). Step 1: metrics + Show filters + search. Step 2: the matrix in the
 // Wholesale order view. Step 3: the allocation editor below a row (writes the Allocation Ledger) and the
@@ -26,25 +33,8 @@ import { fetchWrite } from "../../lib/mondayWrites.js";
 // request: { n, filter?, orderShipments? } from another screen (the Control center): apply a Show filter, or
 // open an order on its Shipments tab. n changes on every request.
 export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request, onGoTransit, panelRequest }) {
-
-  // Closing or reloading the tab with unsaved shipments: the browser asks first.
-  useEffect(() => {
-    if (!shipments.hasUnsaved) return undefined;
-    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [shipments.hasUnsaved]);
-
-  // Refresh reloads everything from monday: with unsaved shipments it asks for a second click first.
-  const armed = useRef(0);
-  const refresh = () => {
-    if (shipments.hasUnsaved && Date.now() - armed.current > 6000) {
-      armed.current = Date.now();
-      return toast("Some shipments are not saved yet. Click Refresh again to discard those changes and reload.");
-    }
-    armed.current = 0;
-    onRefresh();
-  };
+  // Unsaved shipments: leaving the app, a Refresh or switching screens asks first (App + components/LeaveGuard).
+  const refresh = onRefresh;
   const [filter, setFilter] = useState("all"); // §15.1: one filter at a time
   const [open, setOpen] = useState({}); // group open/closed, kept while the page is open (§3)
 
@@ -70,14 +60,26 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
   // ── Step 3: allocation editor (one line at a time; clicking the same line again closes it) ──
   const [edit, setEdit] = useState(null); // { lineId, focus, values, notice, error, saving }
   const ed = useMemo(() => (edit && model ? editorFor(model, data, edit.lineId) : null), [edit?.lineId, model, data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const openEditor = (lineId, focus) => setEdit((cur) => {
-    if (cur?.saving) return cur;
-    if (cur && String(cur.lineId) === String(lineId)) return null;
-    const e = editorFor(model, data, lineId);
-    return e ? { lineId, focus: focus || null, values: e.values, notice: "", error: "", saving: false } : cur;
-  });
+  // Typed but not allocated yet: closing the editor (Cancel, Esc, another line), leaving the app or switching
+  // screens asks first. The matrix stays mounted on other screens, so switching screens keeps it.
+  const editDirty = Boolean(edit && ed && !edit.saving && !sameValues(edit.values, edit.initial));
+  const editWhat = ed ? `Allocation of ${ed.sku} for ${ed.number} — not allocated yet` : "";
+  useLeaveGuard(editDirty, editWhat);
+  const askDiscardEdit = () => (editDirty ? confirmDiscard(editWhat, { title: "Discard this allocation?", action: "Discard" }) : Promise.resolve(true));
+  const openEditor = (lineId, focus) => {
+    if (edit?.saving) return;
+    askDiscardEdit().then((ok) => ok && setEdit((cur) => {
+      if (cur?.saving) return cur;
+      if (cur && String(cur.lineId) === String(lineId)) return null;
+      const e = editorFor(model, data, lineId);
+      return e ? { lineId, focus: focus || null, values: e.values, initial: e.values, notice: "", error: "", saving: false } : cur;
+    }));
+  };
   const patchEdit = (patch) => setEdit((cur) => (cur ? { ...cur, ...patch } : cur));
-  const closeEditor = () => setEdit((cur) => (cur?.saving ? cur : null));
+  const closeEditor = () => {
+    if (edit?.saving) return;
+    askDiscardEdit().then((ok) => ok && setEdit((cur) => (cur?.saving ? cur : null)));
+  };
   // The line left the matrix (e.g. fully shipped after a refresh) or its order switched to Shipments: close.
   const editOrder = ed ? String(ed.line.orderId) : null;
   useEffect(() => {
@@ -156,7 +158,7 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
   // Esc closes the editor first, then the side panel (as in the mockup).
   const escRef = useRef(null);
   escRef.current = () => {
-    if (edit && !edit.saving) setEdit(null);
+    if (edit && !edit.saving) closeEditor();
     else if (rail.length) setRail([]);
   };
   useEffect(() => {

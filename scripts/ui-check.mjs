@@ -312,8 +312,11 @@ async function run() {
       [...document.querySelectorAll(".dp .dp-d")][9]?.click(); await wait(250); r.upDate = /^10 [A-Z][a-z]{2} [0-9]{4}$/.test(dlg?.querySelector(".up-date-b")?.textContent||"");
       dlg?.querySelector("button[type=submit]")?.click(); await wait(250); r.upValidates = /^Fill in: Name, File, Type Import[.]$/.test(q(".up-dlg .note.warn")?.textContent||"");
       r.upEnglish = !!dlg && ![...dlg.querySelectorAll("input[type=file], input[type=date]")].some(i=>i.offsetWidth>2) && /Choose file/.test(dlg.textContent) && /Choose a date/.test(dlg.textContent);
-      document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})); window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250); r.upEsc = !q(".up-dlg");
-      if(!r.upEsc){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); }
+      // The form has an ETD now: Esc asks before discarding it (components/LeaveGuard.jsx); Discard closes it.
+      window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"})); await wait(250);
+      const ask=/Discard this packing list/.test(q(".leave-dlg h3")?.textContent||"") && !!q(".up-dlg");
+      [...document.querySelectorAll(".leave-dlg .btn")].find(b=>b.textContent==="Discard")?.click(); await wait(250); r.upEsc = ask && !q(".up-dlg") && !q(".leave-dlg");
+      if(q(".up-dlg")){ q(".up-dlg .btn:not(.on)")?.click(); await wait(200); [...document.querySelectorAll(".leave-dlg .btn")].find(b=>b.textContent==="Discard")?.click(); await wait(200); }
       const card=all(".view:not([hidden]) .kpis .kpi").find(k=>k.querySelector(".lab")?.textContent==="Shipments created"); card?.click(); await wait(250);
       r.cardFilter=/^Live shipments/.test(q(".view:not([hidden]) .fchip.on")?.textContent||""); card?.click(); await wait(250);
       r.cardBack=/^All uploads/.test(q(".view:not([hidden]) .fchip.on")?.textContent||"");
@@ -326,7 +329,7 @@ async function run() {
     check(`In-Transit Importer: "Open" shows the shipment's side panel; reverted rows are struck through ${tag}`, im.railMatches && im.reverted, JSON.stringify({ rail: im.rail, reverted: im.reverted }));
     check(`In-Transit Importer: each Show chip's count = uploads listed; a card filters and a second click goes back ${tag}`, Object.values(im.filtered).every(Boolean) && im.cardFilter && im.cardBack, JSON.stringify(im.filtered));
     check(`In-Transit Importer: no horizontal page scroll, every column visible ${tag}`, im.noScroll && im.fits, JSON.stringify({ noScroll: im.noScroll, fits: im.fits }));
-    check(`In-Transit Importer: "Upload packing list" opens the form (fields, People dropdown with monday avatars, own calendar for ETD), validates, Esc closes ${tag}`,
+    check(`In-Transit Importer: "Upload packing list" opens the form (fields, People dropdown with monday avatars, own calendar for ETD), validates, Esc on a filled form asks and Discard closes it ${tag}`,
       im.upFields.join("|") === "Name|File|Type Import|Location|ETD|ETA|People" && im.upPeople > 0 && im.upMe && im.upLink && im.upCal && im.upDate && im.upValidates && im.upEnglish && im.upEsc,
       JSON.stringify({ f: im.upFields, p: im.upPeople, me: im.upMe, link: im.upLink, cal: im.upCal, date: im.upDate, v: im.upValidates, en: im.upEnglish, esc: im.upEsc }));
     // The matrix's "Free inventory to draw on" → In-Transit "Has free units".
