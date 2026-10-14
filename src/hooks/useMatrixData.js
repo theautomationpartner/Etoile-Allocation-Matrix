@@ -103,12 +103,18 @@ export function useMatrixData() {
   useEffect(() => { load(); }, [load]);
 
   // Apply a local change already written to monday (e.g. a saved shipment) without reloading everything.
+  // The shipments are also kept in the browser's copy (with the time they were read), so reopening the app never
+  // paints the shipments from before the save (2026-10-14: a saved shipment vanished on reopening).
   const patchData = useCallback((fn) => {
     for (const n of WRITE_PARTS) dirty.current.add(n);
     setData((cur) => {
       if (!cur) return cur;
       const next = fn(cur);
       dataRef.current = next;
+      if (next.shipments !== cur.shipments && partsRef.current?.shipments) {
+        partsRef.current = { ...partsRef.current, shipments: { ...partsRef.current.shipments, data: next.shipments } };
+        writeCache(partsRef.current);
+      }
       return next;
     });
   }, []);

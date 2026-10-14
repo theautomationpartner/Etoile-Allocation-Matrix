@@ -42,9 +42,27 @@ export async function readParts(names, now = Date.now()) {
   return out;
 }
 
-// parts: { part: { at, data } }
+// When each part was last invalidated by a write (key "inv:<part>"): a read of monday that started before it may
+// not contain that write, so it must not go back into the cache (2026-10-14: a shipment saved while a load was
+// reading monday disappeared from the app until the next 6 h refresh).
+const INV = (n) => `${PREFIX}inv:${n}`;
+async function invalidatedAt(names) {
+  if (CACHE_STORE === "memory") return names.map((n) => Number(memory.get(INV(n)) || 0));
+  const raw = await redis(["MGET", ...names.map(INV)]);
+  return names.map((_, i) => Number(raw?.[i] || 0));
+}
+
+// parts: { part: { at, data } } — at: when the read of monday started. A part invalidated after that is skipped.
 export async function writeParts(parts) {
-  const entries = Object.entries(parts);
+  let entries = Object.entries(parts);
+  if (!entries.length) return;
+  try {
+    const inv = await invalidatedAt(entries.map(([n]) => n));
+    entries = entries.filter(([, e], i) => Date.parse(e.at) >= inv[i]);
+  } catch (e) {
+    console.error("[cache] could not check invalidations: not caching this read", e);
+    return;
+  }
   if (!entries.length) return;
   if (CACHE_STORE === "memory") {
     for (const [n, e] of entries) memory.set(PREFIX + n, JSON.stringify(e));
@@ -61,12 +79,14 @@ export async function writeParts(parts) {
 // After a write to monday: the parts it touched are read again on the next load.
 export async function invalidateParts(names) {
   if (!names?.length) return;
+  const now = String(Date.now());
   if (CACHE_STORE === "memory") {
-    for (const n of names) memory.delete(PREFIX + n);
+    for (const n of names) { memory.delete(PREFIX + n); memory.set(INV(n), now); }
     return;
   }
   try {
     await redis(["DEL", ...names.map((n) => PREFIX + n)]);
+    await Promise.all(names.map((n) => redis(["SET", INV(n), now, "PX", String(CACHE_TTL_MS)])));
   } catch (e) {
     console.error("[cache] invalidate failed", e);
   }

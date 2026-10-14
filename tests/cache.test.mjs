@@ -30,3 +30,13 @@ test("server cache: a part is served until it is 6 h old, and a write drops it",
   assert.deepEqual(Object.keys(await readParts(["pos", "imports"])), ["imports"]);
   assert.equal(CACHE_TTL_MS, 6 * 60 * 60 * 1000);
 });
+
+test("server cache: a read that started before a write is not cached (it may not contain the write)", async () => {
+  const before = new Date(Date.now() - 1000).toISOString(); // the read of monday started 1 s ago…
+  await invalidateParts(["shipments"]); // …a shipment was saved meanwhile
+  await writeParts({ shipments: { at: before, data: [{ mondayId: "old" }] } });
+  assert.deepEqual(Object.keys(await readParts(["shipments"])), [], "the older read is dropped");
+  await new Promise((r) => setTimeout(r, 5));
+  await writeParts({ shipments: { at: new Date().toISOString(), data: [{ mondayId: "new" }] } }); // a read after the write
+  assert.deepEqual((await readParts(["shipments"])).shipments.data, [{ mondayId: "new" }]);
+});

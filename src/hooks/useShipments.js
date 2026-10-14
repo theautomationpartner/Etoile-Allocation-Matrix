@@ -31,14 +31,19 @@ function fromMonday(s, lineOf) {
 // Step 4 — shipments of every open order (PDF §16): loaded from monday, edited locally, saved with "Save".
 export function useShipments({ data, model, write, toast, patchData }) {
   // Keep the loaded data (and its cache) in step with what was just written to monday.
-  const persistSaved = (orderId, ship) => patchData?.((d) => {
-    const rest = (d.shipments || []).filter((s) => s.mondayId !== ship.mondayId);
-    const prev = (d.shipments || []).find((s) => s.mondayId === ship.mondayId);
+  // latest: the order's shipments as monday had them just before the save (someone else's included).
+  const persistSaved = (orderId, ship, latest) => patchData?.((d) => {
+    const others = latest ? (d.shipments || []).filter((s) => s.orderId !== String(orderId)).concat(latest) : d.shipments || [];
+    const rest = others.filter((s) => s.mondayId !== ship.mondayId);
+    const prev = others.find((s) => s.mondayId === ship.mondayId);
     const entry = { mondayId: ship.mondayId, orderId: String(orderId), name: ship.name, target: ship.target, createdAt: prev?.createdAt || new Date().toISOString(), savedAt: new Date().toISOString(),
       lines: ship.skus.map((k) => ({ subId: ship.subIds[k], sku: k, qty: ship.qty[k] || 0, fulfilledAtSave: Number.isFinite(ship.base?.[k]) ? ship.base[k] : null })) };
     return { ...d, shipments: [...rest, entry].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
   });
   const persistDeleted = (mondayId) => patchData?.((d) => ({ ...d, shipments: (d.shipments || []).filter((s) => s.mondayId !== mondayId) }));
+  // Shipments monday has for an order and the app wasn't showing: into the loaded data too.
+  const persistKnown = (orderId, latest) => patchData?.((d) => ({ ...d, shipments: (d.shipments || []).filter((s) => s.orderId !== String(orderId)).concat(latest)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))) }));
   const [byOrder, setByOrder] = useState({});
   const [ui, setUi] = useState({ tab: {}, closed: {}, rename: null, menu: null, confirmDelete: null, saving: {}, errors: {} });
 
@@ -101,10 +106,22 @@ export function useShipments({ data, model, write, toast, patchData }) {
       }
       next[orderId] = cur;
     }
-    setByOrder(next);
+    // What the user hasn't saved yet stays: new shipments, and edited ones over their monday version.
+    setByOrder((cur) => {
+      const out = { ...next };
+      for (const [orderId, ships] of Object.entries(cur)) {
+        const local = ships.filter((x) => x.dirty);
+        if (!local.length) continue;
+        const fresh = (out[orderId] || []).map((f) => local.find((l) => l.mondayId && String(l.mondayId) === String(f.mondayId)) || f);
+        out[orderId] = [...fresh, ...local.filter((l) => !l.mondayId)];
+      }
+      return out;
+    });
     if (notes.length) toast(notes.join(" "));
-    // Re-initialise only when monday was read again, not when a local save patches the data.
-  }, [data?.loadedAt?.getTime?.(), Boolean(model)]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Re-initialise whenever the shipments, the orders or the Ledger were read from monday again (each part has its
+    // own read time), not when a local save patches the data. (Keyed on the oldest part before 2026-10-14: a fresh
+    // read of the shipments alone was never shown.)
+  }, [data?.partsAt?.shipments?.getTime?.(), data?.partsAt?.orders?.getTime?.(), data?.partsAt?.ledger?.getTime?.(), data?.loadedAt?.getTime?.(), Boolean(model)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── helpers ──
   // The shipments of an order with what already left (shipped), from Cin7's US Qty Fulfilled now.
@@ -238,6 +255,15 @@ export function useShipments({ data, model, write, toast, patchData }) {
         // §10 concurrency: someone else may have saved shipments of this order since the page was loaded.
         const latestRaw = (await mondayApi.loadShipments()).filter((s) => s.orderId === String(orderId));
         const latest = attributeShipped(latestRaw.map((s) => fromMonday(s, (k) => lineOf(orderId, k))), fulfilledOf(orderId));
+        // Shipments of this order saved in monday that the app wasn't showing (saved from another screen or session, or
+        // before the last refresh): show them now and save nothing — the quantities must be checked against them first.
+        const known = new Set(ships.filter((x) => x.mondayId).map((x) => String(x.mondayId)));
+        const unseen = latest.filter((x) => !known.has(String(x.mondayId)) && String(x.mondayId) !== String(sh.mondayId || ""));
+        if (unseen.length) {
+          update(orderId, (cur) => [...cur.filter((x) => x.mondayId), ...unseen, ...cur.filter((x) => !x.mondayId)]);
+          persistKnown(orderId, latestRaw);
+          throw new Error(`Monday already has ${unseen.map((x) => `${x.name} (${fmt(shipUnits(x))} units)`).join(", ")} for this order, which wasn't shown here. It is shown now: check the quantities and save again.`);
+        }
         if (sh.mondayId) {
           const mine = latestRaw.find((s) => s.mondayId === sh.mondayId);
           if (!mine) throw new Error("This shipment was deleted in Monday by someone else. Refresh to see the current shipments.");
@@ -265,7 +291,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
         const savedShip = { ...sh, id: sh.id, mondayId, subIds, base, dirty: false, savedAt: savedLabel(new Date().toISOString()) };
         const nextShips = ships.map((s) => (s.id === shipId ? savedShip : s));
         update(orderId, () => nextShips);
-        persistSaved(orderId, savedShip);
+        persistSaved(orderId, savedShip, latestRaw);
         toast(`${sh.name} saved to Monday.`);
       } catch (e) {
         // Keep what was already created in monday so a retry updates it instead of duplicating it.
