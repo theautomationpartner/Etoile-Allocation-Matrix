@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildModel } from "../lib/engine.js";
 import { allocationSource } from "../config.js";
-import { assembleData, DATA_PARTS } from "../lib/monday.js";
+import { assembleData, DATA_PARTS, readIntoParts } from "../lib/monday.js";
 
 // The monday data comes from the server-side cache (api/data.js): each part (≈ board) is read from monday at most
 // once every 6 h for everybody, or when someone clicks a screen's Refresh (that screen's boards only). Every figure
@@ -119,6 +119,29 @@ export function useMatrixData() {
     });
   }, []);
 
+  // After a write (2026-10-14): the records monday has right after it (reads, see readIntoParts) replace their old
+  // versions in the parts — in the browser's copy too — and the data is assembled again, so every screen shows the new
+  // quantities at once and nothing has to be read again for them. false when there is nothing to apply (the caller
+  // then falls back to patchData).
+  const applyRead = useCallback((reads) => {
+    const list = (reads || []).filter(Boolean);
+    const parts = partsRef.current;
+    if (!list.length || !parts) return false;
+    let raw = Object.fromEntries(Object.entries(parts).map(([n, e]) => [n, e.data]));
+    const changed = new Set();
+    for (const r of list) {
+      const next = readIntoParts(raw, r);
+      Object.keys(next).forEach((n) => changed.add(n));
+      raw = { ...raw, ...next };
+    }
+    partsRef.current = { ...parts, ...Object.fromEntries([...changed].map((n) => [n, { ...parts[n], data: raw[n] }])) };
+    writeCache(partsRef.current);
+    const next = toData(partsRef.current);
+    dataRef.current = next;
+    setData(next);
+    return true;
+  }, []);
+
   const model = useMemo(() => (data ? buildModel(data) : null), [data]);
-  return { data, model, status, error, reload: load, patchData };
+  return { data, model, status, error, reload: load, patchData, applyRead };
 }

@@ -96,6 +96,101 @@ export function parseAllocationJson(text) {
   }
 }
 
+// ── One record of a board as the app keeps it: shared by the board loaders and readBack (records read again by id
+// right after a write), so both give exactly the same shape. ──
+const SC = COL.saleSub;
+const LINE_FIELDS = `id name column_values(ids:[${gqlList([SC.skuId, SC.ordered, SC.fulfilled, SC.outstanding, SC.allocJson, SC.ledgerRel, SC.lastProcessed])}]) {
+        id text ... on BoardRelationValue { linked_item_ids } }`;
+// A Wholesale subitem → a sale line.
+function orderLineOf(sub) {
+  const skuId = cv(sub, SC.skuId);
+  return {
+    id: sub.id,
+    name: sub.name,
+    sku: (skuId.includes("|") ? skuId.split("|").pop() : skuId).trim(), // §2: text after the last "|"
+    ordered: num(cv(sub, SC.ordered)),
+    fulfilled: num(cv(sub, SC.fulfilled)),
+    outstanding: num(cv(sub, SC.outstanding)),
+    // US Qty Fulfilled already reviewed (written on Allocate / Release); null while the column is empty
+    lastProcessed: cv(sub, SC.lastProcessed) === "" ? null : num(cv(sub, SC.lastProcessed)),
+    entries: parseAllocationJson(cv(sub, SC.allocJson)),
+    ledgerItemId: (sub.column_values.find((c) => c.id === SC.ledgerRel)?.linked_item_ids || [])[0] || null,
+  };
+}
+
+const LEDGER_FIELDS = `id name group { id } column_values(ids:[${gqlList([COL.ledger.key, COL.ledger.sku, COL.ledger.json, COL.ledger.fulfilled, COL.ledger.status])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList(Object.values(COL.ledgerSub))}]) { id text } }`;
+// A Ledger item → its record (with its Allocation Key: the sale line it belongs to).
+function ledgerRecordOf(it) {
+  const l = COL.ledger, ls = COL.ledgerSub;
+  const fromSubitems = (it.subitems || [])
+    .map((s) => ({ source: LEDGER_SOURCE_TYPE[cv(s, ls.type)], sourceId: cv(s, ls.sourceId).trim(), ref: cv(s, ls.ref), qty: num(cv(s, ls.qty)), eta: date(cv(s, ls.eta)), subitemId: String(s.id), arrivalLabel: cv(s, ls.arrival) }))
+    .filter((e) => e.source && e.qty > 0);
+  // The subitems are the record; the JSON copy is only a fallback for an item without subitems.
+  return {
+    itemId: it.id, group: it.group?.id || "", sku: cv(it, l.sku).trim(),
+    entries: fromSubitems.length ? fromSubitems : parseAllocationJson(cv(it, l.json)),
+    fulfilled: cv(it, l.fulfilled) === "" ? null : num(cv(it, l.fulfilled)), // US Qty Fulfilled when the app last wrote the line
+    statusLabel: cv(it, l.status),
+    key: cv(it, l.key).trim(),
+  };
+}
+
+const SHIPMENT_FIELDS = `id name created_at column_values(ids:[${gqlList(Object.values(NS.col))}]) { id text value ... on BoardRelationValue { linked_item_ids } }
+      subitems { id name column_values(ids:[${gqlList(Object.values(NS.subCol))}]) { id text } }`;
+// A New Shipments item → a saved shipment (orderId null: one of the board's sample items, not listed).
+function shipmentOf(it) {
+  const c = NS.col, sc = NS.subCol;
+  const rel = it.column_values.find((x) => x.id === c.order)?.linked_item_ids || [];
+  return {
+    mondayId: String(it.id),
+    orderId: rel[0] ? String(rel[0]) : null,
+    name: cv(it, c.name) || it.name,
+    target: date(cv(it, c.date)),
+    savedAt: savedIso(it.column_values.find((x) => x.id === c.saved)?.value), // UTC, from the column value
+    createdAt: it.created_at || "",
+    lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)),
+      fulfilledAtSave: cv(s, sc.fulfilledAtSave) === "" ? null : num(cv(s, sc.fulfilledAtSave)) })).filter((l) => l.sku),
+  };
+}
+const byCreation = (a, b) => a.createdAt.localeCompare(b.createdAt) || a.mondayId.localeCompare(b.mondayId);
+
+// Allocate reads the Ledger items of the lines of one SKU before writing (loadLedgerFor): the same as a read for
+// readIntoParts, so those fresher records also replace the cached ones.
+export function ledgerReadOf(items) {
+  const open = [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP];
+  return { ledger: items.map((it) => ({ itemId: String(it.id), record: open.includes(it.group?.id) ? ledgerRecordOf(it) : null })) };
+}
+
+// The records read again after a write (readBack; transit: the In-Transit Status labels just written) → the parts
+// that change, { part: data }, each with those records replaced, added or taken out — the same in the server's cache
+// (api/_cache.js) and in the browser's copy, so neither has to read the whole board again.
+// parts: { orders, ledger (list), shipments, containers } as the loaders return them (any can be missing).
+export function readIntoParts(parts, read) {
+  const out = {};
+  if (read?.lines?.length && Array.isArray(parts.orders)) {
+    const by = new Map(read.lines.map((r) => [String(r.id), r]));
+    out.orders = parts.orders.map((o) => (o.lines.some((l) => by.has(String(l.id)))
+      ? { ...o, lines: o.lines.flatMap((l) => { const r = by.get(String(l.id)); return !r ? [l] : r.line ? [r.line] : []; }) }
+      : o));
+  }
+  if (read?.ledger?.length && Array.isArray(parts.ledger)) {
+    const ids = new Set(read.ledger.map((r) => String(r.itemId)));
+    out.ledger = [...parts.ledger.filter((r) => !ids.has(String(r.itemId))), ...read.ledger.filter((r) => r.record).map((r) => r.record)];
+  }
+  if (read?.shipments?.length && Array.isArray(parts.shipments)) {
+    const ids = new Set(read.shipments.map((r) => String(r.mondayId)));
+    out.shipments = [...parts.shipments.filter((s) => !ids.has(String(s.mondayId))), ...read.shipments.filter((r) => r.ship).map((r) => r.ship)].sort(byCreation);
+  }
+  if (read?.transit?.length && Array.isArray(parts.containers)) {
+    const label = new Map(read.transit.map((t) => [String(t.id), t.status]));
+    out.containers = parts.containers.map((c) => (c.lines.some((l) => label.has(String(l.id)))
+      ? { ...c, lines: c.lines.map((l) => (label.has(String(l.id)) ? { ...l, status: label.get(String(l.id)) } : l)) }
+      : c));
+  }
+  return out;
+}
+
 // Confirmed entries of every sale line from the Ledger (group Active). A line keeps the raw link of its
 // Wholesale subitem (ledgerLinkId) and the Ledger item that holds its units now (ledgerItemId).
 export function withLedger(data, ledger) {
@@ -195,11 +290,10 @@ export function createMondayApi(transport = fetchTransport) {
   }
 
   async function loadOrders() {
-    const s = COL.sale, sc = COL.saleSub;
+    const s = COL.sale;
     const fields = `id name group { id }
       column_values(ids:[${gqlList(Object.values(s))}]) { id text }
-      subitems { id name column_values(ids:[${gqlList([sc.skuId, sc.ordered, sc.fulfilled, sc.outstanding, sc.allocJson, sc.ledgerRel, sc.lastProcessed])}]) {
-        id text ... on BoardRelationValue { linked_item_ids } } }`;
+      subitems { ${LINE_FIELDS} }`;
     const items = await allItems(BOARDS.wholesale, fields, { groups: OPEN_GROUPS });
     return items.map((it) => ({
       id: it.id,
@@ -210,21 +304,7 @@ export function createMondayApi(transport = fetchTransport) {
       saleStatus: cv(it, s.status),
       orderDate: date(cv(it, s.orderDate)),
       cancelDate: date(cv(it, s.cancelDate)),
-      lines: (it.subitems || []).map((sub) => {
-        const skuId = cv(sub, sc.skuId);
-        return {
-          id: sub.id,
-          name: sub.name,
-          sku: (skuId.includes("|") ? skuId.split("|").pop() : skuId).trim(), // §2: text after the last "|"
-          ordered: num(cv(sub, sc.ordered)),
-          fulfilled: num(cv(sub, sc.fulfilled)),
-          outstanding: num(cv(sub, sc.outstanding)),
-          // US Qty Fulfilled already reviewed (written on Allocate / Release); null while the column is empty
-          lastProcessed: cv(sub, sc.lastProcessed) === "" ? null : num(cv(sub, sc.lastProcessed)),
-          entries: parseAllocationJson(cv(sub, sc.allocJson)),
-          ledgerItemId: (sub.column_values.find((c) => c.id === sc.ledgerRel)?.linked_item_ids || [])[0] || null,
-        };
-      }),
+      lines: (it.subitems || []).map(orderLineOf),
     }));
   }
 
@@ -267,25 +347,12 @@ export function createMondayApi(transport = fetchTransport) {
   // order keeps the units of its Ledger item even if that item sits in Fulfilled. Released holds none.
   // byId → the Ledger item a Wholesale subitem links to (board_relation_mm7pqf7j);
   // byKey → fallback by Allocation Key (= Wholesale subitem id).
-  const LEDGER_FIELDS = `id name group { id } column_values(ids:[${gqlList([COL.ledger.key, COL.ledger.sku, COL.ledger.json, COL.ledger.fulfilled, COL.ledger.status])}]) { id text }
-      subitems { id name column_values(ids:[${gqlList(Object.values(COL.ledgerSub))}]) { id text } }`;
   // Ledger items (Active and Fulfilled) → { byId, byKey } of their records.
   function ledgerMaps(items) {
-    const l = COL.ledger, ls = COL.ledgerSub;
     const byId = new Map(), byKey = new Map();
     for (const it of items) {
-      const fromSubitems = (it.subitems || [])
-        .map((s) => ({ source: LEDGER_SOURCE_TYPE[cv(s, ls.type)], sourceId: cv(s, ls.sourceId).trim(), ref: cv(s, ls.ref), qty: num(cv(s, ls.qty)), eta: date(cv(s, ls.eta)), subitemId: String(s.id), arrivalLabel: cv(s, ls.arrival) }))
-        .filter((e) => e.source && e.qty > 0);
-      // The subitems are the record; the JSON copy is only a fallback for an item without subitems.
-      const record = {
-        itemId: it.id, group: it.group?.id || "", sku: cv(it, l.sku).trim(),
-        entries: fromSubitems.length ? fromSubitems : parseAllocationJson(cv(it, l.json)),
-        fulfilled: cv(it, l.fulfilled) === "" ? null : num(cv(it, l.fulfilled)), // US Qty Fulfilled when the app last wrote the line
-        statusLabel: cv(it, l.status),
-      };
+      const { key, ...record } = ledgerRecordOf(it);
       byId.set(String(it.id), record);
-      const key = cv(it, l.key).trim();
       if (key) byKey.set(key, record);
     }
     return { byId, byKey };
@@ -413,26 +480,46 @@ export function createMondayApi(transport = fetchTransport) {
   // Step 4 — saved shipments: items of New Shipments connected to a wholesale order (the board's sample
   // items without an order are ignored). Returned in creation order.
   async function loadShipments() {
-    const c = NS.col, sc = NS.subCol;
-    const fields = `id name created_at column_values(ids:[${gqlList(Object.values(c))}]) { id text value ... on BoardRelationValue { linked_item_ids } }
-      subitems { id name column_values(ids:[${gqlList(Object.values(sc))}]) { id text } }`;
-    const items = await allItems(NS.board, fields);
-    return items
-      .map((it) => {
-        const rel = it.column_values.find((x) => x.id === c.order)?.linked_item_ids || [];
-        return {
-          mondayId: String(it.id),
-          orderId: rel[0] ? String(rel[0]) : null,
-          name: cv(it, c.name) || it.name,
-          target: date(cv(it, c.date)),
-          savedAt: savedIso(it.column_values.find((x) => x.id === c.saved)?.value), // UTC, from the column value
-          createdAt: it.created_at || "",
-          lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)),
-            fulfilledAtSave: cv(s, sc.fulfilledAtSave) === "" ? null : num(cv(s, sc.fulfilledAtSave)) })).filter((l) => l.sku),
-        };
-      })
-      .filter((s) => s.orderId)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.mondayId.localeCompare(b.mondayId));
+    const items = await allItems(NS.board, SHIPMENT_FIELDS);
+    return items.map(shipmentOf).filter((s) => s.orderId).sort(byCreation);
+  }
+
+  // After a write (2026-10-14): only the records it touched, read again by id, instead of whole boards (~100–200
+  // complexity points per record against ~21,000–114,000 for the parts they belong to). ids: { lines (Wholesale
+  // subitems), ledger (Ledger items), shipments (New Shipments items) }: one request per kind, at the same time
+  // (monday answers the parts of one request one after the other: ~1.3 s for a line and a Ledger item in one request,
+  // ~0.7–1 s in two). → a read for readIntoParts: each record as its part's loader returns it, or null when the
+  // loader would no longer list it (deleted, archived, a Ledger item no longer in Active / Fulfilled, a shipment
+  // without an order).
+  async function readBack({ lines = [], ledger = [], shipments = [] } = {}) {
+    const byId = async (list, fields) => {
+      const ids = [...new Set(list.map(String))];
+      const pages = [];
+      for (let k = 0; k < ids.length; k += PAGE) pages.push(ids.slice(k, k + PAGE));
+      const out = await Promise.all(pages.map((i) => transport(`query($i:[ID!]){ items(ids:$i, limit:${PAGE}){ ${fields} } }`, { i })));
+      return new Map(out.flatMap((d) => d?.items || []).map((it) => [String(it.id), it]));
+    };
+    const [l, g, s] = await Promise.all([
+      byId(lines, `state board { id } parent_item { id } ${LINE_FIELDS}`),
+      byId(ledger, `state board { id } ${LEDGER_FIELDS}`),
+      byId(shipments, `state board { id } ${SHIPMENT_FIELDS}`),
+    ]);
+    const live = (it, board) => it && it.state === "active" && String(it.board?.id) === board;
+    const ledgerOpen = [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP];
+    return {
+      lines: [...new Set(lines.map(String))].map((id) => {
+        const it = l.get(id);
+        return { id, orderId: it?.parent_item?.id ? String(it.parent_item.id) : null, line: live(it, BOARDS.wholesaleSub) ? orderLineOf(it) : null };
+      }),
+      ledger: [...new Set(ledger.map(String))].map((id) => {
+        const it = g.get(id);
+        return { itemId: id, record: live(it, BOARDS.ledger) && ledgerOpen.includes(it.group?.id) ? ledgerRecordOf(it) : null };
+      }),
+      shipments: [...new Set(shipments.map(String))].map((id) => {
+        const ship = live(s.get(id), NS.board) ? shipmentOf(s.get(id)) : null;
+        return { mondayId: id, ship: ship?.orderId ? ship : null };
+      }),
+    };
   }
 
   // Every column the app reads or writes must exist. If someone deletes or recreates one in monday
@@ -493,5 +580,5 @@ export function createMondayApi(transport = fetchTransport) {
     return assembleData(parts, allocationSource, new Date());
   }
 
-  return { loadMatrixData, loadParts, loadLedger, loadLedgerFor, loadShipments, findLedgerItem };
+  return { loadMatrixData, loadParts, loadLedger, loadLedgerFor, loadShipments, findLedgerItem, readBack };
 }

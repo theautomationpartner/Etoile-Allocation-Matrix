@@ -547,3 +547,25 @@ Medición antes (una carga completa, datos reales): 14 llamadas a monday · 11,2
   K-05 La caché vence a las 6 h y una escritura borra la parte que toca (tests) ...................................... PASA
   K-06 Partes desconocidas → 400; sin login → 401 (guarded) .......................................................... PASA
 npm test 108/108.
+
+--------------------------------------------------------------------------------
+ 26. RELECTURA AL ESCRIBIR: ALLOCATE Y SAVE AL INSTANTE (2026-10-14)
+--------------------------------------------------------------------------------
+Costo de releer tableros enteros después de una escritura (medido): Allocate 8 pedidos · ~114.000 puntos · ~14 s;
+Save 6 pedidos · ~21.000 puntos · ~7,5 s. Releer solo los registros tocados: Allocate ~180 puntos · ~0,8 s;
+Save (8 líneas + 1 shipment) ~540 puntos · ~1,3 s.
+  R-01 readBack = cargadores: 40 líneas, 40 items del Ledger y los shipments releídos por id son idénticos a lo que
+       dan loadOrders / loadLedger / loadShipments; aplicarlos no cambia los datos armados (monday real, solo lectura) . PASA
+  R-02 Un item borrado en monday vuelve con state "deleted" → se saca de la parte ................................... PASA
+  R-03 Servidor local, shipment descartable: la escritura devuelve las líneas de la orden y el shipment; la caché
+       queda actualizada (orders, shipments) sin borrar nada, con la misma hora de lectura; la próxima carga no lee
+       monday. Crear un shipment nuevo sigue borrando la parte shipments (operación aparte) ........................ PASA
+  R-04 Navegador, escritura simulada (no llega a monday): Allocate tipeado 5, monday responde 4 → la fila muestra 4 y
+       596 por cubrir, la copia del navegador guarda 4, las partes conservan su hora y no se relee ninguna ........... PASA
+  R-05 Navegador, Save de un shipment nuevo con 1 unidad despachada en Cin7 justo después → se ve guardado y
+       "Partially fulfilled · 1 of 3,164" al instante; la copia guarda shipment y línea; no se relee ninguna parte .... PASA
+  R-06 Tests: readIntoParts, readTargets (subitems sobre su item, links de shipments no tocan partes, creates →
+       borrar), patchCachedParts (lectura vieja no pisa), runSteps/onRead, Allocate devuelve read ................... PASA
+  R-07 Sin Redis local: el candado y la escritura condicional de Upstash (EVAL) no se pudieron probar acá; si fallan,
+       la parte se borra como antes. Para verlo en producción: Network → /api/monday-write → "cache" ............. PENDIENTE
+npm test 127/127 · npm run ui-check 204/204.

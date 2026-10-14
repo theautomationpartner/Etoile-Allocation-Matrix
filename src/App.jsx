@@ -64,7 +64,7 @@ function Workspace({ user }) {
   const matrix = useMatrixData();
   const toast = useToast();
   // Shipments live here: the matrix edits them and the Control center's side panel shows them.
-  const shipments = useShipments({ data: matrix.data, model: matrix.model, write: fetchWrite, toast: toast.show, patchData: matrix.patchData });
+  const shipments = useShipments({ data: matrix.data, model: matrix.model, write: fetchWrite, toast: toast.show, patchData: matrix.patchData, applyRead: matrix.applyRead });
   // Unsaved shipments survive switching screens, but not leaving the app or a Refresh (monday is read again).
   useLeaveGuard(shipments.hasUnsaved, `${shipments.unsaved.join(", ")} — not saved to Monday`, { refresh: true });
   // Switching screens drops what only lives on the open screen (a filled packing list form): ask first.
