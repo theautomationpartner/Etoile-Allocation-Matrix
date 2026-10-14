@@ -32,7 +32,7 @@ const sameValues = (a = {}, b = {}) => {
 // shipments: useShipments(...) owned by the workspace (the Control center opens the same records).
 // request: { n, filter?, orderShipments? } from another screen (the Control center): apply a Show filter, or
 // open an order on its Shipments tab. n changes on every request.
-export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, shipments, request, onGoTransit, panelRequest }) {
+export function AllocationMatrix({ data, model, status, error, search, onRefresh, toast, patchData, applyRead, shipments, request, onGoTransit, panelRequest }) {
   // Unsaved shipments: leaving the app, a Refresh or switching screens asks first (App + components/LeaveGuard).
   const refresh = onRefresh;
   const [filter, setFilter] = useState("all"); // §15.1: one filter at a time
@@ -86,6 +86,11 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
     if (edit && !edit.saving && (!ed || shipments.ui.tab[editOrder] === "ships")) setEdit(null);
   }, [edit, ed, editOrder, shipments.ui.tab]);
 
+  // After Allocate / Release (or a conflict): what monday has now (read), else the figures computed here.
+  const settle = ({ data: computed, read }) => {
+    if (!(read && applyRead?.(read))) patchData((cur) => ({ ...computed, loadedAt: cur.loadedAt }));
+  };
+
   const editorActions = {
     onChange(row, raw) {
       const { value, capped } = clampValue(row, raw);
@@ -108,14 +113,15 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
       const orderId = String(ed.line.orderId);
       try {
         const res = await saveAllocation(fetchWrite, mondayApi, { data, lineId: edit.lineId, values: edit.values });
-        // Keep loadedAt: the matrix is recalculated, unsaved shipments stay as they are.
-        patchData((cur) => ({ ...res.data, loadedAt: cur.loadedAt }));
+        // The records monday has now replace the old ones (every screen shows them at once); without them, the
+        // figures computed here (keep loadedAt: the matrix is recalculated, unsaved shipments stay as they are).
+        settle(res);
         const cut = shipments.actions.fitAllocation(orderId, sku, res.allocated);
         setEdit(null);
         toast(`${cut ? `${fmt(cut)} units of ${sku} came out of ${number}'s shipments: save them to keep the change. ` : ""}${allocatedMessage({ sku, number, allocated: res.allocated, toShip: goal })}`);
       } catch (e) {
         // A conflict brings the figures read just now: the editor shows them.
-        if (e.fresh) patchData((cur) => ({ ...e.fresh, loadedAt: cur.loadedAt }));
+        if (e.fresh) settle({ data: e.fresh, read: e.read });
         setEdit((cur) => (cur ? { ...cur, saving: false, error: `Not allocated: ${e.message}` } : cur));
       }
     },
@@ -129,11 +135,11 @@ export function AllocationMatrix({ data, model, status, error, search, onRefresh
     setReleasing(item.key);
     try {
       const res = await releaseLine(fetchWrite, mondayApi, { data, lineId: item.lineId });
-      patchData((cur) => ({ ...res.data, loadedAt: cur.loadedAt }));
+      settle(res);
       const cut = shipments.actions.fitAllocation(item.orderId, item.sku, res.allocated);
       toast(`Released ${fmt(res.plan.units)} units of ${item.title}: ${res.plan.parts.map((p) => `${fmt(p.qty)} from ${p.title}`).join(" · ")}.${cut ? ` ${fmt(cut)} units came out of its shipments: save them to keep the change.` : ""}`);
     } catch (e) {
-      if (e.fresh) patchData((cur) => ({ ...e.fresh, loadedAt: cur.loadedAt }));
+      if (e.fresh) settle({ data: e.fresh, read: e.read });
       toast(`Not released: ${e.message}`);
     } finally {
       setReleasing(null);

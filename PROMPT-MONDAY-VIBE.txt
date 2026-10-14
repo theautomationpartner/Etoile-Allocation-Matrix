@@ -1056,6 +1056,22 @@ orders, fulfilledOrders, warehouse, containers, pos, ledger, shipments, imports,
     orders, ledger, containers; borrar contenedor: containers, imports, warehouse; subir packing list: imports): la
     próxima carga las vuelve a leer y nadie sigue viendo lo de antes de la escritura. En el navegador, lo que el
     usuario escribió se vuelve a leer en el siguiente refresco (patchData marca orders, ledger y shipments).
+  · RELECTURA AL ESCRIBIR (2026-10-14) — Allocate, Release, Save y Delete de un shipment: en el MISMO pedido de la
+    escritura, el servidor vuelve a leer por id solo los registros que tocó (readTargets en api/monday-write.js: la
+    línea Wholesale, su item del Ledger, el shipment; y lo que pide el navegador en body.read: la línea en Allocate,
+    todas las líneas de la orden en Save) — monday.js readBack, un pedido por tipo en paralelo. Responde
+    { data, read, cache } y:
+      - en el servidor, esos registros reemplazan a los viejos dentro de la caché (patchCachedParts + readIntoParts),
+        en vez de borrar la parte entera: la próxima carga de cualquiera sale de la caché, ya con el cambio. Con
+        Redis: candado corto por parte y escritura condicional (si otra escritura la invalidó en el medio, se borra);
+        si algo falla, se borra la parte como antes. Lo que no se puede releer (p. ej. crear un item: su id llega
+        después) se borra como antes;
+      - en el navegador, useMatrixData.applyRead reemplaza esos registros en su copia (etoile-parts-cache-v2) y arma
+        los datos de nuevo: todas las pantallas muestran las cantidades nuevas al instante (incluido lo que Cin7
+        despachó entre medio, porque la línea se lee fresca) y no se marca nada para releer. Sin read (falló la
+        lectura) se usa patchData como antes.
+    Costo medido: Allocate ~180 puntos y ~0,8 s más; Save ~540 puntos y ~1,3 s más (8 líneas + 1 shipment), contra
+    ~21.000–114.000 puntos y 7,5–14 s de releer los tableros enteros. Ver QA sección 26.
   · Lo que cambia en monday por fuera de la app (Make / Cin7) se ve como mucho 6 h después, o al apretar Refresh.
   · Almacenamiento: Redis de Upstash (Vercel Marketplace; variables KV_REST_API_URL + KV_REST_API_TOKEN o
     UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN), compartido por todas las instancias. Sin esas variables usa
@@ -1124,3 +1140,4 @@ orders, fulfilledOrders, warehouse, containers, pos, ledger, shipments, imports,
 2026-10-09  CONEXIONES TRANSVERSALES — sección 21: buscador + Enter, breadcrumb sin registros borrados, reservas huérfanas en la orden.
 2026-10-09  Calendario propio (ETD/ETA y Ship date: el nativo está bloqueado en el iframe de monday); People con avatares; sin enlace al form.
 2026-10-09  CACHÉ DEL SERVIDOR — sección 22: datos por tablero, 6 h, Refresh por pantalla, invalidación al escribir.
+2026-10-14  RELECTURA AL ESCRIBIR — sección 22: Allocate / Save releen solo sus registros y los reemplazan en la caché y en el navegador.

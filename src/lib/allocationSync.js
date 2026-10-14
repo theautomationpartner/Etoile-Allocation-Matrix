@@ -19,8 +19,13 @@
 // depend on) together with the line's item; a source record that stays is rewritten in place (~0.7 s); and every
 // write goes in ONE request as steps (runSteps), whose changes monday gets at the same time. A line without a
 // Ledger item needs one more request (the item must exist before its subitems).
+//
+// Read back (2026-10-14): the Ledger records read before writing and the records monday has right after the write
+// (the line's Ledger item and Wholesale subitem, read again by the server in the same request) come back as `read`:
+// [reads for readIntoParts], so the app replaces just those records (useMatrixData applyRead) and every screen shows
+// the new quantities at once. read is null when the write went one operation at a time or the read failed.
 import { buildModel } from "./engine.js";
-import { ledgerItemOf, withLedger, withLedgerFor } from "./monday.js";
+import { ledgerItemOf, ledgerReadOf, withLedger, withLedgerFor } from "./monday.js";
 import { BASELINE, LEDGER, TRANSIT_LINES, batchIds, chunks, runSteps } from "./mondayWrites.js";
 import { editorFor, entriesFrom, ledgerRecord, releasePlan } from "./allocation.js";
 import { arrivalIndex, transitLineLabel } from "./arrival.js";
@@ -29,43 +34,47 @@ import { fmt } from "./format.js";
 export class AllocationConflict extends Error {}
 
 // The data with the Ledger read again, and the Ledger item of the line: only the SKU's records when the api can
-// (loadLedgerFor), else the whole Ledger and a separate lookup.
+// (loadLedgerFor), else the whole Ledger and a separate lookup. before: those records as a read (loadLedgerFor only).
 async function freshFor(api, data, lineId) {
   const line = data.orders.flatMap((o) => o.lines).find((l) => String(l.id) === String(lineId));
   if (line && typeof api.loadLedgerFor === "function") {
     const lines = data.orders.flatMap((o) => o.lines).filter((l) => l.sku === line.sku);
     const { ledger, items } = await api.loadLedgerFor(lines.map((l) => ({ id: l.id, ledgerLinkId: l.ledgerLinkId })));
-    return { fresh: withLedgerFor(data, ledger, line.sku), item: ledgerItemOf(items, lineId, line.ledgerLinkId) };
+    return { fresh: withLedgerFor(data, ledger, line.sku), item: ledgerItemOf(items, lineId, line.ledgerLinkId), before: ledgerReadOf(items) };
   }
   const [ledger, item] = await Promise.all([api.loadLedger(), line ? api.findLedgerItem(lineId, line.ledgerLinkId) : null]);
-  return { fresh: withLedger(data, ledger), item: line ? item : undefined };
+  return { fresh: withLedger(data, ledger), item: line ? item : undefined, before: null };
 }
+// The reads to apply after a write: the records read before it, then what monday has after it (null if either is missing).
+const readsOf = (before, after) => (before && after ? [before, ...after] : null);
 
-// values: { rowId: qty }. Returns { data, entries, allocated } — data is the matrix data with the fresh Ledger
-// and this line's new entries (the caller keeps its loadedAt).
+// values: { rowId: qty }. Returns { data, entries, allocated, read } — data is the matrix data with the fresh Ledger
+// and this line's new entries (the caller keeps its loadedAt); read: see above. A conflict carries fresh and read too.
 export async function saveAllocation(write, api, { data, lineId, values }) {
-  const { fresh, item } = await freshFor(api, data, lineId);
-  return saveWith(write, api, fresh, lineId, values, item);
+  const { fresh, item, before } = await freshFor(api, data, lineId);
+  return saveWith(write, api, fresh, lineId, values, item, before);
 }
 
 // Review — "Release": the extra units of a line go back to their sources (releasePlan), with the figures read
 // just now. Returns what saveAllocation returns, plus plan.
 export async function releaseLine(write, api, { data, lineId }) {
-  const { fresh, item } = await freshFor(api, data, lineId);
+  const { fresh, item, before } = await freshFor(api, data, lineId);
   const model = buildModel(fresh);
   const line = model.lines.find((l) => String(l.lineId) === String(lineId)) || model.heldLines.find((l) => String(l.lineId) === String(lineId));
   const plan = line && releasePlan(line);
   if (!plan) {
     const err = new AllocationConflict("This line has nothing extra to release any more. The figures were updated.");
     err.fresh = fresh;
+    err.read = before && [before];
     throw err;
   }
-  if (!line.held) return { ...(await saveWith(write, api, fresh, lineId, plan.values, item)), plan };
+  if (!line.held) return { ...(await saveWith(write, api, fresh, lineId, plan.values, item, before)), plan };
 
   // Fully shipped line (nothing left to ship): everything goes back; the record becomes Released.
   const rec = ledgerRecord({ order: line.order, raw: line.raw, sku: line.sku, entries: [], data: fresh });
   const fulfilled = Number(line.raw.fulfilled) || 0;
-  await writeLedgerLine(write, api, { lineId, linkId: line.raw.ledgerLinkId, rec, empty: true, item, after: [baselineOp(line.raw, lineId)] });
+  let after = null;
+  await writeLedgerLine(write, api, { lineId, linkId: line.raw.ledgerLinkId, rec, empty: true, item, after: [baselineOp(line.raw, lineId)], onRead: (r) => { after = r; } });
   const next = {
     ...fresh,
     orders: fresh.orders.map((o) => ({
@@ -73,28 +82,21 @@ export async function releaseLine(write, api, { data, lineId }) {
       lines: o.lines.map((l) => (String(l.id) === String(lineId) ? { ...l, entries: [], ledgerItemId: null, lastProcessed: fulfilled, ledgerFulfilled: fulfilled } : l)),
     })),
   };
-  return { data: next, entries: [], allocated: 0, plan };
+  return { data: next, entries: [], allocated: 0, plan, read: readsOf(before, after) };
 }
 
-async function saveWith(write, api, fresh, lineId, values, item) {
+async function saveWith(write, api, fresh, lineId, values, item, before = null) {
   // 1 — fresh confirmed entries of every line, and the caps with them.
   const model = buildModel(fresh);
   const ed = editorFor(model, fresh, lineId);
   if (!ed) throw new AllocationConflict("This line has nothing left to ship any more. Refresh to see the current figures.");
+  const conflict = (message) => Object.assign(new AllocationConflict(message), { fresh, read: before && [before] });
   for (const r of ed.rows) {
     const v = values[r.id] || 0;
-    if (v > r.max) {
-      const err = new AllocationConflict(`Only ${fmt(r.max)} units of ${ed.sku} are available in ${r.title} now: someone else allocated some since the figures were loaded. The editor shows the current figures — check them and click Allocate again.`);
-      err.fresh = fresh;
-      throw err;
-    }
+    if (v > r.max) throw conflict(`Only ${fmt(r.max)} units of ${ed.sku} are available in ${r.title} now: someone else allocated some since the figures were loaded. The editor shows the current figures — check them and click Allocate again.`);
   }
   for (const id of Object.keys(values)) {
-    if ((values[id] || 0) > 0 && !ed.rows.some((r) => r.id === id)) {
-      const err = new AllocationConflict(`One of the sources of this line is no longer available. The editor shows the current figures — check them and click Allocate again.`);
-      err.fresh = fresh;
-      throw err;
-    }
+    if ((values[id] || 0) > 0 && !ed.rows.some((r) => r.id === id)) throw conflict(`One of the sources of this line is no longer available. The editor shows the current figures — check them and click Allocate again.`);
   }
   const total = Object.values(values).reduce((a, b) => a + (b || 0), 0);
   if (total > ed.goal) throw new AllocationConflict(`This line has ${fmt(ed.goal)} units to ship now: the total can be ${fmt(ed.goal)} at most.`);
@@ -105,8 +107,9 @@ async function saveWith(write, api, fresh, lineId, values, item) {
   // last request of the Ledger record.
   const fulfilled = Number(ed.raw.fulfilled) || 0;
   const statuses = transitUpdates(fresh, entries.filter((e) => e.source === "intransit").map((e) => ({ sourceId: e.sourceId, sku: ed.sku })));
+  let after = null;
   const itemId = await writeLedgerLine(write, api, { lineId, linkId: ed.raw.ledgerLinkId, rec, empty: !entries.length, item,
-    after: [baselineOp(ed.raw, lineId), ...transitOps(statuses)] });
+    after: [baselineOp(ed.raw, lineId), ...transitOps(statuses)], onRead: (r) => { after = r; } });
 
   const label = new Map(statuses.map((s) => [s.id, s.label]));
   const next = {
@@ -119,7 +122,7 @@ async function saveWith(write, api, fresh, lineId, values, item) {
         : l)),
     })),
   };
-  return { data: next, entries, allocated: Math.min(total, ed.goal) };
+  return { data: next, entries, allocated: Math.min(total, ed.goal), read: readsOf(before, after) };
 }
 
 // The Wholesale subitem's Last Fulfilled Processed = its US Qty Fulfilled, when it changes (else null).
@@ -139,7 +142,10 @@ function baselineOp(raw, lineId) {
 //   3. the item's columns, its group, the Wholesale link, after — only once every record exists
 // A source record is kept when the new allocation uses the same source (item.subs tells what each one holds; without
 // it, every record goes and the new ones are created). A new item is created first, in its own request.
-export async function writeLedgerLine(write, api, { lineId, linkId, rec, empty, item, after = [] }) {
+// onRead(reads | null): the records monday has after the write — the line's Ledger item and its Wholesale subitem
+// (always read again: its US Qty Fulfilled may have changed in Cin7 meanwhile). See runSteps.
+export async function writeLedgerLine(write, api, { lineId, linkId, rec, empty, item, after = [], onRead }) {
+  const readBack = { read: { lines: [String(lineId)] }, onRead };
   // 2 — the line's Ledger item, in any group.
   if (item === undefined) item = await api.findLedgerItem(lineId, linkId);
   let itemId = item?.id || null;
@@ -148,13 +154,13 @@ export async function writeLedgerLine(write, api, { lineId, linkId, rec, empty, 
     : null); // the Wholesale subitem points to its Ledger item
 
   if (!itemId && empty) {
-    await runSteps(write, [after]);
+    await runSteps(write, [after], readBack);
     return null;
   }
   if (!itemId) {
     itemId = String((await write("createLedgerItem", { n: rec.name, v: JSON.stringify(rec.itemValues) })).create_item.id);
     const creates = createOps(itemId, rec.subitems);
-    const res = await runSteps(write, [creates, [linkOp(itemId), ...after]]);
+    const res = await runSteps(write, [creates, [linkOp(itemId), ...after]], readBack);
     checkCreated(creates, res[0]);
     return itemId;
   }
@@ -172,10 +178,10 @@ export async function writeLedgerLine(write, api, { lineId, linkId, rec, empty, 
     // One operation at a time: the last step only once the new records exist (as before).
     const res = await runSteps(write, steps.slice(0, 2));
     checkCreated(creates, res[1].slice(-creates.length || Infinity));
-    await runSteps(write, [last]);
+    await runSteps(write, [last], readBack);
   } else {
     // One request; the server stops before the columns if a record could not be written.
-    const res = await runSteps(write, steps);
+    const res = await runSteps(write, steps, readBack);
     checkCreated(creates, res[1].slice(-creates.length || Infinity));
   }
   return itemId;

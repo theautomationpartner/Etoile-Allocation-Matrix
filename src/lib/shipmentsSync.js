@@ -20,17 +20,19 @@ const now = () => {
 // If a write fails half-way, the error carries `partial` ({ mondayId, subIds }) with what already exists in
 // monday, so a retry updates those items instead of creating duplicates.
 // after(mondayId) → more operations sent with the last request (the links of the sale lines, linkOps).
-export async function saveShipment(write, ship, ctx, { after } = {}) {
+// readBack: { read, onRead } for runSteps — the shipment as monday has it after the save (and read: more records,
+// e.g. the lines of the order), so the app shows it at once without reading the board again.
+export async function saveShipment(write, ship, ctx, { after, readBack } = {}) {
   const done = { mondayId: ship.mondayId, subIds: { ...(ship.subIds || {}) } };
   try {
-    return await saveSteps(write, ship, ctx, done, after);
+    return await saveSteps(write, ship, ctx, done, after, readBack);
   } catch (error) {
     error.partial = done;
     throw error;
   }
 }
 
-async function saveSteps(write, ship, ctx, done, after) {
+async function saveSteps(write, ship, ctx, done, after, readBack) {
   const c = NS.col, sc = NS.subCol;
   const units = ship.skus.reduce((a, k) => a + (ship.qty[k] || 0), 0);
   const itemName = `${ctx.order.number} · ${ship.name}`;
@@ -82,7 +84,7 @@ async function saveSteps(write, ship, ctx, done, after) {
   const removed = chunks(Object.keys(done.subIds).filter((sku) => !ship.skus.includes(sku)));
   for (const part of removed) ops.push({ op: "deleteShipmentItems", variables: { entries: part.map((sku) => ({ i: done.subIds[sku] })) } });
 
-  const [results] = await runSteps(write, [[...ops, ...(after ? after(mondayId) : [])]]);
+  const [results] = await runSteps(write, [[...ops, ...(after ? after(mondayId) : [])]], readBack);
   toCreate.forEach((part, n) => {
     batchIds(results[firstCreate + n], part.length).forEach((id, k) => {
       if (!id) throw new Error(`Monday did not create the line for ${part[k]}.`);
@@ -93,9 +95,9 @@ async function saveSteps(write, ship, ctx, done, after) {
   return { mondayId, subIds: { ...done.subIds } };
 }
 
-// after: more operations sent in the same request (the links of the sale lines left, linkOps).
-export async function deleteShipment(write, ship, after = []) {
-  await runSteps(write, [[ship.mondayId ? { op: "deleteShipmentItems", variables: { entries: [{ i: ship.mondayId }] } } : null, ...after]]); // its subitems go with it
+// after: more operations sent in the same request (the links of the sale lines left, linkOps). readBack: see saveShipment.
+export async function deleteShipment(write, ship, after = [], readBack) {
+  await runSteps(write, [[ship.mondayId ? { op: "deleteShipmentItems", variables: { entries: [{ i: ship.mondayId }] } } : null, ...after]], readBack); // its subitems go with it
 }
 
 // Connect each sale line of these SKUs to the saved shipments that carry units of it (batched) — as operations.

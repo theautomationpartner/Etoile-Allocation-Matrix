@@ -234,9 +234,14 @@ export function checkSteps(steps) {
 // one operation after the other. Returns the data of each operation, in the same shape as steps (undefined for a
 // skipped one). A request carries at most MAX_STEP_CHANGES changes: more go in further requests, in order (a step
 // that big is split; its operations don't depend on each other).
-export async function runSteps(write, steps) {
+// Read back (2026-10-14): the server reads again, by id, the records each request changed (and opts.read: more ids
+// to read with the last one, e.g. { lines: [Wholesale subitem ids] }) and answers them; onRead gets the list of
+// those reads, in order — or null if any request answered none (one operation at a time, or the read failed): then
+// the caller keeps its own copy and those parts are read again on the next load.
+export async function runSteps(write, steps, { read, onRead } = {}) {
   const clean = steps.map((st) => (st || []).filter(Boolean));
   const res = clean.map((st) => new Array(st.length));
+  const reads = [];
   if (typeof write.many === "function") {
     const pieces = []; // { i: step, idx: [operation indexes] }
     clean.forEach((st, i) => {
@@ -249,21 +254,24 @@ export async function runSteps(write, steps) {
       if (cur.length) pieces.push({ i, idx: cur });
     });
     let req = [], size = 0;
-    const flush = async () => {
+    const flush = async (last) => {
       if (!req.length) return;
-      const data = await write.many(req.map((pc) => pc.idx.map((j) => clean[pc.i][j])));
+      let got = null;
+      const data = await write.many(req.map((pc) => pc.idx.map((j) => clean[pc.i][j])), { read: last ? read : undefined, onRead: (r) => { got = r; } });
+      reads.push(got || null);
       req.forEach((pc, r) => pc.idx.forEach((j, q) => { res[pc.i][j] = data[r][q]; }));
       req = []; size = 0;
     };
     for (const pc of pieces) {
       const n = pc.idx.reduce((a, j) => a + changesOf(clean[pc.i][j].op, clean[pc.i][j].variables), 0);
-      if (req.length && size + n > MAX_STEP_CHANGES) await flush();
+      if (req.length && size + n > MAX_STEP_CHANGES) await flush(false);
       req.push(pc); size += n;
     }
-    await flush();
+    await flush(true);
   } else {
     for (const [i, st] of clean.entries()) for (const [j, { op, variables }] of st.entries()) res[i][j] = await write(op, variables);
   }
+  onRead?.(reads.length && !reads.includes(null) ? reads : null);
   return steps.map((st, i) => { let j = 0; return (st || []).map((o) => (o ? res[i][j++] : undefined)); });
 }
 
@@ -292,13 +300,14 @@ export async function fetchWrite(op, variables) {
 }
 
 // Steps of operations in one request (see runSteps): returns the data of each operation, in the same shape.
-fetchWrite.many = async function fetchSteps(steps) {
+// read: more records to read back; onRead(read) gets what the server read again after the writes (null: none).
+fetchWrite.many = async function fetchSteps(steps, { read, onRead } = {}) {
   checkSteps(steps);
   const { authHeaders, NotAuthorizedError, reportDenied } = await import("./auth.js");
   const res = await fetch("/api/monday-write", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ steps }),
+    body: JSON.stringify({ steps, ...(read ? { read } : {}) }),
   });
   if (res.status === 401) {
     reportDenied();
@@ -307,5 +316,6 @@ fetchWrite.many = async function fetchSteps(steps) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok || body.error) throw new Error(body.error || body.errors?.[0]?.message || `HTTP ${res.status}`);
   if (Array.isArray(body.errors) && body.errors.length) throw new Error(body.errors.map((e) => e.message).join(" | "));
+  onRead?.(body.read || null);
   return body.data;
 };

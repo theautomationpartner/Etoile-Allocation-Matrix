@@ -16,22 +16,24 @@ const json = (status, body) =>
 
 const api = createMondayApi((query, variables) => serverMonday(query, variables));
 
-// Two loads of the same parts at the same time on this instance share one monday read.
+// Two loads of the same parts at the same time on this instance share one monday read — except a Refresh (fresh):
+// it may come right after a write, and a read that started before the write would not contain it.
 const inFlight = new Map();
-async function fromMonday(names) {
+async function fromMonday(names, { fresh = false } = {}) {
   const key = [...names].sort().join(",");
-  if (!inFlight.has(key)) {
-    inFlight.set(key, (async () => {
+  if (fresh || !inFlight.has(key)) {
+    const run = (async () => {
       const at = new Date().toISOString();
       const raw = await api.loadParts(names);
       const parts = Object.fromEntries(names.map((n) => [n, { at, data: raw[n] }]));
       await writeParts(parts);
       return parts;
-    })().finally(() => inFlight.delete(key)));
+    })();
+    if (fresh) return run;
+    inFlight.set(key, run.finally(() => inFlight.delete(key)));
   }
   return inFlight.get(key);
 }
-
 const pick = (list) => {
   const names = [...new Set(String(list || "").split(",").map((s) => s.trim()).filter(Boolean))];
   const bad = names.filter((n) => !DATA_PARTS.includes(n));
@@ -61,7 +63,7 @@ export const POST = guarded(async (request) => {
   const { names: list, bad } = pick(Array.isArray(names) ? names.join(",") : "");
   if (bad.length) return json(400, { error: `Unknown parts: ${bad.join(", ")}.` });
   try {
-    const parts = await fromMonday(list);
+    const parts = await fromMonday(list, { fresh: true });
     return json(200, { parts, read: list, store: CACHE_STORE, ttlMs: CACHE_TTL_MS });
   } catch (e) {
     return json(502, { error: e?.message || String(e) });
