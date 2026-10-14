@@ -282,7 +282,7 @@ function OrderPanel({ id, prev, ctx, model, onOpen, shipments, onGoShipments }) 
         <div className="rel">
           {ships.length ? ships.map((sh) => (
             <RelRow key={sh.id} kind="it" title={sh.name}
-              meta={`${sh.target ? `ships ${dayMonthYear(sh.target)}` : "no ship date yet"} · ${plural(sh.skus.filter((k) => sh.qty[k]).length, "SKU", "SKUs")}`}
+              meta={`${shipments.statusOf(sh)} · ${sh.target ? `ships ${dayMonthYear(sh.target)}` : "no ship date yet"} · ${plural(sh.skus.filter((k) => sh.qty[k]).length, "SKU", "SKUs")}${shipments.sentUnits(sh) && shipments.sentUnits(sh) < Object.values(sh.qty).reduce((a, b) => a + (b || 0), 0) ? ` · ${fmt(shipments.sentUnits(sh))} fulfilled` : ""}`}
               qty={`${fmt(Object.values(sh.qty).reduce((a, b) => a + (b || 0), 0))} u`} onOpen={() => onGoShipments(String(id))} />
           )) : <div className="empty-note">No shipment yet.</div>}
         </div>

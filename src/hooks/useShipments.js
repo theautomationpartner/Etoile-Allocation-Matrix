@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmt, dayMonth, dayMonthYear } from "../lib/format.js";
 import { orderParts } from "../lib/matrix.js";
-import { lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, remainingAfter, shipSplit, shipUnits, trimShips } from "../lib/shipments.js";
+import { SHIP_STATUS, attributeShipped, lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, pendingOf, remainingAfter, sentOf, sentUnits, shipSplit, shipStatus, shipUnits, trimShips } from "../lib/shipments.js";
 import { mondayApi } from "../config.js";
 import { deleteShipment, linkOps, saveShipment } from "../lib/shipmentsSync.js";
 import { containerCode } from "../lib/matrix.js";
@@ -13,6 +13,21 @@ const savedLabel = (iso) => {
   return d && !Number.isNaN(d.getTime()) ? d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 };
 
+// A shipment as loaded from monday → the app's shipment. base: per SKU, its "Fulfilled at save", else the line's
+// reference (lineOf(sku).base: US Qty Fulfilled when the line was last allocated).
+function fromMonday(s, lineOf) {
+  const skus = [...new Set(s.lines.map((l) => l.sku))];
+  return {
+    id: s.mondayId, mondayId: s.mondayId, name: s.name, target: s.target, skus, savedAt: savedLabel(s.savedAt),
+    qty: Object.fromEntries(skus.map((k) => [k, s.lines.filter((l) => l.sku === k).reduce((a, l) => a + l.qty, 0)])),
+    subIds: Object.fromEntries(s.lines.map((l) => [l.sku, l.subId])), dirty: false,
+    base: Object.fromEntries(skus.map((k) => {
+      const saved = s.lines.find((l) => l.sku === k && Number.isFinite(l.fulfilledAtSave));
+      return [k, saved ? saved.fulfilledAtSave : lineOf(k)?.base];
+    })),
+  };
+}
+
 // Step 4 — shipments of every open order (PDF §16): loaded from monday, edited locally, saved with "Save".
 export function useShipments({ data, model, write, toast, patchData }) {
   // Keep the loaded data (and its cache) in step with what was just written to monday.
@@ -20,7 +35,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
     const rest = (d.shipments || []).filter((s) => s.mondayId !== ship.mondayId);
     const prev = (d.shipments || []).find((s) => s.mondayId === ship.mondayId);
     const entry = { mondayId: ship.mondayId, orderId: String(orderId), name: ship.name, target: ship.target, createdAt: prev?.createdAt || new Date().toISOString(), savedAt: new Date().toISOString(),
-      lines: ship.skus.map((k) => ({ subId: ship.subIds[k], sku: k, qty: ship.qty[k] || 0 })) };
+      lines: ship.skus.map((k) => ({ subId: ship.subIds[k], sku: k, qty: ship.qty[k] || 0, fulfilledAtSave: Number.isFinite(ship.base?.[k]) ? ship.base[k] : null })) };
     return { ...d, shipments: [...rest, entry].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
   });
   const persistDeleted = (mondayId) => patchData?.((d) => ({ ...d, shipments: (d.shipments || []).filter((s) => s.mondayId !== mondayId) }));
@@ -28,15 +43,25 @@ export function useShipments({ data, model, write, toast, patchData }) {
   const [ui, setUi] = useState({ tab: {}, closed: {}, rename: null, menu: null, confirmDelete: null, saving: {}, errors: {} });
 
   // ── lookups ──
+  // Every line of an open order, also the ones Cin7 already fulfilled (nothing left to ship): their shipments stay
+  // visible with what already left. fulfilled = US Qty Fulfilled now; base = what it was when the line was last
+  // allocated (the reference for shipment lines saved before "Fulfilled at save" existed).
   const lines = useMemo(() => {
     const m = new Map();
     if (!model || !data) return m;
-    const ledgerOf = new Map(data.orders.flatMap((o) => o.lines.map((l) => [String(l.id), l.ledgerItemId])));
-    for (const l of model.lines) {
-      m.set(`${l.orderId}|${l.sku}`, {
-        lineId: l.lineId, ledgerItemId: ledgerOf.get(String(l.lineId)) || null, allocated: l.allocated, toShip: l.toShip,
-        entries: l.entries, productName: data.warehouse[l.sku]?.name || l.sku,
-      });
+    const live = new Map(model.lines.map((l) => [`${l.orderId}|${l.sku}`, l]));
+    for (const o of model.orders) {
+      for (const raw of o.lines || []) {
+        const key = `${o.id}|${raw.sku}`;
+        if (m.has(key)) continue;
+        const l = live.get(key);
+        const fulfilled = Number(raw.fulfilled) || 0;
+        m.set(key, {
+          lineId: l?.lineId ?? raw.id, ledgerItemId: raw.ledgerItemId || null, allocated: l?.allocated || 0, toShip: l?.toShip || 0,
+          entries: l?.entries || [], productName: data.warehouse[raw.sku]?.name || raw.sku, fulfilled,
+          base: Number.isFinite(raw.ledgerFulfilled) ? raw.ledgerFulfilled : Number.isFinite(raw.lastProcessed) ? raw.lastProcessed : fulfilled,
+        });
+      }
     }
     return m;
   }, [data, model]);
@@ -54,23 +79,21 @@ export function useShipments({ data, model, write, toast, patchData }) {
 
   const splitOf = useCallback((orderId, ships, sku, override) => shipSplit(ships, lineOf(orderId, sku)?.entries || [], sku, srcDate, override), [lineOf, srcDate]);
 
-  // ── load from monday (and §16.4: trim what no longer fits the allocation, last shipment first) ──
+  const fulfilledOf = useCallback((orderId) => (sku) => lineOf(orderId, sku)?.fulfilled, [lineOf]);
+
+  // ── load from monday (and §16.4: trim what no longer fits the allocation, last shipment first — only units that
+  // haven't left yet) ──
   useEffect(() => {
     if (!data || !model) return;
     const openIds = new Set(model.orders.map((o) => String(o.id)));
     const next = {};
     for (const s of data.shipments || []) {
       if (!openIds.has(s.orderId)) continue;
-      const skus = [...new Set(s.lines.map((l) => l.sku))];
-      (next[s.orderId] ||= []).push({
-        id: s.mondayId, mondayId: s.mondayId, name: s.name, target: s.target, skus, savedAt: savedLabel(s.savedAt),
-        qty: Object.fromEntries(skus.map((k) => [k, s.lines.filter((l) => l.sku === k).reduce((a, l) => a + l.qty, 0)])),
-        subIds: Object.fromEntries(s.lines.map((l) => [l.sku, l.subId])), dirty: false,
-      });
+      (next[s.orderId] ||= []).push(fromMonday(s, (sku) => lineOf(s.orderId, sku)));
     }
     const notes = [];
     for (const [orderId, ships] of Object.entries(next)) {
-      let cur = ships;
+      let cur = attributeShipped(ships, fulfilledOf(orderId));
       for (const sku of new Set(ships.flatMap((s) => s.skus))) {
         const { ships: trimmed, cut } = trimShips(cur, sku, allocatedOf(orderId, sku));
         if (cut) notes.push(`${fmt(cut)} units of ${sku} came out of ${orderParts(model.orders.find((o) => String(o.id) === orderId)?.name).number}'s shipments: its allocation is lower now. Save to keep the change.`);
@@ -84,7 +107,9 @@ export function useShipments({ data, model, write, toast, patchData }) {
   }, [data?.loadedAt?.getTime?.(), Boolean(model)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── helpers ──
-  const shipsOf = (orderId) => byOrder[orderId] || [];
+  // The shipments of an order with what already left (shipped), from Cin7's US Qty Fulfilled now.
+  const withShipped = useMemo(() => Object.fromEntries(Object.entries(byOrder).map(([o, ships]) => [o, attributeShipped(ships, fulfilledOf(o))])), [byOrder, fulfilledOf]);
+  const shipsOf = (orderId) => withShipped[orderId] || [];
   const update = (orderId, fn) => setByOrder((cur) => ({ ...cur, [orderId]: fn(cur[orderId] || []) }));
   const patchShip = (orderId, shipId, patch) => update(orderId, (ships) => ships.map((s) => (s.id === shipId ? { ...s, ...patch, dirty: true } : s)));
   const setUiKey = (key, value) => setUi((u) => ({ ...u, [key]: typeof value === "function" ? value(u[key]) : value }));
@@ -109,6 +134,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
       if (!skus.length) return toast(`Every allocated unit of ${number} is already in a shipment.`);
       const s = nextShip(ships, orderId);
       s.skus = skus;
+      s.base = Object.fromEntries(skus.map((k) => [k, lineOf(orderId, k)?.fulfilled ?? 0])); // nothing of it has left yet
       s.qty = Object.fromEntries(skus.map((k) => [k, copy ? leftToShip(ships, k, allocatedOf(orderId, k)) : 0]));
       update(orderId, (cur) => [...cur, s]);
       setUi((u) => ({ ...u, tab: { ...u.tab, [orderId]: "ships" }, menu: null }));
@@ -118,8 +144,14 @@ export function useShipments({ data, model, write, toast, patchData }) {
 
     setQty(orderId, shipId, sku, raw) {
       const ships = shipsOf(orderId), sh = ships.find((s) => s.id === shipId);
+      if (shipStatus(sh) === SHIP_STATUS.FULFILLED) return toast(`${sh.name} already left: it can't be changed.`);
       let v = parseInt(raw, 10);
       if (Number.isNaN(v) || v < 0) v = 0;
+      const sent = sentOf(sh, sku);
+      if (v < sent) {
+        toast(`${fmt(sent)} units of ${sku} in ${sh.name} already left (fulfilled in Cin7): it can't go below that.`);
+        v = sent;
+      }
       const max = maxFor(ships, sh, sku, allocatedOf(orderId, sku));
       if (v > max) {
         toast(`Only ${fmt(max)} allocated units of ${sku} aren't in another shipment.`);
@@ -137,6 +169,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
 
     setDate(orderId, shipId, v) {
       const ships = shipsOf(orderId), sh = ships.find((s) => s.id === shipId);
+      if (shipStatus(sh) === SHIP_STATUS.FULFILLED) return toast(`${sh.name} already left: its ship date can't be changed.`);
       if (!v) return patchShip(orderId, shipId, { target: "" });
       if (v < todayISO()) return toast(`The ship date can't be before today.`);
       const late = [];
@@ -161,12 +194,15 @@ export function useShipments({ data, model, write, toast, patchData }) {
     startRename: (shipId) => setUi((u) => ({ ...u, rename: shipId, menu: null })),
     finishRename(orderId, shipId, value, cancel) {
       const v = String(value || "").trim();
+      const sh = shipsOf(orderId).find((s) => s.id === shipId);
+      if (sh && shipStatus(sh) === SHIP_STATUS.FULFILLED) return setUiKey("rename", null); // read-only once it left
       if (!cancel && v) patchShip(orderId, shipId, { name: v });
       setUiKey("rename", null);
     },
 
     removeRow(orderId, shipId, sku) {
       const sh = shipsOf(orderId).find((s) => s.id === shipId), n = sh.qty[sku] || 0;
+      if (sentOf(sh, sku)) return toast(`${fmt(sentOf(sh, sku))} units of ${sku} in ${sh.name} already left: the row can't be removed.`);
       const qty = { ...sh.qty };
       delete qty[sku];
       patchShip(orderId, shipId, { skus: sh.skus.filter((k) => k !== sku), qty });
@@ -174,8 +210,9 @@ export function useShipments({ data, model, write, toast, patchData }) {
     },
 
     async deleteShip(orderId, shipId) {
-      if (ui.confirmDelete !== shipId) return setUiKey("confirmDelete", shipId); // second click confirms
       const ships = shipsOf(orderId), sh = ships.find((s) => s.id === shipId), n = shipUnits(sh);
+      if (sentUnits(sh)) return toast(`${fmt(sentUnits(sh))} units of ${sh.name} already left (fulfilled in Cin7): it can't be deleted.`);
+      if (ui.confirmDelete !== shipId) return setUiKey("confirmDelete", shipId); // second click confirms
       setUi((u) => ({ ...u, menu: null, confirmDelete: null, saving: { ...u.saving, [shipId]: true } }));
       try {
         const rest = ships.filter((s) => s.id !== shipId);
@@ -194,13 +231,13 @@ export function useShipments({ data, model, write, toast, patchData }) {
       const ships = shipsOf(orderId);
       let sh = ships.find((s) => s.id === shipId);
       // §16.4 — per SKU, Σ in all shipments ≤ Allocated (the inputs already cap it; re-check before writing).
-      const over = sh.skus.filter((k) => ships.reduce((a, s) => a + (s.qty[k] || 0), 0) > allocatedOf(orderId, k));
+      const over = sh.skus.filter((k) => ships.reduce((a, s) => a + pendingOf(s, k), 0) > allocatedOf(orderId, k));
       if (over.length) return setUi((u) => ({ ...u, errors: { ...u.errors, [shipId]: `More units than allocated for ${over.join(", ")}. Lower them before saving.` } }));
       setUi((u) => ({ ...u, saving: { ...u.saving, [shipId]: true }, errors: { ...u.errors, [shipId]: "" } }));
       try {
         // §10 concurrency: someone else may have saved shipments of this order since the page was loaded.
         const latestRaw = (await mondayApi.loadShipments()).filter((s) => s.orderId === String(orderId));
-        const latest = latestRaw.map((s) => ({ mondayId: s.mondayId, qty: s.lines.reduce((m, l) => ({ ...m, [l.sku]: (m[l.sku] || 0) + l.qty }), {}) }));
+        const latest = attributeShipped(latestRaw.map((s) => fromMonday(s, (k) => lineOf(orderId, k))), fulfilledOf(orderId));
         if (sh.mondayId) {
           const mine = latestRaw.find((s) => s.mondayId === sh.mondayId);
           if (!mine) throw new Error("This shipment was deleted in Monday by someone else. Refresh to see the current shipments.");
@@ -223,7 +260,9 @@ export function useShipments({ data, model, write, toast, patchData }) {
         // The sale lines are connected to their shipments in the same request as the save (linkOps).
         const links = (id) => linkOps(ships.map((s) => (s.id === shipId ? { ...sh, mondayId: id } : s)), [...sh.skus, ...Object.keys(sh.subIds || {})], (k) => lineOf(orderId, k));
         const { mondayId, subIds } = await saveShipment(write, sh, ctx, { after: links });
-        const savedShip = { ...sh, id: sh.id, mondayId, subIds, dirty: false, savedAt: savedLabel(new Date().toISOString()) };
+        // New lines got "Fulfilled at save" = the line's US Qty Fulfilled now; the others keep theirs.
+        const base = Object.fromEntries(sh.skus.map((k) => [k, Number.isFinite(sh.base?.[k]) ? sh.base[k] : lineOf(orderId, k)?.fulfilled ?? 0]));
+        const savedShip = { ...sh, id: sh.id, mondayId, subIds, base, dirty: false, savedAt: savedLabel(new Date().toISOString()) };
         const nextShips = ships.map((s) => (s.id === shipId ? savedShip : s));
         update(orderId, () => nextShips);
         persistSaved(orderId, savedShip);
@@ -243,7 +282,7 @@ export function useShipments({ data, model, write, toast, patchData }) {
     .map((s) => `${s.name}${model ? ` of ${orderInfo(orderId).number}` : ""}`));
 
   return {
-    ui, actions, shipsOf, allocatedOf, lineOf, splitOf, srcDate, orderInfo, remainingToCopy,
+    ui, actions, shipsOf, allocatedOf, lineOf, splitOf, srcDate, orderInfo, remainingToCopy, statusOf: shipStatus, sentOf, sentUnits,
     hasUnsaved: unsaved.length > 0, unsaved,
     lateUnitsOf: (orderId, sh) => sh.skus.reduce((a, k) => a + lateUnits(sh, splitOf(orderId, shipsOf(orderId), k)[sh.id], srcDate), 0),
     maxOf: (orderId, sh, sku) => maxFor(shipsOf(orderId), sh, sku, allocatedOf(orderId, sku)),
