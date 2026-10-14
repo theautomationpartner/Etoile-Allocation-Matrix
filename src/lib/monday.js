@@ -427,7 +427,8 @@ export function createMondayApi(transport = fetchTransport) {
           target: date(cv(it, c.date)),
           savedAt: savedIso(it.column_values.find((x) => x.id === c.saved)?.value), // UTC, from the column value
           createdAt: it.created_at || "",
-          lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)) })).filter((l) => l.sku),
+          lines: (it.subitems || []).map((s) => ({ subId: String(s.id), sku: cv(s, sc.sku).trim(), qty: num(cv(s, sc.qty)),
+            fulfilledAtSave: cv(s, sc.fulfilledAtSave) === "" ? null : num(cv(s, sc.fulfilledAtSave)) })).filter((l) => l.sku),
         };
       })
       .filter((s) => s.orderId)

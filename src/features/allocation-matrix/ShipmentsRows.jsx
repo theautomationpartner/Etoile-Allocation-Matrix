@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fmt, dayMonth, dayMonthYear } from "../../lib/format.js";
-import { shipUnits } from "../../lib/shipments.js";
+import { SHIP_STATUS, shipUnits } from "../../lib/shipments.js";
 import { DatePicker } from "../../components/DatePicker.jsx";
 
 // "···" menu of a shipment: a floating panel placed under the button. It is rendered into <body>
 // (portal): inside the table it would share the sticky cells' stacking context and could be painted
 // under them. Closes on a click outside or Escape; on scroll it follows its button.
-function ShipMenu({ open, confirmDelete, onToggle, onClose, onRename, onDelete }) {
+function ShipMenu({ open, confirmDelete, canDelete = true, onToggle, onClose, onRename, onDelete }) {
   const btn = useRef(null), panel = useRef(null);
   const [pos, setPos] = useState(null);
   useEffect(() => {
@@ -40,7 +40,9 @@ function ShipMenu({ open, confirmDelete, onToggle, onClose, onRename, onDelete }
       {open && pos && createPortal(
         <span ref={panel} className="mnu-p float" role="menu" style={pos}>
           <button type="button" role="menuitem" onClick={onRename}>Rename</button>
-          <button type="button" role="menuitem" className="dng" onClick={onDelete}>{confirmDelete ? "Click again to delete" : "Delete shipment"}</button>
+          {canDelete
+            ? <button type="button" role="menuitem" className="dng" onClick={onDelete}>{confirmDelete ? "Click again to delete" : "Delete shipment"}</button>
+            : <span className="mnu-note" role="note">Units already left: it can't be deleted</span>}
         </span>,
         document.body,
       )}
@@ -128,7 +130,11 @@ const TrashIcon = () => (
   </svg>
 );
 
-// §16 — the Shipments tab of an open order: one block per shipment (same markup as the mockup).
+// Status of a shipment (client, 2026-10-14): Draft until Cin7 fulfils its units, then Partially fulfilled / Fulfilled.
+const BADGE = { [SHIP_STATUS.DRAFT]: "", [SHIP_STATUS.PARTIAL]: "part", [SHIP_STATUS.FULFILLED]: "done" };
+
+// §16 — the Shipments tab of an open order: one block per shipment (same markup as the mockup). A shipment stays
+// here after Cin7 fulfils it, with what already left; that part can't be changed, and a Fulfilled one is read-only.
 export function ShipmentsRows({ group, cols, nCol, sh: S }) {
   const orderId = String(group.key);
   const ships = S.shipsOf(orderId);
@@ -152,35 +158,41 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
     const saving = S.ui.saving[sh.id];
     const error = S.ui.errors[sh.id];
     const splits = Object.fromEntries(sh.skus.map((k) => [k, S.splitOf(orderId, ships, k)[sh.id] || {}]));
+    const status = S.statusOf(sh), sent = S.sentUnits(sh), done = status === SHIP_STATUS.FULFILLED;
     return (
       <Fragment key={sh.id}>
         <tr className="shc">
           <td colSpan={nCol}>
             <div className="shc-in">
               <button type="button" className="cv" onClick={() => a.toggleShip(sh.id)} aria-label={opened ? "Collapse" : "Expand"}>{opened ? "▼" : "▶"}</button>
-              {S.ui.rename === sh.id ? (
+              {S.ui.rename === sh.id && !done ? (
                 <RenameInput value={sh.name}
                   onDone={(v) => a.finishRename(orderId, sh.id, v)} onCancel={() => a.finishRename(orderId, sh.id, "", true)} />
               ) : (
-                <button type="button" className="shn shn-edit" onClick={() => a.startRename(sh.id)} title="Click to rename">{sh.name}<PencilIcon /></button>
+                done ? <span className="shn">{sh.name}</span>
+                  : <button type="button" className="shn shn-edit" onClick={() => a.startRename(sh.id)} title="Click to rename">{sh.name}<PencilIcon /></button>
               )}
-              <span className="badge">Draft</span>
+              <span className={`badge ${BADGE[status]}`} title={status === SHIP_STATUS.DRAFT ? "Nothing of it has left yet" : `Cin7 fulfilled ${fmt(sent)} of its ${fmt(units)} units`}>{status}</span>
               <span className="shs">
-                <b>{fmt(units)}</b> / {fmt(order.toShip)} units
+                {status === SHIP_STATUS.DRAFT
+                  ? <><b>{fmt(units)}</b> / {fmt(order.toShip)} units</>
+                  : done ? <><b>{fmt(units)}</b> units fulfilled</> : <><b>{fmt(sent)}</b> of {fmt(units)} units fulfilled</>}
                 {sh.dirty ? <span className="unsaved"> · not saved yet</span> : sh.savedAt ? <span className="saved"> · saved {sh.savedAt}</span> : null}
               </span>
-              {late > 0 && <span className="shw">{fmt(late)} units land after the ship date</span>}
-              {sh.target && order.cancelDate && sh.target > order.cancelDate && <span className="shw">after the {dayMonth(order.cancelDate)} cancel date</span>}
+              {late > 0 && !done && <span className="shw">{fmt(late)} units land after the ship date</span>}
+              {!done && sh.target && order.cancelDate && sh.target > order.cancelDate && <span className="shw">after the {dayMonth(order.cancelDate)} cancel date</span>}
               {/* Controls follow the shipment's status, separated by a divider (not pushed to the far right). */}
               <span className="sh-controls">
-                <ShipDateField value={sh.target} min={S.today} onChange={(v) => a.setDate(orderId, sh.id, v)} />
+                {done
+                  ? <span className="shd"><span className="lbl">Ship date</span><span className="shd-ro">{sh.target ? dayMonthYear(sh.target) : "—"}</span></span>
+                  : <ShipDateField value={sh.target} min={S.today} onChange={(v) => a.setDate(orderId, sh.id, v)} />}
                 <button type="button" className={`btn save ${sh.dirty ? "dirty" : ""}`} disabled={saving || !sh.dirty} onClick={() => a.save(orderId, sh.id)}
                   title={sh.dirty ? "Save this shipment to Monday" : "Saved in Monday"}>
                   {saving ? <><SpinIcon /> Saving…</> : sh.dirty ? "Save" : <><CheckIcon /> Saved</>}
                 </button>
-                <ShipMenu open={S.ui.menu === sh.id} confirmDelete={S.ui.confirmDelete === sh.id}
+                {!done && <ShipMenu open={S.ui.menu === sh.id} confirmDelete={S.ui.confirmDelete === sh.id} canDelete={!sent}
                   onToggle={() => a.toggleMenu(sh.id)} onClose={() => a.closeMenu()}
-                  onRename={() => a.startRename(sh.id)} onDelete={() => a.deleteShip(orderId, sh.id)} />
+                  onRename={() => a.startRename(sh.id)} onDelete={() => a.deleteShip(orderId, sh.id)} />}
               </span>
               {error && <span className="ap-err sh-err" role="alert">{error}</span>}
             </div>
@@ -202,28 +214,31 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
               if (!line) return null;
               const q = sh.qty[sku] || 0;
               const max = S.maxOf(orderId, sh, sku);
+              const left = S.sentOf(sh, sku), allLeft = left > 0 && left >= q; // units of this row Cin7 already fulfilled
               const sp = splits[sku];
               return (
-                <tr key={sku} className={`rw shr ${q ? "" : "zero"}`}>
+                <tr key={sku} className={`rw shr ${q ? "" : "zero"} ${allLeft ? "sent" : ""}`}>
                   <td className="s1"><div className="rh"><div className="t"><b>{sku} - {line.productName}</b></div></div></td>
                   <td className="s2">
                     <div className="nn n4">
                       <span className="n mid">{fmt(line.toShip)}</span>
                       <span className="n mid">{fmt(line.allocated)}</span>
                       <span className="n">
+                        {allLeft ? <span className="qro" title={`${fmt(q)} units of ${sku} left with ${sh.name} (fulfilled in Cin7)`}>{fmt(q)}</span> : (
                         <input key={`${sh.id}-${sku}-${q}`} className="qin" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={7}
                           defaultValue={q} aria-label={`Units of ${sku} in ${sh.name}`}
                           onFocus={(e) => { const el = e.target; el.select(); setTimeout(() => document.activeElement === el && el.select(), 0); }}
                           onInput={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); if (v !== e.target.value) e.target.value = v; }}
-                          title={`Up to ${fmt(max)} allocated units not in another shipment`}
+                          title={left ? `${fmt(left)} already left · up to ${fmt(max)}` : `Up to ${fmt(max)} allocated units not in another shipment`}
                           onBlur={(e) => Number(e.target.value) !== q && a.setQty(orderId, sh.id, sku, e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+                          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />)}
+                        {left > 0 && <small className="sent">{allLeft ? "fulfilled" : `${fmt(left)} fulfilled`}</small>}
                       </span>
                       <span className="n">{fmt(S.remainingOf(orderId, sh, sku))}</span>
                       <span className="rm-slot">
-                        <button type="button" className="rmx" onClick={() => a.removeRow(orderId, sh.id, sku)} aria-label={`Remove ${sku} from ${sh.name}`} title={`Remove from ${sh.name}`}>
+                        {!left && <button type="button" className="rmx" onClick={() => a.removeRow(orderId, sh.id, sku)} aria-label={`Remove ${sku} from ${sh.name}`} title={`Remove from ${sh.name}`}>
                           <TrashIcon />
-                        </button>
+                        </button>}
                       </span>
                     </div>
                   </td>

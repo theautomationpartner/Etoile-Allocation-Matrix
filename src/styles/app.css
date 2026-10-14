@@ -509,3 +509,11 @@ button.exp { border: 0; background: none; padding: 0; font: inherit; cursor: poi
 .up-pp-m li button:hover, .up-pp-m li button.on { background: var(--surface-2); }
 .up-pp-k { margin-left: auto; color: var(--wh); font-weight: 700; }
 .up-pp-none { padding: 6px 8px; font-size: 12.5px; font-weight: 400; }
+/* Shipment status (2026-10-14): Draft until Cin7 fulfils it, then Partially fulfilled / Fulfilled; what left is read-only. */
+.badge.part { color: var(--po); background: var(--po-t); border-color: var(--po-b); }
+.badge.done { color: var(--wh); background: var(--wh-t); border-color: var(--wh-b); }
+.shr .qro { display: inline-block; min-width: 46px; text-align: center; font-weight: 600; color: var(--wh); }
+.shr small.sent { display: block; font-size: 9.5px; line-height: 1.1; color: var(--wh); font-weight: 600; margin-top: 1px; }
+.mx tr.shr.sent td.s1 b { color: var(--ink-2); }
+.shd .shd-ro { font-size: 12.5px; color: var(--ink-2); }
+.mnu-note { display: block; padding: 7px 12px; font-size: 12px; color: var(--ink-3); }

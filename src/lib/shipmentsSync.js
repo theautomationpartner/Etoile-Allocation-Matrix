@@ -15,7 +15,7 @@ const now = () => {
   return { date: d.toISOString().slice(0, 10), time: d.toISOString().slice(11, 19) };
 };
 
-// ctx: { order: { id, number, toShip }, lineOf(sku) → { lineId, ledgerItemId, allocated, productName },
+// ctx: { order: { id, number, toShip }, lineOf(sku) → { lineId, ledgerItemId, allocated, productName, fulfilled },
 //        remaining(sku), splitText(sku) }
 // If a write fails half-way, the error carries `partial` ({ mondayId, subIds }) with what already exists in
 // monday, so a retry updates those items instead of creating duplicates.
@@ -52,9 +52,12 @@ async function saveSteps(write, ship, ctx, done, after) {
     done.mondayId = mondayId;
   }
 
-  const lineValues = (sku) => {
+  // created: a new line also gets "Fulfilled at save" (the line's US Qty Fulfilled now). It is never rewritten, so the
+  // units fulfilled after the line was created can be told apart (shipments.js attributeShipped).
+  const lineValues = (sku, created) => {
     const line = ctx.lineOf(sku);
     return JSON.stringify({
+      ...(created && Number.isFinite(line?.fulfilled) ? { [sc.fulfilledAtSave]: String(line.fulfilled) } : {}),
       [sc.sku]: sku,
       [sc.qty]: String(ship.qty[sku] || 0),
       [sc.allocated]: String(line?.allocated || 0),
@@ -73,7 +76,7 @@ async function saveSteps(write, ship, ctx, done, after) {
   const toCreate = chunks(ship.skus.filter((sku) => !done.subIds[sku]));
   const firstCreate = ops.length;
   for (const part of toCreate) {
-    ops.push({ op: "createShipmentLines", variables: { p: mondayId, entries: part.map((sku) => ({ n: `${sku} - ${ctx.lineOf(sku)?.productName || sku}`, v: lineValues(sku) })) } });
+    ops.push({ op: "createShipmentLines", variables: { p: mondayId, entries: part.map((sku) => ({ n: `${sku} - ${ctx.lineOf(sku)?.productName || sku}`, v: lineValues(sku, true) })) } });
   }
   // Rows removed from the shipment (§16.3 "Quitar una fila"): their subitems go too.
   const removed = chunks(Object.keys(done.subIds).filter((sku) => !ship.skus.includes(sku)));
