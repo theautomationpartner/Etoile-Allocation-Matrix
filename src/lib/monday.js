@@ -138,6 +138,38 @@ export function assembleData(parts, allocationSource = ALLOCATION_SOURCE.LEDGER,
   return allocationSource === ALLOCATION_SOURCE.LEDGER && ledger ? withLedger(data, ledger) : data;
 }
 
+// The Ledger item of one sale line, in any group (a Released one is reused when the line is allocated again): the
+// one the Wholesale subitem links to, else the one whose Allocation Key is the line (Active, then Fulfilled, then
+// Released). → { id, group, subitemIds, subs? } or null. subs (when the subitems' columns were read): what each
+// source record holds, { id, source, sourceId, qty }, so Allocate can rewrite them in place.
+function pickLedgerItem(linked, byKey) {
+  const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger;
+  const rank = (it) => ({ [LEDGER_ACTIVE_GROUP]: 0, [LEDGER_FULFILLED_GROUP]: 1, [LEDGER_RELEASED_GROUP]: 2 }[it.group?.id] ?? 3);
+  const it = [...linked, ...[...byKey].sort((a, b) => rank(a) - rank(b))].filter(live)[0];
+  if (!it) return null;
+  const ls = COL.ledgerSub;
+  const subs = (it.subitems || []).every((s) => Array.isArray(s.column_values))
+    ? it.subitems.map((s) => ({ id: String(s.id), source: LEDGER_SOURCE_TYPE[cv(s, ls.type)] || "", sourceId: cv(s, ls.sourceId).trim(), qty: num(cv(s, ls.qty)) }))
+    : undefined;
+  return { id: String(it.id), group: it.group?.id || "", subitemIds: (it.subitems || []).map((s) => String(s.id)), ...(subs ? { subs } : {}) };
+}
+
+// The same, from the items loadLedgerFor already read (no request).
+export function ledgerItemOf(items, lineId, linkId) {
+  const keyOf = (it) => (it.column_values || []).find((c) => c.id === COL.ledger.key)?.text?.trim();
+  return pickLedgerItem(linkId ? items.filter((it) => String(it.id) === String(linkId)) : [], items.filter((it) => keyOf(it) === String(lineId)));
+}
+
+// Allocate: the data with fresh Ledger records for the lines of one SKU only (ledger from loadLedgerFor); every
+// other line keeps what it had.
+export function withLedgerFor(data, ledger, sku) {
+  const fresh = withLedger(data, ledger);
+  return {
+    ...data,
+    orders: data.orders.map((o, i) => ({ ...o, lines: o.lines.map((l, j) => (l.sku === sku ? fresh.orders[i].lines[j] : l)) })),
+  };
+}
+
 export function createMondayApi(transport = fetchTransport) {
   // Walks items_page / next_items_page until the cursor runs out.
   async function allItems(boardId, fields, { groups } = {}) {
@@ -235,11 +267,11 @@ export function createMondayApi(transport = fetchTransport) {
   // order keeps the units of its Ledger item even if that item sits in Fulfilled. Released holds none.
   // byId → the Ledger item a Wholesale subitem links to (board_relation_mm7pqf7j);
   // byKey → fallback by Allocation Key (= Wholesale subitem id).
-  async function loadLedger() {
+  const LEDGER_FIELDS = `id name group { id } column_values(ids:[${gqlList([COL.ledger.key, COL.ledger.sku, COL.ledger.json, COL.ledger.fulfilled, COL.ledger.status])}]) { id text }
+      subitems { id name column_values(ids:[${gqlList(Object.values(COL.ledgerSub))}]) { id text } }`;
+  // Ledger items (Active and Fulfilled) → { byId, byKey } of their records.
+  function ledgerMaps(items) {
     const l = COL.ledger, ls = COL.ledgerSub;
-    const fields = `id name group { id } column_values(ids:[${gqlList([l.key, l.sku, l.json, l.fulfilled, l.status])}]) { id text }
-      subitems { id name column_values(ids:[${gqlList(Object.values(ls))}]) { id text } }`;
-    const items = await allItems(BOARDS.ledger, fields, { groups: [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP] });
     const byId = new Map(), byKey = new Map();
     for (const it of items) {
       const fromSubitems = (it.subitems || [])
@@ -257,6 +289,45 @@ export function createMondayApi(transport = fetchTransport) {
       if (key) byKey.set(key, record);
     }
     return { byId, byKey };
+  }
+
+  async function loadLedger() {
+    return ledgerMaps(await allItems(BOARDS.ledger, LEDGER_FIELDS, { groups: [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP] }));
+  }
+
+  // Allocate (2026-10-13): the concurrency check only needs the Ledger records of the sale lines of ONE SKU (a
+  // source's free units depend only on the lines of its SKU), not the whole Ledger. lines: [{ id, ledgerLinkId }].
+  // Reads the items those lines link to and the items whose Allocation Key is one of them (any group), in parallel.
+  // Returns { ledger: { byId, byKey } (Active + Fulfilled, as loadLedger), items } — items also answer
+  // findLedgerItem for these lines without another request (ledgerItemOf).
+  async function loadLedgerFor(lines) {
+    const f = `state board { id } ${LEDGER_FIELDS}`;
+    const keys = [...new Set(lines.map((x) => String(x.id)))];
+    const links = [...new Set(lines.map((x) => x.ledgerLinkId).filter(Boolean).map(String))];
+    const byKeyPages = async () => {
+      const out = [];
+      let page = (await transport(`query($b:ID!,$v:[String]!){ items_page_by_column_values(board_id:$b, limit:${PAGE}, columns:[{column_id:"${COL.ledger.key}", column_values:$v}]){ cursor items { ${f} } } }`,
+        { b: BOARDS.ledger, v: keys }))?.items_page_by_column_values;
+      out.push(...(page?.items || []));
+      while (page?.cursor) {
+        page = (await transport(`query($c:String!){ next_items_page(limit:${PAGE}, cursor:$c){ cursor items { ${f} } } }`, { c: page.cursor }))?.next_items_page;
+        out.push(...(page?.items || []));
+      }
+      return out;
+    };
+    const linkedPages = async () => {
+      const out = [];
+      for (let k = 0; k < links.length; k += PAGE) {
+        const d = await transport(`query($i:[ID!]){ items(ids:$i, limit:${PAGE}){ ${f} } }`, { i: links.slice(k, k + PAGE) });
+        out.push(...(d?.items || []));
+      }
+      return out;
+    };
+    const [byKey, linked] = await Promise.all([keys.length ? byKeyPages() : [], links.length ? linkedPages() : []]);
+    const items = [...new Map([...linked, ...byKey].map((it) => [String(it.id), it])).values()]
+      .filter((it) => it.state === "active" && String(it.board?.id) === BOARDS.ledger);
+    const recorded = items.filter((it) => [LEDGER_ACTIVE_GROUP, LEDGER_FULFILLED_GROUP].includes(it.group?.id));
+    return { ledger: ledgerMaps(recorded), items };
   }
 
   // Item counts for the side nav badges (as in the mockup).
@@ -401,11 +472,7 @@ export function createMondayApi(transport = fetchTransport) {
       transport(`query($b:ID!,$v:[String]!){ items_page_by_column_values(board_id:$b, limit:10, columns:[{column_id:"${COL.ledger.key}", column_values:$v}]){ items { ${f} } } }`,
         { b: BOARDS.ledger, v: [String(lineId)] }),
     ]);
-    const live = (it) => it && it.state === "active" && String(it.board?.id) === BOARDS.ledger;
-    const rank = (it) => ({ [LEDGER_ACTIVE_GROUP]: 0, [LEDGER_FULFILLED_GROUP]: 1, [LEDGER_RELEASED_GROUP]: 2 }[it.group?.id] ?? 3);
-    const candidates = [...(linked?.items || []), ...((byKey?.items_page_by_column_values?.items || []).sort((a, b) => rank(a) - rank(b)))].filter(live);
-    const it = candidates[0];
-    return it ? { id: String(it.id), group: it.group?.id || "", subitemIds: (it.subitems || []).map((s) => String(s.id)) } : null;
+    return pickLedgerItem(linked?.items || [], byKey?.items_page_by_column_values?.items || []);
   }
 
   // One loader per part of the data (≈ one monday board): the server caches each part on its own (api/data.js).
@@ -425,5 +492,5 @@ export function createMondayApi(transport = fetchTransport) {
     return assembleData(parts, allocationSource, new Date());
   }
 
-  return { loadMatrixData, loadParts, loadLedger, loadShipments, findLedgerItem };
+  return { loadMatrixData, loadParts, loadLedger, loadLedgerFor, loadShipments, findLedgerItem };
 }

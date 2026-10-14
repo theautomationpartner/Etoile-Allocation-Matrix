@@ -3,7 +3,7 @@ import { fmt, dayMonth, dayMonthYear } from "../lib/format.js";
 import { orderParts } from "../lib/matrix.js";
 import { lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, remainingAfter, shipSplit, shipUnits, trimShips } from "../lib/shipments.js";
 import { mondayApi } from "../config.js";
-import { deleteShipment, linkLines, saveShipment } from "../lib/shipmentsSync.js";
+import { deleteShipment, linkOps, saveShipment } from "../lib/shipmentsSync.js";
 import { containerCode } from "../lib/matrix.js";
 
 const todayISO = () => localToday();
@@ -178,9 +178,8 @@ export function useShipments({ data, model, write, toast, patchData }) {
       const ships = shipsOf(orderId), sh = ships.find((s) => s.id === shipId), n = shipUnits(sh);
       setUi((u) => ({ ...u, menu: null, confirmDelete: null, saving: { ...u.saving, [shipId]: true } }));
       try {
-        await deleteShipment(write, sh);
         const rest = ships.filter((s) => s.id !== shipId);
-        if (sh.mondayId) await linkLines(write, rest, sh.skus, (k) => lineOf(orderId, k));
+        await deleteShipment(write, sh, sh.mondayId ? linkOps(rest, sh.skus, (k) => lineOf(orderId, k)) : []); // one request
         update(orderId, () => rest);
         if (sh.mondayId) persistDeleted(sh.mondayId);
         toast(`${sh.name} deleted.${n ? ` Its ${fmt(n)} units are back in "remaining to ship".` : ""}`);
@@ -221,10 +220,11 @@ export function useShipments({ data, model, write, toast, patchData }) {
           remaining: (k) => remainingAfter(ships, sh, k, allocatedOf(orderId, k)),
           splitText: (k) => Object.entries(splitOf(orderId, ships, k)[shipId] || {}).map(([r, q]) => `${srcLabel(r)}: ${fmt(q)}`).join(" · "),
         };
-        const { mondayId, subIds } = await saveShipment(write, sh, ctx);
+        // The sale lines are connected to their shipments in the same request as the save (linkOps).
+        const links = (id) => linkOps(ships.map((s) => (s.id === shipId ? { ...sh, mondayId: id } : s)), [...sh.skus, ...Object.keys(sh.subIds || {})], (k) => lineOf(orderId, k));
+        const { mondayId, subIds } = await saveShipment(write, sh, ctx, { after: links });
         const savedShip = { ...sh, id: sh.id, mondayId, subIds, dirty: false, savedAt: savedLabel(new Date().toISOString()) };
         const nextShips = ships.map((s) => (s.id === shipId ? savedShip : s));
-        await linkLines(write, nextShips, [...sh.skus, ...Object.keys(sh.subIds || {})], (k) => lineOf(orderId, k));
         update(orderId, () => nextShips);
         persistSaved(orderId, savedShip);
         toast(`${sh.name} saved to Monday.`);

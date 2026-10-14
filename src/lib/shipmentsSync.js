@@ -5,7 +5,10 @@
 // Then every sale line involved is connected to the shipments that carry it:
 //   Wholesale subitem (board_relation_mm7pd15e) and Allocation Ledger item (board_relation_mm7p81dk).
 // Line writes go in batches of up to 50 per request (create, update, delete and connect).
-import { NS, SHIPMENT_LINKS, batchIds, chunks } from "./mondayWrites.js";
+// Speed (2026-10-13): every write of a Save — the shipment, its lines and the links of the sale lines (after) — goes
+// in ONE request as one step (runSteps): they don't depend on each other, so monday gets them at the same time. A new
+// shipment needs one more request (it must exist before its lines).
+import { NS, SHIPMENT_LINKS, batchIds, chunks, runSteps } from "./mondayWrites.js";
 
 const now = () => {
   const d = new Date();
@@ -16,17 +19,18 @@ const now = () => {
 //        remaining(sku), splitText(sku) }
 // If a write fails half-way, the error carries `partial` ({ mondayId, subIds }) with what already exists in
 // monday, so a retry updates those items instead of creating duplicates.
-export async function saveShipment(write, ship, ctx) {
+// after(mondayId) → more operations sent with the last request (the links of the sale lines, linkOps).
+export async function saveShipment(write, ship, ctx, { after } = {}) {
   const done = { mondayId: ship.mondayId, subIds: { ...(ship.subIds || {}) } };
   try {
-    return await saveSteps(write, ship, ctx, done);
+    return await saveSteps(write, ship, ctx, done, after);
   } catch (error) {
     error.partial = done;
     throw error;
   }
 }
 
-async function saveSteps(write, ship, ctx, done) {
+async function saveSteps(write, ship, ctx, done, after) {
   const c = NS.col, sc = NS.subCol;
   const units = ship.skus.reduce((a, k) => a + (ship.qty[k] || 0), 0);
   const itemName = `${ctx.order.number} · ${ship.name}`;
@@ -40,8 +44,9 @@ async function saveSteps(write, ship, ctx, done) {
   };
 
   let mondayId = ship.mondayId;
+  const ops = [];
   if (mondayId) {
-    await write("updateShipment", { i: mondayId, v: JSON.stringify({ name: itemName, ...values }) });
+    ops.push({ op: "updateShipment", variables: { i: mondayId, v: JSON.stringify({ name: itemName, ...values }) } });
   } else {
     mondayId = String((await write("createShipment", { n: itemName, v: JSON.stringify(values) })).create_item.id);
     done.mondayId = mondayId;
@@ -62,35 +67,36 @@ async function saveSteps(write, ship, ctx, done) {
   // Existing lines: batched updates.
   const toUpdate = ship.skus.filter((sku) => done.subIds[sku]);
   for (const part of chunks(toUpdate)) {
-    await write("updateShipmentLines", { entries: part.map((sku) => ({ i: done.subIds[sku], v: lineValues(sku) })) });
+    ops.push({ op: "updateShipmentLines", variables: { entries: part.map((sku) => ({ i: done.subIds[sku], v: lineValues(sku) })) } });
   }
   // New lines: batched creates of up to 50.
-  const toCreate = ship.skus.filter((sku) => !done.subIds[sku]);
-  for (const part of chunks(toCreate)) {
-    const data = await write("createShipmentLines", {
-      p: mondayId,
-      entries: part.map((sku) => ({ n: `${sku} - ${ctx.lineOf(sku)?.productName || sku}`, v: lineValues(sku) })),
-    });
-    batchIds(data, part.length).forEach((id, k) => {
+  const toCreate = chunks(ship.skus.filter((sku) => !done.subIds[sku]));
+  const firstCreate = ops.length;
+  for (const part of toCreate) {
+    ops.push({ op: "createShipmentLines", variables: { p: mondayId, entries: part.map((sku) => ({ n: `${sku} - ${ctx.lineOf(sku)?.productName || sku}`, v: lineValues(sku) })) } });
+  }
+  // Rows removed from the shipment (§16.3 "Quitar una fila"): their subitems go too.
+  const removed = chunks(Object.keys(done.subIds).filter((sku) => !ship.skus.includes(sku)));
+  for (const part of removed) ops.push({ op: "deleteShipmentItems", variables: { entries: part.map((sku) => ({ i: done.subIds[sku] })) } });
+
+  const [results] = await runSteps(write, [[...ops, ...(after ? after(mondayId) : [])]]);
+  toCreate.forEach((part, n) => {
+    batchIds(results[firstCreate + n], part.length).forEach((id, k) => {
       if (!id) throw new Error(`Monday did not create the line for ${part[k]}.`);
       done.subIds[part[k]] = id;
     });
-  }
-  // Rows removed from the shipment (§16.3 "Quitar una fila"): their subitems go too.
-  const removed = Object.keys(done.subIds).filter((sku) => !ship.skus.includes(sku));
-  for (const part of chunks(removed)) {
-    await write("deleteShipmentItems", { entries: part.map((sku) => ({ i: done.subIds[sku] })) });
-    part.forEach((sku) => delete done.subIds[sku]);
-  }
+  });
+  for (const part of removed) part.forEach((sku) => delete done.subIds[sku]);
   return { mondayId, subIds: { ...done.subIds } };
 }
 
-export async function deleteShipment(write, ship) {
-  if (ship.mondayId) await write("deleteShipmentItems", { entries: [{ i: ship.mondayId }] }); // its subitems go with it
+// after: more operations sent in the same request (the links of the sale lines left, linkOps).
+export async function deleteShipment(write, ship, after = []) {
+  await runSteps(write, [[ship.mondayId ? { op: "deleteShipmentItems", variables: { entries: [{ i: ship.mondayId }] } } : null, ...after]]); // its subitems go with it
 }
 
-// Connect each sale line of these SKUs to the saved shipments that carry units of it (batched).
-export async function linkLines(write, ships, skus, lineOf) {
+// Connect each sale line of these SKUs to the saved shipments that carry units of it (batched) — as operations.
+export function linkOps(ships, skus, lineOf) {
   const entries = [];
   for (const sku of new Set(skus)) {
     const line = lineOf(sku);
@@ -99,5 +105,9 @@ export async function linkLines(write, ships, skus, lineOf) {
     entries.push({ target: "line", i: line.lineId, v: JSON.stringify({ [SHIPMENT_LINKS.wholesaleSub.col]: { item_ids: ids } }) });
     if (line.ledgerItemId) entries.push({ target: "ledger", i: line.ledgerItemId, v: JSON.stringify({ [SHIPMENT_LINKS.ledger.col]: { item_ids: ids } }) });
   }
-  for (const part of chunks(entries)) await write("linkLines", { entries: part });
+  return chunks(entries).map((part) => ({ op: "linkLines", variables: { entries: part } }));
+}
+
+export async function linkLines(write, ships, skus, lineOf) {
+  await runSteps(write, [linkOps(ships, skus, lineOf)]);
 }

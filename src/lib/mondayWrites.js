@@ -131,6 +131,16 @@ export const WRITE_OPS = {
       vars: (k, e) => ({ [`i${k}`]: e.i }),
     }),
   },
+  // A source record kept from the previous allocation of the line, rewritten in place (Allocate, 2026-10-13):
+  // updating it is ~0.7 s against ~3.7 s for deleting it and creating it again.
+  rewriteLedgerSubitems: {
+    batch: true, fields: ["i", "v"], columns: () => ["name", ...Object.values(LEDGER.subCol)], itemBoards: () => [LEDGER.sub],
+    build: ({ entries }) => aliased(entries, "", {
+      decl: (k) => `$i${k}:ID!, $v${k}:JSON!`,
+      body: (k) => `change_multiple_column_values(board_id:${LEDGER.sub}, item_id:$i${k}, column_values:$v${k}, create_labels_if_missing:false)`,
+      vars: (k, e) => ({ [`i${k}`]: e.i, [`v${k}`]: e.v }),
+    }),
+  },
   // Status Allocation of Ledger items, in batches (daily check).
   setLedgerStatus: {
     batch: true, fields: ["i", "v"], columns: () => [LEDGER.col.status], itemBoards: () => [LEDGER.board],
@@ -199,6 +209,63 @@ export function checkWrite(op, variables = {}) {
   return def;
 }
 
+// ── Several operations in ONE request, in steps (2026-10-13) ──
+// Allocate and Save used to send one request per operation, and monday runs the changes of one request one after
+// the other (create_subitem ≈ 1.4 s, delete_item ≈ 2.3 s each). Now the browser sends every operation at once as
+// steps: [[op, …], …]. The operations of a step don't depend on each other, so the server sends each of their
+// changes to monday at the same time (up to WRITE_CONCURRENCY); the steps run one after the other and stop at the
+// first failure, so an order like "old subitems out, new ones in, then the columns" still holds.
+export const MAX_STEP_CHANGES = 150;
+export const WRITE_CONCURRENCY = 8;
+
+export const changesOf = (op, variables) => (WRITE_OPS[op].batch ? variables.entries.length : 1);
+
+// Static checks of every operation, and the size of the whole request.
+export function checkSteps(steps) {
+  if (!Array.isArray(steps) || !steps.length || steps.some((st) => !Array.isArray(st) || !st.length)) throw new Error("No write operations.");
+  const defs = steps.map((st) => st.map(({ op, variables }) => checkWrite(op, variables)));
+  const changes = steps.flat().reduce((a, { op, variables }) => a + changesOf(op, variables), 0);
+  if (changes > MAX_STEP_CHANGES) throw new Error(`At most ${MAX_STEP_CHANGES} changes per request.`);
+  return defs;
+}
+
+// Runs steps of operations (null operations are skipped): in one request when the transport can (write.many), else
+// one operation after the other. Returns the data of each operation, in the same shape as steps (undefined for a
+// skipped one). A request carries at most MAX_STEP_CHANGES changes: more go in further requests, in order (a step
+// that big is split; its operations don't depend on each other).
+export async function runSteps(write, steps) {
+  const clean = steps.map((st) => (st || []).filter(Boolean));
+  const res = clean.map((st) => new Array(st.length));
+  if (typeof write.many === "function") {
+    const pieces = []; // { i: step, idx: [operation indexes] }
+    clean.forEach((st, i) => {
+      let cur = [], size = 0;
+      st.forEach((o, j) => {
+        const n = changesOf(o.op, o.variables);
+        if (cur.length && size + n > MAX_STEP_CHANGES) { pieces.push({ i, idx: cur }); cur = []; size = 0; }
+        cur.push(j); size += n;
+      });
+      if (cur.length) pieces.push({ i, idx: cur });
+    });
+    let req = [], size = 0;
+    const flush = async () => {
+      if (!req.length) return;
+      const data = await write.many(req.map((pc) => pc.idx.map((j) => clean[pc.i][j])));
+      req.forEach((pc, r) => pc.idx.forEach((j, q) => { res[pc.i][j] = data[r][q]; }));
+      req = []; size = 0;
+    };
+    for (const pc of pieces) {
+      const n = pc.idx.reduce((a, j) => a + changesOf(clean[pc.i][j].op, clean[pc.i][j].variables), 0);
+      if (req.length && size + n > MAX_STEP_CHANGES) await flush();
+      req.push(pc); size += n;
+    }
+    await flush();
+  } else {
+    for (const [i, st] of clean.entries()) for (const [j, { op, variables }] of st.entries()) res[i][j] = await write(op, variables);
+  }
+  return steps.map((st, i) => { let j = 0; return (st || []).map((o) => (o ? res[i][j++] : undefined)); });
+}
+
 // Ids returned by a batch, in entry order (e0, e1, …).
 export const batchIds = (data, n) => Array.from({ length: n }, (_, k) => (data?.[`e${k}`]?.id ? String(data[`e${k}`].id) : null));
 
@@ -222,3 +289,22 @@ export async function fetchWrite(op, variables) {
   if (Array.isArray(body.errors) && body.errors.length) throw new Error(body.errors.map((e) => e.message).join(" | "));
   return body.data;
 }
+
+// Steps of operations in one request (see runSteps): returns the data of each operation, in the same shape.
+fetchWrite.many = async function fetchSteps(steps) {
+  checkSteps(steps);
+  const { authHeaders, NotAuthorizedError, reportDenied } = await import("./auth.js");
+  const res = await fetch("/api/monday-write", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ steps }),
+  });
+  if (res.status === 401) {
+    reportDenied();
+    throw new NotAuthorizedError();
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.error) throw new Error(body.error || body.errors?.[0]?.message || `HTTP ${res.status}`);
+  if (Array.isArray(body.errors) && body.errors.length) throw new Error(body.errors.map((e) => e.message).join(" | "));
+  return body.data;
+};

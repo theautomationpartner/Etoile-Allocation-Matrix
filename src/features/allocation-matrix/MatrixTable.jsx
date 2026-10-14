@@ -4,6 +4,10 @@ import { ShipmentsRows } from "./ShipmentsRows.jsx";
 import { Tooltip, useTooltip } from "../../components/Tooltip.jsx";
 import { useColumnWidths } from "../../hooks/useColumnWidths.js";
 
+// The mockup redraws the table on every click, so a clicked cell never keeps the focus (no focus ring left around
+// it); the same here: the button lets the focus go, then acts.
+const release = (fn) => (e) => { e.currentTarget.blur(); fn(); };
+
 const RULE = "Suggested order: warehouse first when it covers at least half of the line — then the container arriving soonest, then a purchase order.";
 
 // §7.2 / §8 — one matrix cell. Container columns read "X/Y": X allocated here, Y = units of the SKU on board.
@@ -13,7 +17,7 @@ function Cell({ c, needs, onEdit, onPanel }) {
   const XY = c.k === "it" && c.tot > 0;
   const of = XY ? <span className="of">/{fmt(c.tot)}</span> : null;
   const free = c.av > 0 ? ` · ${fmt(c.av)} still free there` : "";
-  const edit = () => onEdit(c.id);
+  const edit = release(() => onEdit(c.id));
   if (c.a > 0) {
     const multi = c.split.includes("+");
     return (
@@ -54,7 +58,7 @@ function Cell({ c, needs, onEdit, onPanel }) {
   if (c.cap > 0) {
     return (
       <td className="cl idle">
-        <button type="button" onClick={onPanel} data-tip={`${c.lbl} — nothing allocated from here`}>·</button>
+        <button type="button" onClick={release(onPanel)} data-tip={`${c.lbl} — nothing allocated from here`}>·</button>
       </td>
     );
   }
@@ -81,7 +85,7 @@ function Row({ r, cols, editing, onEdit, onPanel }) {
           <span className="n mid">{fmt(allocated)}</span>
           {left ? (
             <span className={`n k ${r.end ? "bad" : ""}`}>
-              <button type="button" className={`pill ${r.end ? "bad" : ""} ${r.dr ? "drp" : ""}`} onClick={() => onEdit(r.key, null)}
+              <button type="button" className={`pill ${r.end ? "bad" : ""} ${r.dr ? "drp" : ""}`} onClick={release(() => onEdit(r.key, null))}
                 data-tip={r.dr ? `${fmt(r.dr)} units proposed as draft — review and click Allocate` : "Allocate these units"}>
                 {fmt(left)}<i>{r.dr ? "Draft" : "Allocate"}</i>
               </button>

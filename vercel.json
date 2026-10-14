@@ -11,6 +11,9 @@
     },
     "api/data.js": {
       "maxDuration": 60
+    },
+    "api/monday-write.js": {
+      "maxDuration": 60
     }
   }
 }
