@@ -1141,3 +1141,4 @@ orders, fulfilledOrders, warehouse, containers, pos, ledger, shipments, imports,
 2026-10-09  Calendario propio (ETD/ETA y Ship date: el nativo está bloqueado en el iframe de monday); People con avatares; sin enlace al form.
 2026-10-09  CACHÉ DEL SERVIDOR — sección 22: datos por tablero, 6 h, Refresh por pantalla, invalidación al escribir.
 2026-10-14  RELECTURA AL ESCRIBIR — sección 22: Allocate / Save releen solo sus registros y los reemplazan en la caché y en el navegador.
+2026-10-15  SHIPMENTS — un SKU sin nada en el shipment y sin unidades libres (otro shipment se las llevó) no se muestra; vuelve si se liberan.

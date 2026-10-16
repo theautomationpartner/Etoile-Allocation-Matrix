@@ -569,3 +569,18 @@ Save (8 líneas + 1 shipment) ~540 puntos · ~1,3 s.
   R-07 Sin Redis local: el candado y la escritura condicional de Upstash (EVAL) no se pudieron probar acá; si fallan,
        la parte se borra como antes. Para verlo en producción: Network → /api/monday-write → "cache" ............. PENDIENTE
 npm test 127/127 · npm run ui-check 204/204.
+
+--------------------------------------------------------------------------------
+ 27. SHIPMENTS: FILAS SIN NADA PARA ENVIAR (2026-10-15)
+--------------------------------------------------------------------------------
+Reporte: EIVR114 · Shipment 2 mostraba EC0370 con 0 a enviar y 0 restante, aunque las 450 unidades estaban en
+Shipment 1. Log de monday: Shipment 1 se guardó 11:54:46 con EC0370 = 0; Shipment 2 se abrió con EC0370 libre;
+11:56:33 EC0370 pasó a 450 en Shipment 1; 11:57:30 se guardó Shipment 2 con la fila en 0. No fue un problema de
+sincronización: las filas de un shipment se fijaban al crearlo.
+Regla: una fila se muestra si tiene unidades en el shipment, si algo ya salió con ella (Cin7), o si quedan unidades
+asignadas libres para ella. Si no, queda oculta (sigue en el shipment y vuelve si se liberan unidades).
+  S-01 Test con el caso EIVR114 (shownSkus): Shipment 2 oculta EC0370, Shipment 1 oculta EC0386 / EC0390, EC0357
+       (libre) se ve en los dos; bajar EC0370 a 400 la vuelve a mostrar; lo ya despachado siempre se ve .......... PASA
+  S-02 Navegador con datos reales de EIVR114 (sin escribir en monday): mismas cuatro comprobaciones, y bajar EC0370
+       a 400 en Shipment 1 (sin guardar) la muestra en Shipment 2; volver a 450 la oculta; 0 escrituras .......... PASA
+npm test 128/128 · npm run ui-check 204/204.

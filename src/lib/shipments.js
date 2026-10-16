@@ -60,6 +60,13 @@ export function remainingAfter(ships, sh, sku, allocated) {
 // §16.2 max for "To ship in this shipment" = what already left + Allocated − Σ still to leave in the other shipments.
 export const maxFor = (ships, sh, sku, allocated) => sentOf(sh, sku) + Math.max(0, allocated - inShipments(ships, sku, sh.id));
 
+// The rows a shipment shows (2026-10-15): a SKU stays out of sight while it has nothing in this shipment, nothing that
+// already left with it, and no allocated unit left for it (another shipment took them all after this one was
+// created — EIVR114: EC0370 went whole into Shipment 1 after Shipment 2 was opened). It stays in the shipment, so it
+// shows again if units free up. allocatedOf(sku) → units allocated to the line.
+export const shownSkus = (ships, sh, allocatedOf) =>
+  sh.skus.filter((sku) => (sh.qty[sku] || 0) > 0 || sentOf(sh, sku) > 0 || maxFor(ships, sh, sku, allocatedOf(sku)) > 0);
+
 // The matrix column a confirmed entry belongs to (same ids as the matrix columns).
 export const colIdOf = (e) => (e.stage === SOURCE.WAREHOUSE ? "warehouse" : String(e.sourceId));
 const RANK = { [SOURCE.WAREHOUSE]: 0, [SOURCE.IN_TRANSIT]: 1, [SOURCE.PO]: 2 };

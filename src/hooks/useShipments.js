@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmt, dayMonth, dayMonthYear } from "../lib/format.js";
 import { orderParts } from "../lib/matrix.js";
-import { SHIP_STATUS, attributeShipped, lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, pendingOf, remainingAfter, sentOf, sentUnits, shipSplit, shipStatus, shipUnits, trimShips } from "../lib/shipments.js";
+import { SHIP_STATUS, attributeShipped, lateUnits, leftToShip, localToday, maxFor, nextShip, overShipped, pendingOf, remainingAfter, sentOf, sentUnits, shipSplit, shipStatus, shipUnits, shownSkus, trimShips } from "../lib/shipments.js";
 import { mondayApi } from "../config.js";
 import { deleteShipment, linkOps, saveShipment } from "../lib/shipmentsSync.js";
 import { containerCode } from "../lib/matrix.js";
@@ -323,6 +323,7 @@ export function useShipments({ data, model, write, toast, patchData, applyRead }
     hasUnsaved: unsaved.length > 0, unsaved,
     lateUnitsOf: (orderId, sh) => sh.skus.reduce((a, k) => a + lateUnits(sh, splitOf(orderId, shipsOf(orderId), k)[sh.id], srcDate), 0),
     maxOf: (orderId, sh, sku) => maxFor(shipsOf(orderId), sh, sku, allocatedOf(orderId, sku)),
+    rowsOf: (orderId, sh) => shownSkus(shipsOf(orderId), sh, (k) => allocatedOf(orderId, k)).filter((k) => lineOf(orderId, k)),
     remainingOf: (orderId, sh, sku) => remainingAfter(shipsOf(orderId), sh, sku, allocatedOf(orderId, sku)),
     today: todayISO(),
   };

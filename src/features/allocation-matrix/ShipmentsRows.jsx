@@ -159,6 +159,7 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
     const error = S.ui.errors[sh.id];
     const splits = Object.fromEntries(sh.skus.map((k) => [k, S.splitOf(orderId, ships, k)[sh.id] || {}]));
     const status = S.statusOf(sh), sent = S.sentUnits(sh), done = status === SHIP_STATUS.FULFILLED;
+    const rows = S.rowsOf(orderId, sh); // SKUs with nothing in it and nothing left for it stay out of sight
     return (
       <Fragment key={sh.id}>
         <tr className="shc">
@@ -206,12 +207,11 @@ export function ShipmentsRows({ group, cols, nCol, sh: S }) {
               {cols.map((c) => <td key={c.id} className={`shcol ${c.k}`}><span>{c.label}</span><i>{c.meta || ""}</i></td>)}
               <td className="end" />
             </tr>
-            {!sh.skus.length && (
+            {!rows.length && (
               <tr className="shnote"><td colSpan={nCol}><div>Nothing in {sh.name}. Delete it, or use Copy remaining to ship.</div></td></tr>
             )}
-            {sh.skus.map((sku) => {
+            {rows.map((sku) => {
               const line = S.lineOf(orderId, sku);
-              if (!line) return null;
               const q = sh.qty[sku] || 0;
               const max = S.maxOf(orderId, sh, sku);
               const left = S.sentOf(sh, sku), allLeft = left > 0 && left >= q; // units of this row Cin7 already fulfilled

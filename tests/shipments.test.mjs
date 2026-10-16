@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildModel } from "../src/lib/engine.js";
-import { colIdOf, inShipments, lateUnits, leftToShip, maxFor, nextShip, remainingAfter, shipSplit, trimShips } from "../src/lib/shipments.js";
+import { colIdOf, inShipments, lateUnits, leftToShip, maxFor, nextShip, remainingAfter, shipSplit, shownSkus, trimShips } from "../src/lib/shipments.js";
 import { mockupData } from "./fixtures/mockup-data.mjs";
 
 // The mockup's walkthrough case: EIVR132 with three shipments.
@@ -110,4 +110,24 @@ test("a fulfilled shipment is never trimmed; figures count only the units still 
   assert.equal(leftToShip(part, "A", 50), 0);
   // Concurrency check ignores what already left.
   assert.deepEqual(overShipped([{ ...part[0], mondayId: "B" }], { ...part[0], mondayId: "A" }, () => 100), []);
+});
+
+test("a SKU another shipment took whole after this one was opened stays out of sight (EIVR114, 2026-10-15)", () => {
+  // EIVR114: Shipment 1 saved with EC0370 = 0; Shipment 2 opened (EC0370 still had 450 free); then EC0370 = 450 in
+  // Shipment 1. Shipment 2 kept a row with 0 to ship and 0 remaining. EC0397 (534) was already in Shipment 1.
+  const alloc = { EC0370: 450, EC0397: 534, EC0386: 1, EC0357: 1504 };
+  const allocatedOf = (k) => alloc[k] || 0;
+  const s1 = { id: "S1", skus: ["EC0370", "EC0397", "EC0386", "EC0357"], qty: { EC0370: 450, EC0397: 534, EC0386: 0, EC0357: 0 } };
+  const s2 = { id: "S2", skus: ["EC0370", "EC0386", "EC0357"], qty: { EC0370: 0, EC0386: 1, EC0357: 0 } };
+  const ships = [s1, s2];
+  assert.deepEqual(shownSkus(ships, s2, allocatedOf), ["EC0386", "EC0357"]); // EC0370: nothing in it, nothing left
+  assert.deepEqual(shownSkus(ships, s1, allocatedOf), ["EC0370", "EC0397", "EC0357"]); // EC0386: its 1 unit is in Shipment 2
+  // Units free up (EC0370 lowered to 400 in Shipment 1): the row shows again in Shipment 2.
+  const s1b = { ...s1, qty: { ...s1.qty, EC0370: 400 } };
+  assert.ok(shownSkus([s1b, s2], s2, allocatedOf).includes("EC0370"));
+  // A row with units that already left (fulfilled in Cin7) always shows, even with nothing left to allocate.
+  const s3 = { id: "S3", skus: ["EC0370"], qty: { EC0370: 0 }, shipped: {} };
+  const s0 = { id: "S0", skus: ["EC0370"], qty: { EC0370: 450 }, shipped: { EC0370: 450 } };
+  assert.deepEqual(shownSkus([s0], s0, () => 0), ["EC0370"]);
+  assert.deepEqual(shownSkus([s0, s3], s3, () => 0), []);
 });
